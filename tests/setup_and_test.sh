@@ -132,38 +132,53 @@ for i in {1..3}; do
 done
 echo "    ✅ 3 DDL-related requests completed"
 
-# Test 6: Stress test - high throughput
-echo "  Test 6: Stress test (100 sequential requests)..."
+# Test 6: Stress test - concurrent high throughput (like original baseline)
+echo "  Test 6: Concurrent stress test (50 parallel requests, 10 rounds = 500 total)..."
 SUCCESS_COUNT=0
 FAIL_COUNT=0
 START_TIME=$(date +%s%N | cut -b1-13)
 
-for i in {1..100}; do
-    RESPONSE=$(curl -s -X POST http://$MCP_HOST:$MCP_PORT/rpc \
-        -H "Content-Type: application/json" \
-        -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"show_current_user","arguments":{}},"id":'$i'}' 2>/dev/null)
+# Run 10 rounds of 50 concurrent requests each
+for round in {1..10}; do
+    BASE_ID=$((round * 100))
 
-    if echo "$RESPONSE" | grep -q '"result"'; then
-        ((SUCCESS_COUNT++))
-    else
-        ((FAIL_COUNT++))
-    fi
+    for i in {1..50}; do
+        ID=$((BASE_ID + i))
+        (curl -s -X POST http://$MCP_HOST:$MCP_PORT/rpc \
+            -H "Content-Type: application/json" \
+            -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"show_current_user","arguments":{}},"id":'$ID'}' \
+            2>/dev/null | grep -q '"result"' && ((SUCCESS_COUNT++)) || ((FAIL_COUNT++))) &
+    done
 
-    # Show progress every 25 requests
-    if [ $((i % 25)) -eq 0 ]; then
-        echo "      Progress: $i/100 requests..."
-    fi
+    # Wait for all 50 concurrent requests to finish
+    wait
+    echo "      Round $round/10 complete..."
 done
 
 END_TIME=$(date +%s%N | cut -b1-13)
 ELAPSED=$((END_TIME - START_TIME))
-THROUGHPUT=$((100000 / ELAPSED))  # requests per second (approx)
 
-echo "    ✅ Stress test results:"
-echo "       - Success: $SUCCESS_COUNT/100"
-echo "       - Failed:  $FAIL_COUNT/100"
-echo "       - Time: ${ELAPSED}ms"
-echo "       - Throughput: ~${THROUGHPUT} req/sec"
+# Calculate throughput (500 requests / elapsed_seconds)
+ELAPSED_SEC=$((ELAPSED / 1000))
+if [ $ELAPSED_SEC -eq 0 ]; then
+    ELAPSED_SEC=1
+fi
+THROUGHPUT=$((500 / ELAPSED_SEC))
+
+echo "    ✅ Concurrent stress test results:"
+echo "       - Total requests: 500 (50 parallel × 10 rounds)"
+echo "       - Success: $SUCCESS_COUNT"
+echo "       - Failed:  $FAIL_COUNT"
+echo "       - Time: ${ELAPSED}ms (~${ELAPSED_SEC}s)"
+echo "       - Throughput: ~${THROUGHPUT} req/sec (baseline: 17,713 req/sec with 20 concurrent)"
+echo ""
+if [ $THROUGHPUT -lt 1000 ]; then
+    echo "    ⚠️  Performance below baseline - investigation needed:"
+    echo "       - New DDL tools may have overhead"
+    echo "       - backup_table operation is heavy"
+    echo "       - Connection pool may need tuning"
+    echo "       - Memory usage may be elevated"
+fi
 
 echo ""
 echo "Step 5️⃣  Running comprehensive integration tests..."
@@ -195,7 +210,15 @@ if [ $? -eq 0 ]; then
     echo ""
     echo "Performance Summary:"
     echo "  - Concurrent (20 requests): ${ELAPSED}ms"
-    echo "  - Stress test (100 requests): ~${THROUGHPUT} req/sec"
+    echo "  - Stress test (500 concurrent): ~${THROUGHPUT} req/sec"
+    echo "  - Baseline target: 17,713 req/sec (20 clients)"
+    if [ $THROUGHPUT -gt 10000 ]; then
+        echo "  - ✅ Performance: GOOD (>10K req/sec)"
+    elif [ $THROUGHPUT -gt 1000 ]; then
+        echo "  - ⚠️  Performance: DEGRADED (1-10K req/sec) - investigate new tools"
+    else
+        echo "  - ❌ Performance: POOR (<1K req/sec) - critical investigation needed"
+    fi
 else
     echo ""
     echo "❌ Some tests failed"
