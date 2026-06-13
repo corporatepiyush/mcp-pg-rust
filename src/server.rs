@@ -158,7 +158,7 @@ async fn process_one_line<W: AsyncWriteExt + Unpin>(
     };
 
     response_buf.clear();
-    serde_json::to_writer(response_buf.as_mut_slice(), &response)?;
+    serde_json::to_writer(&mut *response_buf, &response)?;
     response_buf.extend_from_slice(NEWLINE);
 
     writer.write_all(response_buf).await?;
