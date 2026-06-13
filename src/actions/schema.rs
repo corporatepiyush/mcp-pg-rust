@@ -650,3 +650,38 @@ pub async fn create_table(client: &Client, params: &Option<&Value>) -> MCPResult
         "column_count": columns.len()
     }))
 }
+
+/// 12. Drop table
+pub async fn drop_table(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'table' parameter".into()))?;
+
+    validate_identifier(table, "table")?;
+
+    let if_exists = params
+        .as_ref()
+        .and_then(|p| p.get("if_exists").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+
+    let cascade = params
+        .as_ref()
+        .and_then(|p| p.get("cascade").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+
+    let if_exists_str = if if_exists { "IF EXISTS " } else { "" };
+    let cascade_str = if cascade { " CASCADE" } else { "" };
+
+    let sql = format!("DROP TABLE {}{}{}", if_exists_str, table, cascade_str);
+
+    client.execute(&sql, &[]).await?;
+
+    Ok(json!({
+        "status": "success",
+        "action": "DROP TABLE",
+        "table": table,
+        "if_exists": if_exists,
+        "cascade": cascade
+    }))
+}

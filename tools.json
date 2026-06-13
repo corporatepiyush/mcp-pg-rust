@@ -587,5 +587,29 @@
         "table"
       ]
     }
+  },
+  {
+    "name": "drop_table",
+    "description": "Drop (delete) a table and its data permanently. Use IF EXISTS to avoid errors if table doesn't exist. Use CASCADE to also drop dependent objects (views, constraints, etc). WARNING: This deletes all table data - use carefully.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {
+          "type": "string",
+          "description": "Table name to drop (required). Example: 'users', 'temp_data'. Case-insensitive."
+        },
+        "if_exists": {
+          "type": "boolean",
+          "description": "Only drop if table exists, don't error if missing (optional, default: false). Use in cleanup scripts."
+        },
+        "cascade": {
+          "type": "boolean",
+          "description": "Also drop dependent objects like views and constraints (optional, default: false). WARNING: Drops dependent views, materialized views, and constraints. Use false unless you understand the impact."
+        }
+      },
+      "required": [
+        "table"
+      ]
+    }
   }
 ]
