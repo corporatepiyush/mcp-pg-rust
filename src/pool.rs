@@ -24,7 +24,7 @@ impl ConnectionPool {
                 timeouts: deadpool_postgres::Timeouts {
                     wait: Some(config.queue_timeout),
                     create: Some(std::time::Duration::from_secs(5)),
-                    recycle: Some(std::time::Duration::from_secs(300)),
+                    recycle: Some(std::time::Duration::from_secs(300)), // Recycle connections after 5 minutes
                 },
                 queue_mode: deadpool::managed::QueueMode::Lifo,
             }),

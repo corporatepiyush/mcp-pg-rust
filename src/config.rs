@@ -126,7 +126,6 @@ impl Default for Config {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::Parser;
 
     #[test]
     fn test_config_defaults() {

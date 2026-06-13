@@ -59,6 +59,9 @@ mimalloc = { version = "0.1", features = ["local_dynamic_tls", "extended", "over
 libc = "0.2"
 num_cpus = "1.16"
 
+# HTTP Client for latency testing
+reqwest = { version = "0.11", features = ["json"] }
+
 [dev-dependencies]
 tokio-test = "0.4"
 criterion = "0.5"
@@ -93,6 +96,10 @@ path = "bin/benchmark.rs"
 [[bin]]
 name = "load_test_data"
 path = "bin/load_test_data.rs"
+
+[[bin]]
+name = "measure_latency"
+path = "bin/measure_latency.rs"
 
 [profile.release]
 opt-level = 3
