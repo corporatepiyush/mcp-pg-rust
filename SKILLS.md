@@ -507,6 +507,132 @@ echo "=== ALL INTEGRATION TESTS PASSED ==="
 
 ---
 
+## 4.1 Heap Allocation Tracking (Performance Monitoring)
+
+**TRIGGER**: After load tests, before release, on performance-critical changes
+
+**PURPOSE**: Ensure memory usage is stable, not growing unbounded. Detect memory leaks and allocation inefficiencies.
+
+**Procedure (Using Rust heaptrack)**:
+
+```bash
+# Step 1: Install heaptrack (macOS)
+brew install heaptrack
+
+# Step 2: Build server with debug symbols
+cargo build --release
+
+# Step 3: Run server under heaptrack
+heaptrack ./target/release/mcp-postgres &
+SERVER_PID=$!
+sleep 2
+
+# Step 4: Run sustained load (1000 requests over 30 seconds)
+for i in {1..1000}; do
+  curl -s http://127.0.0.1:3001/rpc \
+    -H "Content-Type: application/json" \
+    -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"execute_query","arguments":{"sql":"SELECT 1"}},"id":'$i'}' > /dev/null &
+  
+  # Rate limit: ~33 req/sec
+  if [ $((i % 33)) -eq 0 ]; then
+    sleep 1
+  fi
+done
+
+wait
+
+# Step 5: Stop server
+kill $SERVER_PID
+sleep 2
+
+# Step 6: Analyze heaptrack output
+heaptrack_print heaptrack.mcp-postgres.*.gz > /tmp/heaptrack_report.txt
+
+# Step 7: Check results
+echo "=== Heap Allocation Report ==="
+grep -A 5 "total allocations" /tmp/heaptrack_report.txt
+grep -A 5 "peak heap" /tmp/heaptrack_report.txt
+grep -A 5 "peak RSS" /tmp/heaptrack_report.txt
+```
+
+**Procedure (Using Valgrind on Linux)**:
+
+```bash
+# Install valgrind
+sudo apt-get install valgrind
+
+# Run with massif (memory profiler)
+valgrind --tool=massif --massif-out-file=/tmp/massif.out \
+  ./target/release/mcp-postgres &
+SERVER_PID=$!
+sleep 2
+
+# Run load test (as above)
+for i in {1..1000}; do
+  curl -s http://127.0.0.1:3001/rpc ... &
+done
+wait
+
+kill $SERVER_PID
+sleep 2
+
+# Analyze with ms_print
+ms_print /tmp/massif.out | head -50
+```
+
+**Procedure (Using Rust memory profiling)**:
+
+```bash
+# Enable dhat-heap in Cargo.toml (dev dependency)
+[dev-dependencies]
+dhat = "0.3"
+
+# In main.rs (with cfg guard)
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static ALLOC: dhat::Allocator = dhat::Allocator;
+
+#[cfg(feature = "dhat-heap")]
+fn main() {
+  let _guard = dhat::Allocator::new_frame();
+  // ... server code ...
+}
+
+# Run with dhat enabled
+cargo run --release --features dhat-heap &
+SERVER_PID=$!
+sleep 2
+
+# Run load test
+# ... curl requests ...
+
+kill $SERVER_PID
+
+# Check dhat output
+cat dhat-heap.json | jq '.total_allocations'
+```
+
+**Acceptance Criteria**:
+- ✅ Peak heap < 100MB during sustained load
+- ✅ Memory growth < 10MB over 1000 requests (stable, not leaking)
+- ✅ No allocation patterns showing exponential growth
+- ✅ Average allocation size reasonable (no huge allocations)
+- ✅ No repeated allocations that should be reused
+
+**Failure Action**: 
+- If peak heap > 100MB: INVESTIGATE (memory leak likely)
+- If growth > 10MB over 1000 requests: INVESTIGATE (inefficient allocation pattern)
+- If allocation spikes detected: Check for unbounded collections or string concatenation
+- Run with specific problematic tools to isolate issue
+
+**Common Memory Issues**:
+- String concatenation in loops (use String::with_capacity or format! carefully)
+- Unbounded Vec growth (use Vec::with_capacity or limit size)
+- Connection pool leak (verify connections are released)
+- JSON serialization creating copies (use serde streaming if possible)
+
+---
+
 ## 5. TOOL PARAMETER VALIDATION BEFORE USE
 
 **CRITICAL**: Must be done BEFORE writing test code.
@@ -923,6 +1049,28 @@ For EVERY tool call, BEFORE test execution:
 │  ├─ If optional: can be omitted
 │  └─ Report any mismatches
 └─ Proceed only after all checks pass
+```
+
+### 9.5 Memory Profiling Standard
+
+```
+AFTER load tests or performance-critical changes:
+
+├─ Run heap allocation tracking
+├─ Measure:
+│  ├─ Peak heap memory
+│  ├─ Memory growth over 1000+ requests
+│  ├─ Allocation patterns
+│  └─ Connection pool memory
+├─ DECISION: Peak < 100MB?
+│  ├─ NO  → INVESTIGATE (likely memory leak)
+│  └─ YES → Continue
+├─ DECISION: Growth < 10MB per 1000 requests?
+│  ├─ NO  → INVESTIGATE (inefficient allocation)
+│  └─ YES → Continue
+└─ DECISION: No exponential growth patterns?
+   ├─ YES found → INVESTIGATE (unbounded growth issue)
+   └─ NO patterns → PASS memory check
 ```
 
 ---
