@@ -15,7 +15,7 @@
       "properties": {
         "table": {
           "type": "string",
-          "description": "Table name to describe"
+          "description": "Table name to describe (required). Example: 'users', 'orders', 'products'. Case-insensitive. Use schema.table for non-public schemas."
         }
       },
       "required": ["table"]
@@ -29,7 +29,7 @@
       "properties": {
         "sql": {
           "type": "string",
-          "description": "SELECT SQL query to execute (max 10,000 characters)"
+          "description": "SELECT SQL query to execute (required). Max 10,000 characters. Examples: 'SELECT * FROM users LIMIT 10', 'SELECT COUNT(*) as count FROM orders WHERE status = ''shipped''', 'SELECT u.name, COUNT(o.id) FROM users u LEFT JOIN orders o ON u.id = o.user_id GROUP BY u.id'. Must be a SELECT query only."
         }
       },
       "required": ["sql"]
@@ -43,7 +43,7 @@
       "properties": {
         "sql": {
           "type": "string",
-          "description": "INSERT SQL statement (use RETURNING clause to get inserted IDs)"
+          "description": "INSERT SQL statement (required). Max 10,000 characters. Examples: 'INSERT INTO users (email, name) VALUES (''user@example.com'', ''John'')', 'INSERT INTO users (email, name) VALUES (''a@test.com'', ''A''), (''b@test.com'', ''B'') RETURNING id', 'INSERT INTO archive SELECT * FROM temp_table'. Use RETURNING clause to get inserted IDs or values."
         }
       },
       "required": ["sql"]
@@ -57,7 +57,7 @@
       "properties": {
         "sql": {
           "type": "string",
-          "description": "UPDATE SQL statement with WHERE clause for safety"
+          "description": "UPDATE SQL statement with WHERE clause for safety (required). Max 10,000 characters. Examples: 'UPDATE users SET status = ''active'' WHERE created_at > now() - interval ''7 days''', 'UPDATE products SET price = price * 1.1 WHERE category_id = 5 RETURNING id, price', 'UPDATE orders SET shipped_at = now() WHERE status = ''ready'''. ALWAYS include WHERE clause to prevent accidental updates."
         }
       },
       "required": ["sql"]
@@ -71,7 +71,7 @@
       "properties": {
         "sql": {
           "type": "string",
-          "description": "DELETE SQL statement (ALWAYS include WHERE clause)"
+          "description": "DELETE SQL statement with WHERE clause (required). Max 10,000 characters. Examples: 'DELETE FROM audit_logs WHERE created_at < now() - interval ''90 days''', 'DELETE FROM temp_uploads WHERE status = ''failed'' RETURNING id, filename'. ALWAYS include a WHERE clause - deleting without one removes all rows. Use RETURNING to verify what was deleted."
         }
       },
       "required": ["sql"]
@@ -85,25 +85,25 @@
       "properties": {
         "table": {
           "type": "string",
-          "description": "Target table name"
+          "description": "Target table name (required). Example: 'users', 'products', 'orders'. Case-insensitive. Must exist and have INSERT permissions."
         },
         "columns": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "Column names in order matching rows data"
+          "description": "Column names in order matching the row data (required). Example: ['email', 'name', 'created_at']. Column count must match row data length. Order matters - first column in array corresponds to first value in each row."
         },
         "rows": {
           "type": "array",
           "items": {
             "type": "array"
           },
-          "description": "Array of rows, each row is an array of values (max 1,000 rows)"
+          "description": "Array of rows to insert (required). Max 1,000 rows per call. Each row is an array of values matching columns order. Example: [['user1@test.com', 'User 1', '2026-01-01'], ['user2@test.com', 'User 2', '2026-01-02']]. NULL values supported as null."
         },
         "returning": {
           "type": "string",
-          "description": "Optional column to return after insert (e.g. 'id' for new IDs)"
+          "description": "Optional: Column to return after insert. Example: 'id' returns inserted IDs, 'id, email' returns multiple columns. Useful for getting auto-generated IDs. Omit if not needed."
         }
       },
       "required": ["table", "columns", "rows"]
@@ -117,25 +117,25 @@
       "properties": {
         "table": {
           "type": "string",
-          "description": "Target table name"
+          "description": "Target table name (required). Example: 'users', 'events', 'transactions'. Case-insensitive. Should be empty or recently truncated for best performance."
         },
         "columns": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "Column names matching rows data"
+          "description": "Column names in order matching rows data (required). Example: ['id', 'event_type', 'timestamp', 'value']. All columns must be in the target table."
         },
         "rows": {
           "type": "array",
           "items": {
             "type": "array"
           },
-          "description": "Array of rows as arrays of values"
+          "description": "Array of rows as arrays of values (required). Can be very large (10K+, 100K+). Each row must have same number of values as columns. NULL values represented as null in JSON."
         },
         "batch_size": {
           "type": "integer",
-          "description": "Rows per batch statement (default: 1,000, max: 5,000)"
+          "description": "Rows per INSERT batch statement (optional, default: 1,000). Range: 100-5,000. Larger batches = faster but uses more memory. For 100K+ rows, use 1,000-2,000. For small inserts, can use larger values up to 5,000."
         }
       },
       "required": ["table", "columns", "rows"]
@@ -149,20 +149,20 @@
       "properties": {
         "sql": {
           "type": "string",
-          "description": "SELECT query to explain"
+          "description": "SELECT query to explain (required). Example: 'SELECT u.id, u.email, COUNT(o.id) FROM users u LEFT JOIN orders o ON u.id = o.user_id GROUP BY u.id HAVING COUNT(o.id) > 5'. Must be a SELECT query."
         },
         "analyze": {
           "type": "boolean",
-          "description": "Execute query and show actual metrics (default: false, use true for diagnosis)"
+          "description": "Execute query and show actual metrics (optional, default: false). Set to true to see real execution time, actual rows, and buffer stats. WARNING: This executes the query - avoid on slow queries. Use false for planning without execution."
         },
         "buffers": {
           "type": "boolean",
-          "description": "Show buffer usage statistics (default: false, requires analyze=true)"
+          "description": "Include buffer usage statistics (optional, default: false). Requires analyze=true. Shows shared_buffers hits/misses and I/O stats. Useful for diagnosing cache efficiency and disk I/O bottlenecks."
         },
         "format": {
           "type": "string",
           "enum": ["json", "text", "xml", "yaml"],
-          "description": "Output format (default: json for parsing, text for reading)"
+          "description": "Output format (optional, default: 'json'). 'json' = machine-readable, structured; 'text' = human-readable plain text (best for reading); 'xml' = structured markup; 'yaml' = human-readable structured. Recommend 'json' for parsing, 'text' for visual inspection."
         }
       },
       "required": ["sql"]
@@ -208,11 +208,11 @@
       "properties": {
         "table": {
           "type": "string",
-          "description": "Table name to get details for"
+          "description": "Table name to get details for (required). Example: 'users', 'orders', 'products'. Case-insensitive. Returns all columns, indexes, constraints, FKs, and metadata."
         },
         "schema": {
           "type": "string",
-          "description": "Schema name containing the table (default: public)"
+          "description": "Schema name containing the table (optional, default: 'public'). Example: 'public', 'staging', 'archive'. Use 'schema.table' format in table parameter to override. Specify if table exists in non-public schema."
         }
       },
       "required": ["table"]
@@ -290,7 +290,7 @@
       "properties": {
         "setting_name": {
           "type": "string",
-          "description": "PostgreSQL setting name (e.g., 'max_connections', 'shared_buffers', 'work_mem')"
+          "description": "PostgreSQL setting name (required). Examples: 'max_connections' (max concurrent connections), 'shared_buffers' (memory for caching), 'work_mem' (memory per operation), 'effective_cache_size' (total available cache), 'random_page_cost' (cost model), 'maintenance_work_mem' (VACUUM/CREATE INDEX memory). Case-insensitive. Returns value, unit, description, and context."
         }
       },
       "required": ["setting_name"]
