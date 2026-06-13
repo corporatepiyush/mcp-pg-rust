@@ -412,5 +412,156 @@
         "sql"
       ]
     }
+  },
+  {
+    "name": "create_index",
+    "description": "Create a database index on one or more table columns. Indexes improve query performance by allowing faster data lookups. Supports UNIQUE indexes for constraint enforcement and CONCURRENTLY option for non-blocking index creation on live tables. Use for optimizing slow queries or enforcing column uniqueness.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "index_name": {
+          "type": "string",
+          "description": "Index name (required). Example: 'idx_users_email'. Must be unique within the schema. Follows naming convention: idx_table_column(s)."
+        },
+        "table": {
+          "type": "string",
+          "description": "Table name to create index on (required). Example: 'users', 'orders'. Case-insensitive."
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Column names to index (required). Example: ['email'] for single column or ['user_id', 'created_at'] for composite index. Order matters for composite indexes."
+        },
+        "unique": {
+          "type": "boolean",
+          "description": "Create UNIQUE index to enforce column uniqueness constraint (optional, default: false). Useful for email, username fields. All indexed column combinations must be unique."
+        },
+        "concurrent": {
+          "type": "boolean",
+          "description": "Use CONCURRENTLY option to avoid blocking table writes during index creation (optional, default: false). Required for production tables to avoid locks. Slower but non-blocking."
+        }
+      },
+      "required": [
+        "index_name",
+        "table",
+        "columns"
+      ]
+    }
+  },
+  {
+    "name": "remove_index",
+    "description": "Drop (delete) a database index. Frees storage space and removes any locking overhead from index maintenance. Use CONCURRENTLY option on live tables to avoid blocking. Safe to remove unused or duplicate indexes without affecting data.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "index_name": {
+          "type": "string",
+          "description": "Index name to drop (required). Example: 'idx_users_email'. Must exist in the database."
+        },
+        "if_exists": {
+          "type": "boolean",
+          "description": "Only drop index if it exists, don't error if missing (optional, default: false). Use true to avoid errors in scripts."
+        },
+        "concurrent": {
+          "type": "boolean",
+          "description": "Use CONCURRENTLY option to avoid blocking table writes during index drop (optional, default: false). Required for production tables. Slower but non-blocking."
+        }
+      },
+      "required": [
+        "index_name"
+      ]
+    }
+  },
+  {
+    "name": "create_table_partition",
+    "description": "Create a new partition for a partitioned table. Partitioning splits large tables into smaller logical pieces for better performance and manageability. Supports RANGE (date ranges), LIST (discrete values), and HASH (modulo) partitioning. Use for tables with millions of rows.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {
+          "type": "string",
+          "description": "Parent partitioned table name (required). Example: 'events'. Must be defined as partitioned table."
+        },
+        "partition_name": {
+          "type": "string",
+          "description": "Name for the new partition (required). Example: 'events_2026_01'. Naming convention: parent_table_partition_identifier."
+        },
+        "partition_type": {
+          "type": "string",
+          "enum": [
+            "RANGE",
+            "LIST",
+            "HASH"
+          ],
+          "description": "Partitioning strategy (required). RANGE: date/number ranges, LIST: specific values, HASH: modulo-based distribution."
+        },
+        "column": {
+          "type": "string",
+          "description": "Column name used for partitioning (required). Example: 'created_date' for date partitioning. Must match parent table's partition column."
+        },
+        "values": {
+          "type": "string",
+          "description": "Partition bounds (required). Examples: 'FROM (2026-01-01) TO (2026-02-01)' for RANGE, 'IN (value1, value2)' for LIST, 'MODULUS 4 REMAINDER 0' for HASH."
+        }
+      },
+      "required": [
+        "table",
+        "partition_name",
+        "partition_type",
+        "column",
+        "values"
+      ]
+    }
+  },
+  {
+    "name": "delete_table_partition",
+    "description": "Drop (delete) a partition from a partitioned table. Removes the partition and its data. Use carefully - deleting a partition deletes all rows in that partition. Use if_exists to avoid errors if partition already missing.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {
+          "type": "string",
+          "description": "Parent table name (required). Example: 'events'. Used for context/logging, partition is identified by partition_name."
+        },
+        "partition_name": {
+          "type": "string",
+          "description": "Partition name to drop (required). Example: 'events_2026_01'. Must be an existing partition."
+        },
+        "if_exists": {
+          "type": "boolean",
+          "description": "Only drop if partition exists, don't error if missing (optional, default: false). Use true in cleanup scripts."
+        }
+      },
+      "required": [
+        "table",
+        "partition_name"
+      ]
+    }
+  },
+  {
+    "name": "truncate_table",
+    "description": "Quickly delete all rows from a table without deleting the table structure. Much faster than DELETE for clearing large tables. Use RESTART IDENTITY to reset auto-increment sequences. Use CASCADE to handle foreign key constraints.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {
+          "type": "string",
+          "description": "Table name to truncate (required). Example: 'temp_data', 'logs'. All rows will be deleted. Structure remains."
+        },
+        "cascade": {
+          "type": "boolean",
+          "description": "Also truncate tables with foreign keys referencing this table (optional, default: false). Use when dependencies exist. Dangerous - affects related tables."
+        },
+        "restart_identity": {
+          "type": "boolean",
+          "description": "Reset auto-increment sequences to their seed values (optional, default: false). Use if table has SERIAL/IDENTITY columns and you want IDs to restart from 1."
+        }
+      },
+      "required": [
+        "table"
+      ]
+    }
   }
 ]

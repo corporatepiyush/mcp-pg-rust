@@ -389,3 +389,215 @@ pub async fn show_triggers_for_table(client: &Client, params: &Option<&Value>) -
         "triggers": triggers
     }))
 }
+
+/// 7. Create index
+pub async fn create_index(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+    let index_name = params
+        .as_ref()
+        .and_then(|p| p.get("index_name").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'index_name' parameter".into()))?;
+
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'table' parameter".into()))?;
+
+    let columns = params
+        .as_ref()
+        .and_then(|p| p.get("columns").and_then(|v| v.as_array()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'columns' parameter (array)".into()))?;
+
+    if columns.is_empty() {
+        return Err(MCPError::InvalidParams("'columns' array must not be empty".into()));
+    }
+
+    validate_identifier(index_name, "index_name")?;
+    validate_identifier(table, "table")?;
+
+    let mut column_list = Vec::new();
+    for col in columns {
+        let col_name = col.as_str()
+            .ok_or_else(|| MCPError::InvalidParams("Column names must be strings".into()))?;
+        validate_identifier(col_name, "column")?;
+        column_list.push(col_name.to_string());
+    }
+
+    let unique = params
+        .as_ref()
+        .and_then(|p| p.get("unique").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+
+    let concurrent = params
+        .as_ref()
+        .and_then(|p| p.get("concurrent").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+
+    let unique_str = if unique { "UNIQUE " } else { "" };
+    let concurrent_str = if concurrent { "CONCURRENTLY " } else { "" };
+    let columns_str = column_list.join(", ");
+
+    let sql = format!(
+        "CREATE {}INDEX {}{}ON {}({})",
+        unique_str,
+        concurrent_str,
+        index_name,
+        table,
+        columns_str
+    );
+
+    client.execute(&sql, &[]).await?;
+
+    Ok(json!({
+        "status": "success",
+        "action": "CREATE INDEX",
+        "index_name": index_name,
+        "table": table,
+        "columns": column_list,
+        "unique": unique,
+        "concurrent": concurrent
+    }))
+}
+
+/// 8. Remove index
+pub async fn remove_index(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+    let index_name = params
+        .as_ref()
+        .and_then(|p| p.get("index_name").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'index_name' parameter".into()))?;
+
+    validate_identifier(index_name, "index_name")?;
+
+    let if_exists = params
+        .as_ref()
+        .and_then(|p| p.get("if_exists").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+
+    let concurrent = params
+        .as_ref()
+        .and_then(|p| p.get("concurrent").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+
+    let if_exists_str = if if_exists { "IF EXISTS " } else { "" };
+    let concurrent_str = if concurrent { "CONCURRENTLY " } else { "" };
+
+    let sql = format!(
+        "DROP INDEX {}{}{}",
+        if_exists_str,
+        concurrent_str,
+        index_name
+    );
+
+    client.execute(&sql, &[]).await?;
+
+    Ok(json!({
+        "status": "success",
+        "action": "DROP INDEX",
+        "index_name": index_name,
+        "if_exists": if_exists,
+        "concurrent": concurrent
+    }))
+}
+
+/// 9. Create table partition
+pub async fn create_table_partition(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'table' parameter".into()))?;
+
+    let partition_name = params
+        .as_ref()
+        .and_then(|p| p.get("partition_name").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'partition_name' parameter".into()))?;
+
+    let partition_type = params
+        .as_ref()
+        .and_then(|p| p.get("partition_type").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'partition_type' parameter (RANGE/LIST/HASH)".into()))?;
+
+    validate_identifier(table, "table")?;
+    validate_identifier(partition_name, "partition_name")?;
+
+    let partition_type_upper = partition_type.to_uppercase();
+    if !["RANGE", "LIST", "HASH"].contains(&partition_type_upper.as_str()) {
+        return Err(MCPError::InvalidParams(
+            format!("'partition_type' must be RANGE, LIST, or HASH (got {})", partition_type)
+        ));
+    }
+
+    let column = params
+        .as_ref()
+        .and_then(|p| p.get("column").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'column' parameter".into()))?;
+
+    validate_identifier(column, "column")?;
+
+    let values = params
+        .as_ref()
+        .and_then(|p| p.get("values").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams(
+            "Missing 'values' parameter (FOR RANGE: 'FROM (x) TO (y)' or FOR LIST: 'IN (values)' or FOR HASH: 'MODULUS n REMAINDER r')".into()
+        ))?;
+
+    if values.contains(';') || values.contains("--") {
+        return Err(MCPError::InvalidParams(
+            "Invalid 'values' parameter: semicolons and SQL comments not allowed".into()
+        ));
+    }
+
+    let sql = format!(
+        "CREATE TABLE {} PARTITION OF {} FOR VALUES {}",
+        partition_name,
+        table,
+        values
+    );
+
+    client.execute(&sql, &[]).await?;
+
+    Ok(json!({
+        "status": "success",
+        "action": "CREATE TABLE PARTITION",
+        "table": table,
+        "partition_name": partition_name,
+        "partition_type": partition_type,
+        "column": column
+    }))
+}
+
+/// 10. Delete table partition
+pub async fn delete_table_partition(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'table' parameter".into()))?;
+
+    let partition_name = params
+        .as_ref()
+        .and_then(|p| p.get("partition_name").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'partition_name' parameter".into()))?;
+
+    validate_identifier(partition_name, "partition_name")?;
+
+    let if_exists = params
+        .as_ref()
+        .and_then(|p| p.get("if_exists").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+
+    let if_exists_str = if if_exists { "IF EXISTS " } else { "" };
+
+    let sql = format!(
+        "DROP TABLE {}{}",
+        if_exists_str,
+        partition_name
+    );
+
+    client.execute(&sql, &[]).await?;
+
+    Ok(json!({
+        "status": "success",
+        "action": "DROP TABLE PARTITION",
+        "table": table,
+        "partition_name": partition_name,
+        "if_exists": if_exists
+    }))
+}

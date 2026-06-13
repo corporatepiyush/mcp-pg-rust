@@ -125,3 +125,39 @@ pub async fn reset_statistics(client: &Client, _params: &Option<&Value>) -> MCPR
         "message": "All statistics counters have been reset"
     }))
 }
+
+/// 26. Truncate table
+pub async fn truncate_table(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
+        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table' parameter".into()))?;
+
+    validate_table_name(table)?;
+
+    let cascade = params
+        .as_ref()
+        .and_then(|p| p.get("cascade").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+
+    let restart_identity = params
+        .as_ref()
+        .and_then(|p| p.get("restart_identity").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+
+    let cascade_str = if cascade { " CASCADE" } else { "" };
+    let restart_str = if restart_identity { " RESTART IDENTITY" } else { "" };
+
+    let sql = format!("TRUNCATE TABLE {}{}{}", table, restart_str, cascade_str);
+
+    client.execute(&sql, &[]).await?;
+
+    Ok(json!({
+        "status": "success",
+        "action": "TRUNCATE",
+        "table": table,
+        "cascade": cascade,
+        "restart_identity": restart_identity,
+        "message": format!("Table '{}' has been truncated", table)
+    }))
+}

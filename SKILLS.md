@@ -9,9 +9,9 @@
 ### Current Production State
 - **Version**: 1.3.0
 - **Status**: Production Ready ✅
-- **29 Tools**: All implemented and MCP v1.0 compliant (removed non-functional transaction tools)
+- **34 Tools**: All implemented and MCP v1.0 compliant (removed non-functional transaction tools)
 - **Transports**: TCP (3000), HTTP/2 (3001), stdio
-- **Test Coverage**: 29 tests (12 integration, 17 data), 100% tool coverage
+- **Test Coverage**: 34 tests (12 integration, 17 data), 100% tool coverage
 - **Performance**: P95 < 10ms all tools, 17K+ req/sec concurrent
 
 ### Baseline Metrics (DO NOT REGRESS)
@@ -106,7 +106,7 @@ pkill -f "mcp-postgres --http-port"
 - ✅ All 12 integration_all_tools tests pass
 - ✅ All 17 integration_test_data_tools tests pass
 - ✅ No #[ignore] annotations on any test
-- ✅ All 29 tools tested (no missing tool tests)
+- ✅ All 34 tools tested (no missing tool tests)
 - ✅ Response validation successful
 - ✅ All tests use REAL database (verified via SQL queries in logs)
 
@@ -137,7 +137,7 @@ TOOLS=$(curl -s -X POST http://127.0.0.1:3001/rpc \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"tools/list","id":1}' | \
   jq -r '.result.tools | length')
-[ "$TOOLS" = "29" ] || exit 1
+[ "$TOOLS" = "34" ] || exit 1
 ```
 
 **Test 3: tools/call via HTTP**
@@ -160,7 +160,7 @@ ERROR=$(curl -s -X POST http://127.0.0.1:3001/rpc \
 
 **ACCEPTANCE CRITERIA**:
 - ✅ Health endpoint responds with status=healthy
-- ✅ tools/list returns exactly 29 tools
+- ✅ tools/list returns exactly 34 tools
 - ✅ tools/call executes tool correctly
 - ✅ Error handling returns proper JSON-RPC error code
 - ✅ HTTP/2 response headers valid
@@ -261,7 +261,7 @@ echo "$RESP" | jq -e '.result.serverInfo' >/dev/null || exit 1
 ```bash
 RESP=$(echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | nc 127.0.0.1 3000)
 COUNT=$(echo "$RESP" | jq '.result.tools | length')
-[ "$COUNT" = "29" ] || exit 1
+[ "$COUNT" = "34" ] || exit 1
 # Verify each tool has required fields
 echo "$RESP" | jq -e '.result.tools[] | select(.name and .description and .inputSchema)' >/dev/null || exit 1
 ```
@@ -349,7 +349,7 @@ fn test_tool_<name>_correctness() {
 - ✅ Tool rejects invalid inputs with proper error
 - ✅ Tool validates required parameters
 - ✅ Response JSON is valid and parseable
-- ✅ All 29 tools have at least 1 correctness test
+- ✅ All 34 tools have at least 1 correctness test
 
 **FAILURE ACTION**: BLOCK commit, fix failing tool test
 
@@ -439,7 +439,7 @@ cargo outdated --format list
 **CHECKS**:
 ```
 [ ] Unit tests pass (cargo test --lib)
-[ ] Integration tests pass (all 29 tests)
+[ ] Integration tests pass (all 34 tests)
 [ ] HTTP server tests pass (health, tools/list, tools/call, errors)
 [ ] Performance baseline met (P95 < 10ms, 17K req/sec)
 [ ] MCP compliance verified (initialize, tools/list, tools/call)
@@ -449,7 +449,7 @@ cargo outdated --format list
 [ ] Security audit passed
 [ ] Version number incremented in Cargo.toml
 [ ] CHANGELOG.md updated
-[ ] tools.json has exactly 29 tools
+[ ] tools.json has exactly 34 tools
 [ ] Homebrew formula will be updated after crates.io release
 [ ] Chocolatey package will be updated after crates.io release
 ```
@@ -749,7 +749,7 @@ cargo test --test integration_all_tools -- --nocapture
 ### Current baseline to NOT regress:
 - All P95 latencies < 10ms
 - Concurrent throughput >= 17,713 req/sec
-- All 29 tests passing
+- All 34 tests passing
 - 29 tools exactly
 - 100% MCP v1.0 compliance
 
