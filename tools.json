@@ -688,5 +688,49 @@
         "view_name"
       ]
     }
+  },
+  {
+    "name": "create_schema",
+    "description": "Create a new schema (namespace for database objects). Schemas organize tables, views, and other objects into logical groups. Use IF NOT EXISTS to safely create if not present.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "schema_name": {
+          "type": "string",
+          "description": "Schema name to create (required). Example: 'analytics', 'reporting', 'archive'. Case-insensitive."
+        },
+        "if_not_exists": {
+          "type": "boolean",
+          "description": "Only create if schema doesn't exist, don't error if exists (optional, default: false)."
+        }
+      },
+      "required": [
+        "schema_name"
+      ]
+    }
+  },
+  {
+    "name": "drop_schema",
+    "description": "Drop (delete) a schema and optionally its contents. Use IF EXISTS to avoid errors. Use CASCADE to drop all objects in schema.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "schema_name": {
+          "type": "string",
+          "description": "Schema name to drop (required). Example: 'analytics'. Case-insensitive."
+        },
+        "if_exists": {
+          "type": "boolean",
+          "description": "Only drop if exists, don't error if missing (optional, default: false)."
+        },
+        "cascade": {
+          "type": "boolean",
+          "description": "Also drop all objects in schema (tables, views, functions, etc) (optional, default: false). WARNING: Drops all schema contents."
+        }
+      },
+      "required": [
+        "schema_name"
+      ]
+    }
   }
 ]

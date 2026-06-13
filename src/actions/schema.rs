@@ -811,3 +811,66 @@ pub async fn alter_view(client: &Client, params: &Option<&Value>) -> MCPResult<V
         "changes": action_desc
     }))
 }
+
+/// 16. Create schema
+pub async fn create_schema(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+    let schema_name = params
+        .as_ref()
+        .and_then(|p| p.get("schema_name").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'schema_name' parameter".into()))?;
+
+    validate_identifier(schema_name, "schema_name")?;
+
+    let if_not_exists = params
+        .as_ref()
+        .and_then(|p| p.get("if_not_exists").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+
+    let if_not_exists_str = if if_not_exists { "IF NOT EXISTS " } else { "" };
+
+    let sql = format!("CREATE SCHEMA {}{}", if_not_exists_str, schema_name);
+
+    client.execute(&sql, &[]).await?;
+
+    Ok(json!({
+        "status": "success",
+        "action": "CREATE SCHEMA",
+        "schema_name": schema_name,
+        "if_not_exists": if_not_exists
+    }))
+}
+
+/// 17. Drop schema
+pub async fn drop_schema(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+    let schema_name = params
+        .as_ref()
+        .and_then(|p| p.get("schema_name").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'schema_name' parameter".into()))?;
+
+    validate_identifier(schema_name, "schema_name")?;
+
+    let if_exists = params
+        .as_ref()
+        .and_then(|p| p.get("if_exists").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+
+    let cascade = params
+        .as_ref()
+        .and_then(|p| p.get("cascade").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+
+    let if_exists_str = if if_exists { "IF EXISTS " } else { "" };
+    let cascade_str = if cascade { " CASCADE" } else { "" };
+
+    let sql = format!("DROP SCHEMA {}{}{}", if_exists_str, schema_name, cascade_str);
+
+    client.execute(&sql, &[]).await?;
+
+    Ok(json!({
+        "status": "success",
+        "action": "DROP SCHEMA",
+        "schema_name": schema_name,
+        "if_exists": if_exists,
+        "cascade": cascade
+    }))
+}
