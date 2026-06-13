@@ -156,8 +156,9 @@ async fn process_one_line<W: AsyncWriteExt + Unpin>(
     Ok(())
 }
 
+/// Process a JSON-RPC request (used by both TCP and HTTP transports)
 #[inline]
-async fn process_request(
+pub async fn process_request(
     req: &JsonRpcRequest,
     pool: &Arc<ConnectionPool>,
     config: &Config,
@@ -168,6 +169,25 @@ async fn process_request(
         "tools/call" => handle_tools_call(req, pool, config).await,
         _ => Err(MCPError::MethodNotFound(req.method.clone())),
     }
+}
+
+/// Public wrapper for HTTP handlers - returns complete JSON-RPC response
+pub async fn process_request_http(
+    req: &JsonRpcRequest,
+    pool: &Arc<ConnectionPool>,
+    config: &Config,
+) -> JsonRpcResponse {
+    metrics::inc_requests();
+
+    let response = match process_request(req, pool, config).await {
+        Ok(result) => JsonRpcResponse::success(req.id.clone(), result),
+        Err(e) => {
+            metrics::inc_errors();
+            JsonRpcResponse::error(req.id.clone(), e.error_code(), e.to_string())
+        }
+    };
+
+    response
 }
 
 #[inline]

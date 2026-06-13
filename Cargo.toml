@@ -17,6 +17,12 @@ include = ["src/", "bin/", "tools.json", "Cargo.toml", "README.md", "schema.sql"
 tokio = { version = "1.41", features = ["macros", "rt-multi-thread", "io-util", "net", "time", "sync", "io-std"] }
 tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
 
+# HTTP/2 and SSE
+axum = "0.7"
+hyper = { version = "1.0", features = ["full"] }
+futures = "0.3"
+tokio-stream = "0.1"
+
 # JSON-RPC and Protocol
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
