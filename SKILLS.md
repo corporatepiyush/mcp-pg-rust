@@ -451,6 +451,7 @@ cargo outdated --format list
 [ ] CHANGELOG.md updated
 [ ] tools.json has exactly 25 tools
 [ ] Homebrew formula will be updated after crates.io release
+[ ] Chocolatey package will be updated after crates.io release
 ```
 
 **EXECUTION**:
@@ -512,7 +513,9 @@ cargo publish
 gh release create v1.3.0 --title "v1.3.0" --notes "Release notes"
 ```
 
-**Step 4**: Update Homebrew Formula
+**Step 4**: Update Package Managers
+
+**4a. Update Homebrew Formula (macOS)**
 ```bash
 # After successful crates.io publication, update the homebrew formula
 # 1. Get the tarball SHA256 from the GitHub release
@@ -528,9 +531,34 @@ sed -i '' "s|tags/v[0-9.]*|tags/v1.3.0|g" homebrew-mcp-postgres/Formula/mcp_post
 # 3. Verify the update
 grep "sha256\|tags/v" homebrew-mcp-postgres/Formula/mcp_postgres.rb
 
-# 4. Commit and push
+# 4. Commit changes (don't push yet - see 4c)
 git add homebrew-mcp-postgres/Formula/mcp_postgres.rb
-git commit -m "Update Homebrew formula to v1.3.0"
+```
+
+**4b. Update Chocolatey Package (Windows)**
+```powershell
+# 1. Get Windows binary from release and calculate SHA256
+$zipUrl = "https://github.com/corporatepiyush/mcp-pg-rust/releases/download/v1.3.0/mcp-postgres-x86_64-pc-windows-gnu.zip"
+$outputPath = "$env:TEMP\mcp-postgres-1.3.0.zip"
+Invoke-WebRequest -Uri $zipUrl -OutFile $outputPath
+$sha256 = (Get-FileHash -Path $outputPath -Algorithm SHA256).Hash
+
+# 2. Update version in nuspec
+$nuspecPath = "chocolatey-mcp-postgres\mcp-postgres.nuspec"
+(Get-Content $nuspecPath) -replace '<version>.*</version>', '<version>1.3.0</version>' | Set-Content $nuspecPath
+
+# 3. Update URL and checksum in install script
+$installScript = "chocolatey-mcp-postgres\tools\chocolateyinstall.ps1"
+(Get-Content $installScript) -replace 'v[0-9.]*', 'v1.3.0' | Set-Content $installScript
+(Get-Content $installScript) -replace "checksum = '.*'", "checksum = '$sha256'" | Set-Content $installScript
+
+# 4. Commit changes (don't push yet - see 4c)
+git add chocolatey-mcp-postgres/
+```
+
+**4c. Push all changes**
+```bash
+git commit -m "Update package managers (Homebrew, Chocolatey) to v1.3.0"
 git push
 ```
 
