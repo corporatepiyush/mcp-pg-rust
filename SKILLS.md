@@ -1122,6 +1122,21 @@ AFTER load tests or performance-critical changes:
 
 ---
 
+## Reference Guides
+
+Comprehensive guides available in `/guides` folder:
+
+- **[CODE_OPTIMIZATION.md](./guides/CODE_OPTIMIZATION.md)** - Verified optimizations, measured regressions, profiling guide, benchmarking strategies (START HERE for performance work)
+- **[MCP_COMPLIANCE.md](./guides/MCP_COMPLIANCE.md)** - Input validation rules, error formats, per-tool constraints
+- **[MCP_SPEC_VERIFICATION.md](./guides/MCP_SPEC_VERIFICATION.md)** - Compliance test results and verification procedures
+- **[LATENCY_MEASUREMENT.md](./guides/LATENCY_MEASUREMENT.md)** - How to measure and interpret latency
+- **[TEST_SETUP.md](./guides/TEST_SETUP.md)** - Test environment setup and procedures
+- **[QUICK_TEST.md](./guides/QUICK_TEST.md)** - Quick reference for running tests
+- **[OPTIMIZATIONS.md](./guides/OPTIMIZATIONS.md)** - Performance tuning parameters
+- **[INDEX.md](./guides/INDEX.md)** - Complete guide listing and navigation
+
+---
+
 **Last Updated**: 2026-06-14  
 **Version**: SDLC Process (version-agnostic)  
 **Authority**: Source of truth for all development procedures
