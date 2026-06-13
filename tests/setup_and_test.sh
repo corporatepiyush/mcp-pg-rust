@@ -23,7 +23,7 @@ echo ""
 
 # Step 1: Create test schema
 echo "Step 1️⃣  Creating test schema..."
-psql "$DB_URL" < test/test_schema.sql
+psql "$DB_URL" < tests/test_schema.sql
 if [ $? -eq 0 ]; then
     echo "✅ Schema created successfully"
 else

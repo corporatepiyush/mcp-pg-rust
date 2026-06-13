@@ -4,7 +4,7 @@
 
 ```bash
 DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres" \
-  ./test/setup_and_test.sh
+  ./tests/setup_and_test.sh
 ```
 
 This creates schema, loads 10,000+ records, and runs 17 integration tests.
@@ -33,7 +33,7 @@ This creates schema, loads 10,000+ records, and runs 17 integration tests.
 ### 1. Setup
 ```bash
 # Create schema
-psql -d mydb < test/test_schema.sql
+psql -d mydb < tests/test_schema.sql
 
 # Load data
 export DATABASE_URL="postgres://postgres:postgres@localhost:5432/mydb"
@@ -55,7 +55,7 @@ cargo test --test integration_test_data_tools -- --nocapture
 ```bash
 # Clean tables and reload
 psql mydb -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-./test/setup_and_test.sh
+./tests/setup_and_test.sh
 ```
 
 ## Test Specific Tool
@@ -66,10 +66,10 @@ cargo test --test integration_test_data_tools test_list_tables -- --nocapture
 
 ## Key Files
 
-- `test/test_schema.sql` - Schema definition
+- `tests/test_schema.sql` - Schema definition
 - `bin/load_test_data.rs` - Data generator (10K+ records)
 - `tests/integration_test_data_tools.rs` - Integration tests (17 tests)
-- `test/setup_and_test.sh` - Automated setup script
+- `tests/setup_and_test.sh` - Automated setup script
 - `TEST_SETUP.md` - Full documentation
 
 ## Sample Commands

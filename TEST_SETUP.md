@@ -33,7 +33,7 @@ The test setup creates:
 # Set your database URL, then run:
 
 DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres" \
-  ./test/setup_and_test.sh
+  ./tests/setup_and_test.sh
 ```
 
 This will:
@@ -45,7 +45,7 @@ This will:
 
 #### Step 1: Create Schema
 ```bash
-psql -d mydb < test/test_schema.sql
+psql -d mydb < tests/test_schema.sql
 ```
 
 #### Step 2: Load Test Data
@@ -174,7 +174,7 @@ psql -d mydb -c "DROP TABLE IF EXISTS audit_logs CASCADE;"
 psql -d mydb -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 
 # Then re-run setup
-./test/setup_and_test.sh
+./tests/setup_and_test.sh
 ```
 
 ## Troubleshooting
@@ -184,7 +184,7 @@ psql -d mydb -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 **Solution**: 
 ```bash
 psql -d mydb -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-./test/setup_and_test.sh
+./tests/setup_and_test.sh
 ```
 
 ### Data Loading Hangs
@@ -271,18 +271,18 @@ cargo run --release --bin load_test_data
 ## Architecture
 
 ```
-test/test_schema.sql        - SQL schema (12 tables, indexes, views)
-bin/load_test_data.rs       - Rust data generator (10,000+ records)
+tests/test_schema.sql              - SQL schema (12 tables, indexes, views)
+bin/load_test_data.rs              - Rust data generator (10,000+ records)
 tests/integration_test_data_tools.rs - 17 comprehensive integration tests
-test/setup_and_test.sh      - Automated setup & test runner
+tests/setup_and_test.sh            - Automated setup & test runner
 ```
 
 ## Files
 
-- `test/test_schema.sql` - Complete database schema
+- `tests/test_schema.sql` - Complete database schema
 - `bin/load_test_data.rs` - Configurable data generator
 - `tests/integration_test_data_tools.rs` - Integration test suite
-- `test/setup_and_test.sh` - Automated setup script (executable)
+- `tests/setup_and_test.sh` - Automated setup script (executable)
 - `TEST_SETUP.md` - This file
 
 ---
