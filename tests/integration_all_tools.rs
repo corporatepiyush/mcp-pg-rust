@@ -710,3 +710,405 @@ fn test_tool_39_list_partitions() {
         Err(e) => panic!("✗ list_partitions failed: {}", e),
     }
 }
+
+// ============ ERROR CASES & EDGE CASES ============
+
+// ============ ERROR: create_table - missing required parameters ============
+#[test]
+fn test_error_create_table_missing_table_name() {
+    match tcp_request("create_table", json!({
+        "columns": ["id SERIAL PRIMARY KEY"]
+    })) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ create_table error handling: correctly rejected missing table_name");
+            } else {
+                panic!("✗ create_table should fail when table_name missing");
+            }
+        }
+        Err(_) => {
+            println!("✓ create_table error handling: correctly rejected missing table_name");
+        }
+    }
+}
+
+// ============ ERROR: create_table - missing columns ============
+#[test]
+fn test_error_create_table_missing_columns() {
+    match tcp_request("create_table", json!({
+        "table": "test_table"
+    })) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ create_table error handling: correctly rejected missing columns");
+            } else {
+                panic!("✗ create_table should fail when columns missing");
+            }
+        }
+        Err(_) => {
+            println!("✓ create_table error handling: correctly rejected missing columns");
+        }
+    }
+}
+
+// ============ ERROR: create_table - empty columns array ============
+#[test]
+fn test_error_create_table_empty_columns() {
+    match tcp_request("create_table", json!({
+        "table": "test_table_empty",
+        "columns": []
+    })) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ create_table error handling: correctly rejected empty columns");
+            } else {
+                panic!("✗ create_table should fail with empty columns");
+            }
+        }
+        Err(_) => {
+            println!("✓ create_table error handling: correctly rejected empty columns");
+        }
+    }
+}
+
+// ============ ERROR: drop_table - nonexistent table without if_exists ============
+#[test]
+fn test_error_drop_table_not_exists() {
+    match tcp_request("drop_table", json!({
+        "table": "nonexistent_table_xyz_999",
+        "if_exists": false
+    })) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ drop_table error handling: correctly rejected nonexistent table");
+            } else {
+                panic!("✗ drop_table should fail for nonexistent table when if_exists=false");
+            }
+        }
+        Err(_) => {
+            println!("✓ drop_table error handling: correctly rejected nonexistent table");
+        }
+    }
+}
+
+// ============ SUCCESS: drop_table - nonexistent table with if_exists ============
+#[test]
+fn test_success_drop_table_if_exists() {
+    match tcp_request("drop_table", json!({
+        "table": "nonexistent_table_xyz_998",
+        "if_exists": true
+    })) {
+        Ok(response) => {
+            let result = response.get("result").expect("Missing result");
+            assert_eq!(result.get("status").and_then(|v| v.as_str()).unwrap_or(""), "success");
+            println!("✓ drop_table: if_exists=true allowed drop of nonexistent table");
+        }
+        Err(e) => panic!("✗ drop_table with if_exists=true should succeed: {}", e),
+    }
+}
+
+// ============ ERROR: create_view - missing required parameters ============
+#[test]
+fn test_error_create_view_missing_params() {
+    match tcp_request("create_view", json!({
+        "view_name": "test_view"
+        // missing query
+    })) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ create_view error handling: correctly rejected missing query");
+            } else {
+                panic!("✗ create_view should fail when query missing");
+            }
+        }
+        Err(_) => {
+            println!("✓ create_view error handling: correctly rejected missing query");
+        }
+    }
+}
+
+// ============ ERROR: alter_view - missing both rename_to and set_schema ============
+#[test]
+fn test_error_alter_view_missing_both_params() {
+    let _ = tcp_request("create_view", json!({
+        "view_name": "test_view_alter_err",
+        "query": "SELECT 1"
+    }));
+
+    match tcp_request("alter_view", json!({
+        "view_name": "test_view_alter_err"
+        // missing both rename_to and set_schema
+    })) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ alter_view error handling: correctly rejected missing parameters");
+            } else {
+                panic!("✗ alter_view should fail when both parameters missing");
+            }
+        }
+        Err(_) => {
+            println!("✓ alter_view error handling: correctly rejected missing parameters");
+        }
+    }
+}
+
+// ============ ERROR: drop_view - nonexistent view without if_exists ============
+#[test]
+fn test_error_drop_view_not_exists() {
+    match tcp_request("drop_view", json!({
+        "view_name": "nonexistent_view_xyz_999",
+        "if_exists": false
+    })) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ drop_view error handling: correctly rejected nonexistent view");
+            } else {
+                panic!("✗ drop_view should fail for nonexistent view when if_exists=false");
+            }
+        }
+        Err(_) => {
+            println!("✓ drop_view error handling: correctly rejected nonexistent view");
+        }
+    }
+}
+
+// ============ ERROR: create_schema - missing schema_name ============
+#[test]
+fn test_error_create_schema_missing_name() {
+    match tcp_request("create_schema", json!({})) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ create_schema error handling: correctly rejected missing schema_name");
+            } else {
+                panic!("✗ create_schema should fail when schema_name missing");
+            }
+        }
+        Err(_) => {
+            println!("✓ create_schema error handling: correctly rejected missing schema_name");
+        }
+    }
+}
+
+// ============ ERROR: drop_schema - nonexistent schema without if_exists ============
+#[test]
+fn test_error_drop_schema_not_exists() {
+    match tcp_request("drop_schema", json!({
+        "schema_name": "nonexistent_schema_xyz_999",
+        "if_exists": false
+    })) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ drop_schema error handling: correctly rejected nonexistent schema");
+            } else {
+                panic!("✗ drop_schema should fail for nonexistent schema when if_exists=false");
+            }
+        }
+        Err(_) => {
+            println!("✓ drop_schema error handling: correctly rejected nonexistent schema");
+        }
+    }
+}
+
+// ============ ERROR: create_index - missing required parameters ============
+#[test]
+fn test_error_create_index_missing_params() {
+    match tcp_request("create_index", json!({
+        "index_name": "idx_test",
+        // missing table and columns
+    })) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ create_index error handling: correctly rejected missing parameters");
+            } else {
+                panic!("✗ create_index should fail when parameters missing");
+            }
+        }
+        Err(_) => {
+            println!("✓ create_index error handling: correctly rejected missing parameters");
+        }
+    }
+}
+
+// ============ ERROR: create_index - empty columns array ============
+#[test]
+fn test_error_create_index_empty_columns() {
+    match tcp_request("create_index", json!({
+        "index_name": "idx_empty",
+        "table": "test_table",
+        "columns": []
+    })) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ create_index error handling: correctly rejected empty columns");
+            } else {
+                panic!("✗ create_index should fail with empty columns");
+            }
+        }
+        Err(_) => {
+            println!("✓ create_index error handling: correctly rejected empty columns");
+        }
+    }
+}
+
+// ============ ERROR: drop_index - nonexistent index without if_exists ============
+#[test]
+fn test_error_drop_index_not_exists() {
+    match tcp_request("drop_index", json!({
+        "index_name": "nonexistent_idx_xyz_999",
+        "if_exists": false
+    })) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ drop_index error handling: correctly rejected nonexistent index");
+            } else {
+                panic!("✗ drop_index should fail for nonexistent index when if_exists=false");
+            }
+        }
+        Err(_) => {
+            println!("✓ drop_index error handling: correctly rejected nonexistent index");
+        }
+    }
+}
+
+// ============ ERROR: create_sequence - missing sequence_name ============
+#[test]
+fn test_error_create_sequence_missing_name() {
+    match tcp_request("create_sequence", json!({
+        "start": 1
+    })) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ create_sequence error handling: correctly rejected missing sequence_name");
+            } else {
+                panic!("✗ create_sequence should fail when sequence_name missing");
+            }
+        }
+        Err(_) => {
+            println!("✓ create_sequence error handling: correctly rejected missing sequence_name");
+        }
+    }
+}
+
+// ============ ERROR: drop_sequence - nonexistent sequence without if_exists ============
+#[test]
+fn test_error_drop_sequence_not_exists() {
+    match tcp_request("drop_sequence", json!({
+        "sequence_name": "nonexistent_seq_xyz_999",
+        "if_exists": false
+    })) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ drop_sequence error handling: correctly rejected nonexistent sequence");
+            } else {
+                panic!("✗ drop_sequence should fail for nonexistent sequence when if_exists=false");
+            }
+        }
+        Err(_) => {
+            println!("✓ drop_sequence error handling: correctly rejected nonexistent sequence");
+        }
+    }
+}
+
+// ============ ERROR: create_partition - invalid partition_type ============
+#[test]
+fn test_error_create_partition_invalid_type() {
+    match tcp_request("create_partition", json!({
+        "table": "test_parts",
+        "partition_name": "part_1",
+        "partition_type": "INVALID_TYPE",
+        "column": "id",
+        "values": "FROM (1) TO (100)"
+    })) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ create_partition error handling: correctly rejected invalid partition_type");
+            } else {
+                panic!("✗ create_partition should fail with invalid partition_type");
+            }
+        }
+        Err(_) => {
+            println!("✓ create_partition error handling: correctly rejected invalid partition_type");
+        }
+    }
+}
+
+// ============ ERROR: create_partition - SQL injection in values parameter ============
+#[test]
+fn test_error_create_partition_sql_injection() {
+    match tcp_request("create_partition", json!({
+        "table": "test_parts",
+        "partition_name": "part_bad",
+        "partition_type": "RANGE",
+        "column": "id",
+        "values": "FROM (1) TO (100); DROP TABLE test_parts; --"
+    })) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ create_partition security: correctly rejected SQL injection attempt");
+            } else {
+                panic!("✗ create_partition should reject SQL injection patterns");
+            }
+        }
+        Err(_) => {
+            println!("✓ create_partition security: correctly rejected SQL injection attempt");
+        }
+    }
+}
+
+// ============ ERROR: list_partitions - missing table parameter ============
+#[test]
+fn test_error_list_partitions_missing_table() {
+    match tcp_request("list_partitions", json!({})) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ list_partitions error handling: correctly rejected missing table");
+            } else {
+                panic!("✗ list_partitions should fail when table missing");
+            }
+        }
+        Err(_) => {
+            println!("✓ list_partitions error handling: correctly rejected missing table");
+        }
+    }
+}
+
+// ============ EDGE CASE: Very long identifier names (should fail) ============
+#[test]
+fn test_edge_case_very_long_identifier() {
+    let long_name = "a".repeat(300);
+    match tcp_request("create_table", json!({
+        "table": long_name,
+        "columns": ["id SERIAL PRIMARY KEY"]
+    })) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ Identifier validation: correctly rejected overly long name");
+            } else {
+                panic!("✗ Should reject identifiers > 255 characters");
+            }
+        }
+        Err(_) => {
+            println!("✓ Identifier validation: correctly rejected overly long name");
+        }
+    }
+}
+
+// ============ EDGE CASE: SQL injection via identifier (should fail) ============
+#[test]
+fn test_edge_case_sql_injection_in_identifier() {
+    match tcp_request("create_table", json!({
+        "table": "test; DROP TABLE test; --",
+        "columns": ["id SERIAL PRIMARY KEY"]
+    })) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ Identifier validation: correctly rejected SQL injection");
+            } else {
+                panic!("✗ Should reject SQL injection in identifiers");
+            }
+        }
+        Err(_) => {
+            println!("✓ Identifier validation: correctly rejected SQL injection");
+        }
+    }
+}
