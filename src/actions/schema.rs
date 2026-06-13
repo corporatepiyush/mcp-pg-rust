@@ -685,3 +685,47 @@ pub async fn drop_table(client: &Client, params: &Option<&Value>) -> MCPResult<V
         "cascade": cascade
     }))
 }
+
+/// 13. Create view
+pub async fn create_view(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+    let view_name = params
+        .as_ref()
+        .and_then(|p| p.get("view_name").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'view_name' parameter".into()))?;
+
+    let query = params
+        .as_ref()
+        .and_then(|p| p.get("query").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'query' parameter".into()))?;
+
+    validate_identifier(view_name, "view_name")?;
+
+    if query.trim().is_empty() {
+        return Err(MCPError::InvalidParams("'query' cannot be empty".into()));
+    }
+
+    let materialized = params
+        .as_ref()
+        .and_then(|p| p.get("materialized").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+
+    let or_replace = params
+        .as_ref()
+        .and_then(|p| p.get("or_replace").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+
+    let materialized_str = if materialized { "MATERIALIZED " } else { "" };
+    let or_replace_str = if or_replace { "OR REPLACE " } else { "" };
+
+    let sql = format!("CREATE {}{}VIEW {} AS {}", or_replace_str, materialized_str, view_name, query);
+
+    client.execute(&sql, &[]).await?;
+
+    Ok(json!({
+        "status": "success",
+        "action": "CREATE VIEW",
+        "view_name": view_name,
+        "materialized": materialized,
+        "or_replace": or_replace
+    }))
+}

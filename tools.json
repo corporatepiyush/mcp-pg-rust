@@ -611,5 +611,34 @@
         "table"
       ]
     }
+  },
+  {
+    "name": "create_view",
+    "description": "Create a database view from a SELECT query. Views are virtual tables that execute the query every time accessed. Use MATERIALIZED for performance (stores results), or regular view for always-current data. Use OR REPLACE to update existing views.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "view_name": {
+          "type": "string",
+          "description": "View name (required). Example: 'user_summary', 'active_orders'. Case-insensitive."
+        },
+        "query": {
+          "type": "string",
+          "description": "SELECT query defining the view (required). Example: 'SELECT id, name, COUNT(*) as count FROM users GROUP BY id, name'. Must be valid SQL SELECT statement."
+        },
+        "materialized": {
+          "type": "boolean",
+          "description": "Create materialized view (stores results, fast queries, stale data) vs regular view (always current, slower) (optional, default: false). Materialized views need REFRESH MATERIALIZED VIEW to update."
+        },
+        "or_replace": {
+          "type": "boolean",
+          "description": "Replace view if exists (optional, default: false). For materialized views, requires same column names and types. For regular views, allows changing definition."
+        }
+      },
+      "required": [
+        "view_name",
+        "query"
+      ]
+    }
   }
 ]
