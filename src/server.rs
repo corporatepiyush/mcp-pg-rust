@@ -211,7 +211,7 @@ fn handle_tools_list() -> MCPResult<Value> {
 async fn handle_tools_call(
     req: &JsonRpcRequest,
     pool: &Arc<ConnectionPool>,
-    _config: &Config,
+    config: &Config,
 ) -> MCPResult<Value> {
     let tool_name = req
         .params
@@ -220,6 +220,22 @@ async fn handle_tools_call(
         .ok_or_else(|| MCPError::InvalidParams("Missing 'name' parameter".into()))?;
 
     let tool_args = req.params.as_ref().and_then(|p| p.get("arguments"));
+
+    let write_tools = [
+        "execute_insert", "execute_update", "execute_delete",
+        "batch_insert", "batch_update", "batch_delete", "batch_insert_copy",
+        "vacuum_analyze", "analyze_table", "reindex_table",
+        "reset_statistics", "kill_connection",
+        "begin_transaction", "commit_transaction", "rollback_transaction",
+    ];
+
+    if config.server.access_mode == crate::config::AccessMode::Restricted
+        && write_tools.contains(&tool_name)
+    {
+        return Err(MCPError::InvalidParams(format!(
+            "Operation '{tool_name}' is not allowed in restricted (read-only) mode"
+        )));
+    }
 
     // Acquire pool connection only for known tools — unknown tools
     // (the `_` arm) return MethodNotFound without consuming a pool slot.
@@ -290,6 +306,13 @@ async fn handle_tools_call(
         "show_deadlocks" => actions::transactions::show_deadlocks(&client, tool_args.cloned()).await,
         "show_autocommit_status" => actions::transactions::show_autocommit_status(&client, tool_args.cloned()).await,
         "show_transaction_timeout" => actions::transactions::show_transaction_timeout(&client, tool_args.cloned()).await,
+        // Health actions
+        "analyze_db_health" => actions::health::analyze_db_health(&client, tool_args.cloned()).await,
+        "list_unused_indexes" => actions::health::list_unused_indexes(&client, tool_args.cloned()).await,
+        "list_duplicate_indexes" => actions::health::list_duplicate_indexes(&client, tool_args.cloned()).await,
+        "show_vacuum_progress" => actions::health::show_vacuum_progress(&client, tool_args.cloned()).await,
+        // Enhanced schema
+        "get_object_details" => actions::schema::get_object_details(&client, tool_args.cloned()).await,
         tool => Err(method_not_found(tool)),
     };
 

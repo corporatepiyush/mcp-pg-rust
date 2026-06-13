@@ -1,6 +1,36 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::str::FromStr;
 use std::time::Duration;
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum AccessMode {
+    #[serde(rename = "unrestricted")]
+    Unrestricted,
+    #[serde(rename = "restricted")]
+    Restricted,
+}
+
+impl fmt::Display for AccessMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AccessMode::Unrestricted => write!(f, "unrestricted"),
+            AccessMode::Restricted => write!(f, "restricted"),
+        }
+    }
+}
+
+impl FromStr for AccessMode {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "unrestricted" => Ok(AccessMode::Unrestricted),
+            "restricted" => Ok(AccessMode::Restricted),
+            _ => Err(format!("Invalid access mode: {s}. Use 'unrestricted' or 'restricted'")),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -23,6 +53,7 @@ pub struct ServerConfig {
     pub port: u16,
     pub request_timeout: Duration,
     pub max_request_size: usize,
+    pub access_mode: AccessMode,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,6 +88,7 @@ impl Config {
                 port: args.port,
                 request_timeout: Duration::from_secs(30),
                 max_request_size: 10 * 1024 * 1024, // 10MB
+                access_mode: args.access_mode,
             },
             pool: PoolConfig {
                 min_size: args.min_connections,
@@ -86,6 +118,7 @@ impl Default for Config {
                 port: 3000,
                 request_timeout: Duration::from_secs(30),
                 max_request_size: 10 * 1024 * 1024,
+                access_mode: AccessMode::Unrestricted,
             },
             pool: PoolConfig {
                 min_size: 5,

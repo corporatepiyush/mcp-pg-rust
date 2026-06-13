@@ -8,3 +8,4 @@ pub mod security;
 pub mod config;
 pub mod replication;
 pub mod transactions;
+pub mod health;

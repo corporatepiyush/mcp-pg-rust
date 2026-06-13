@@ -4,12 +4,14 @@ High-performance MCP (Model Context Protocol) server for PostgreSQL, written in 
 
 ## Features
 
-- **54 database tools** — schema inspection, queries, monitoring, maintenance, security, replication, transactions, batch operations
+- **59 database tools** — schema inspection, queries, monitoring, maintenance, security, replication, transactions, batch operations, health analysis
 - **Lock-free connection pool** — high throughput with minimal contention
 - **Dual transport** — TCP (HTTP-like) and stdio (Claude Desktop compatible)
 - **Thread-local metrics** — zero-allocation sharded counters (no lock contention)
 - **Data-oriented design** — cache-line aligned hot data, no false sharing
 - **~20,000 req/s** — with 10 concurrent clients under realistic workload
+- **Restricted mode** — `--access-mode=restricted` for read-only operation, blocking all write tools at dispatch level
+- **PG 18 compatible** — works with PostgreSQL 15–18, tested on PG 18
 
 ## Quick Start
 
@@ -22,6 +24,9 @@ mcp-postgres --database-url "host=127.0.0.1 dbname=mydb"
 
 # Run in stdio mode for Claude Desktop / MCP clients
 mcp-postgres --database-url "host=127.0.0.1 dbname=mydb" --stdio
+
+# Run in restricted (read-only) mode
+mcp-postgres --database-url "host=127.0.0.1 dbname=mydb" --stdio --access-mode restricted
 ```
 
 ### Usage
@@ -39,6 +44,7 @@ Options:
       --enable-metrics           Enable Prometheus /metrics endpoint
       --metrics-port <PORT>      Metrics port [default: 9090]
       --stdio                    Run in stdio mode (for Claude Desktop)
+      --access-mode <MODE>       Access mode: unrestricted or restricted [default: unrestricted]
   -h, --help                     Print help
   -V, --version                  Print version
 ```
@@ -98,6 +104,21 @@ Describe a table's columns, types, nullability, and defaults.
 ```jsonc
 // Request:  { "table": "users" }
 // Response: { "columns": [{ "name": "id", "type": "bigint", "nullable": "NO", "default": "nextval(...)", "position": 1 }, ...] }
+```
+
+#### `get_object_details`
+Rich schema introspection for a single table — columns, constraints, indexes, foreign keys, descriptions, and size.
+
+| Param | Type | Required | Default |
+|-------|------|----------|---------|
+| `table` | string | yes | — |
+| `schema` | string | no | `"public"` |
+
+```jsonc
+// Request:  { "table": "users", "schema": "public" }
+// Response: { "table": "users", "schema": "public", "size": "256 MB", "row_estimate": 10000,
+//   "columns": [...], "indexes": [...], "constraints": [...], "foreign_keys": [...],
+//   "description": "Main user accounts table" }
 ```
 
 #### `list_indexes`
@@ -177,15 +198,18 @@ Execute a DELETE and return rows affected.
 ```
 
 #### `explain_query`
-Show the execution plan for a query (EXPLAIN ANALYZE format).
+Show the execution plan for a query with configurable options.
 
-| Param | Type | Required |
-|-------|------|----------|
-| `sql` | string | yes |
+| Param | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `sql` | string | yes | — | Query to explain |
+| `analyze` | boolean | no | false | Execute the query (EXPLAIN ANALYZE) |
+| `buffers` | boolean | no | false | Show buffer usage |
+| `format` | string | no | `"json"` | Output format: json, yaml, text |
 
 ```jsonc
-// Request:  { "sql": "SELECT * FROM users WHERE id = 1" }
-// Response: { "plan": { /* PostgreSQL EXPLAIN JSON tree */ } }
+// Request:  { "sql": "SELECT * FROM users WHERE id = 1", "analyze": true, "buffers": true, "format": "json" }
+// Response: { "plan": [ /* PostgreSQL EXPLAIN JSON tree */ ], "options": { "analyze": true, "buffers": true, "format": "json" } }
 ```
 
 ---
@@ -257,6 +281,45 @@ Bulk deletion with OR-combined WHERE clauses.
 ---
 
 ### Monitoring
+
+#### `analyze_db_health`
+Unified database health dashboard — buffer cache hit ratio, connection utilization, unused/duplicate indexes, vacuum progress, tables needing vacuum, and tables with excessive sequential scans.
+
+```jsonc
+// Request:  {}
+// Response: {
+//   "buffer_cache": { "hit_ratio_pct": 99.5, "status": "healthy" },
+//   "connections": { "active": 3, "waiting": 1, "idle_in_transaction": 0, "max": 100, "utilization_pct": 4.0, "status": "healthy" },
+//   "indexes": { "unused": [...], "duplicate_candidates": [...], "total_unused": 0 },
+//   "vacuum": { "in_progress": [], "tables_needing_vacuum": [] },
+//   "performance": { "tables_with_high_seq_scans": [] }
+// }
+```
+
+#### `list_unused_indexes`
+List all indexes with zero scans — candidates for removal to reduce write overhead.
+
+```jsonc
+// Request:  {}
+// Response: { "unused_indexes": [{ "schema": "public", "table": "users", "index": "users_email_idx", "scans": 0, "tuples_read": 0, "tuples_fetched": 0 }], "count": 0 }
+```
+
+#### `list_duplicate_indexes`
+Identify potentially duplicate or overlapping indexes.
+
+```jsonc
+// Request:  {}
+// Response: { "duplicate_indexes": [{ "schema": "public", "table": "users", "index": "users_name_idx", "duplicate_of": "users_name_idx2", "size": "64 MB" }], "count": 0 }
+```
+
+#### `show_vacuum_progress`
+Real-time VACUUM operation monitoring.
+
+```jsonc
+// Request:  {}
+// Response: { "vacuum_in_progress": false, "message": "No VACUUM operations currently in progress" }
+// Response (active): { "vacuum_in_progress": true, "operations": [{ "schema": "public", "table": "users", "phase": "scanning heap", "blocks_total": 1000, "blocks_scanned": 500, "blocks_vacuumed": 200, "blocks_remaining": 500, "progress_pct": 50.0, "index_vacuum_count": 2, "max_dead_tuple_bytes": 1048576 }] }
+```
 
 #### `get_table_stats`
 Live row counts, dead tuples, and vacuum history from `pg_stat_user_tables`.

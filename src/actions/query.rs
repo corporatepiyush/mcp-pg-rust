@@ -106,8 +106,8 @@ pub async fn execute_delete(client: &Client, params: Option<Value>) -> MCPResult
 
 /// 10. Explain query
 ///
-/// Only SELECT queries can be explained. This guard prevents accidental
-/// execution of DDL/DML statements inside EXPLAIN wrappers.
+/// Supports EXPLAIN with optional ANALYZE, BUFFERS, and FORMAT options.
+/// Only SELECT queries can be explained.
 pub async fn explain_query(client: &Client, params: Option<Value>) -> MCPResult<Value> {
     let sql = params
         .as_ref()
@@ -120,8 +120,44 @@ pub async fn explain_query(client: &Client, params: Option<Value>) -> MCPResult<
         return Err(crate::errors::MCPError::InvalidParams("Only SELECT queries can be explained".into()));
     }
 
-    let mut explain_sql = String::with_capacity(sql.len() + 24);
-    explain_sql.push_str("EXPLAIN (FORMAT JSON) ");
+    let analyze = params
+        .as_ref()
+        .and_then(|p| p.get("analyze"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let buffers = params
+        .as_ref()
+        .and_then(|p| p.get("buffers"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let format = params
+        .as_ref()
+        .and_then(|p| p.get("format"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("json");
+
+    let format_upper = format.to_uppercase();
+    if format_upper == "XML" {
+        return Err(crate::errors::MCPError::InvalidParams(
+            "XML format is not supported — use TEXT, YAML, or JSON".into()
+        ));
+    }
+
+    let mut opts = Vec::new();
+    opts.push(format!("FORMAT {}", format_upper));
+    if analyze {
+        opts.push("ANALYZE".to_string());
+    }
+    if buffers {
+        opts.push("BUFFERS".to_string());
+    }
+
+    let mut explain_sql = String::with_capacity(sql.len() + 64);
+    explain_sql.push_str("EXPLAIN (");
+    explain_sql.push_str(&opts.join(", "));
+    explain_sql.push_str(") ");
     explain_sql.push_str(sql);
 
     let rows = client.query(&explain_sql, &[]).await?;
@@ -130,6 +166,17 @@ pub async fn explain_query(client: &Client, params: Option<Value>) -> MCPResult<
         return Ok(json!({ "plan": null }));
     }
 
-    let plan: String = rows[0].get(0);
-    Ok(json!({ "plan": serde_json::from_str::<Value>(&plan)? }))
+    if format.eq_ignore_ascii_case("json") {
+        let plan: serde_json::Value = rows[0].get(0);
+        Ok(json!({
+            "plan": plan,
+            "options": { "analyze": analyze, "buffers": buffers, "format": format }
+        }))
+    } else {
+        let lines: Vec<String> = rows.iter().map(|r| r.get::<_, String>(0)).collect();
+        Ok(json!({
+            "plan": lines.join("\n"),
+            "options": { "analyze": analyze, "buffers": buffers, "format": format }
+        }))
+    }
 }

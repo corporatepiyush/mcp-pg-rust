@@ -53,6 +53,10 @@ struct Args {
     /// Run in stdio mode for MCP compatibility (Claude Desktop)
     #[arg(long)]
     stdio: bool,
+
+    /// Access mode: unrestricted (full read/write) or restricted (read-only)
+    #[arg(long, default_value = "unrestricted")]
+    access_mode: config::AccessMode,
 }
 
 #[tokio::main]

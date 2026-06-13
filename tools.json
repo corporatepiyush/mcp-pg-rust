@@ -35,5 +35,151 @@
       "properties": { "sql": { "type": "string" } },
       "required": ["sql"]
     }
+  },
+  {
+    "name": "execute_update",
+    "description": "Execute UPDATE query",
+    "inputSchema": {
+      "type": "object",
+      "properties": { "sql": { "type": "string" } },
+      "required": ["sql"]
+    }
+  },
+  {
+    "name": "execute_delete",
+    "description": "Execute DELETE query",
+    "inputSchema": {
+      "type": "object",
+      "properties": { "sql": { "type": "string" } },
+      "required": ["sql"]
+    }
+  },
+  {
+    "name": "explain_query",
+    "description": "Explain a SELECT query with optional ANALYZE, BUFFERS, and format options",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sql": { "type": "string", "description": "SELECT query to explain" },
+        "analyze": { "type": "boolean", "description": "Execute and show actual timings (default: false)" },
+        "buffers": { "type": "boolean", "description": "Include buffer usage (default: false)" },
+        "format": { "type": "string", "enum": ["json", "text", "xml", "yaml"], "description": "Output format (default: json)" }
+      },
+      "required": ["sql"]
+    }
+  },
+  {
+    "name": "analyze_db_health",
+    "description": "Comprehensive database health check: buffer cache, connections, indexes, vacuum, and performance",
+    "inputSchema": { "type": "object", "properties": {} }
+  },
+  {
+    "name": "list_unused_indexes",
+    "description": "List indexes with zero scans that may be unused",
+    "inputSchema": { "type": "object", "properties": {} }
+  },
+  {
+    "name": "list_duplicate_indexes",
+    "description": "List potential duplicate or overlapping indexes",
+    "inputSchema": { "type": "object", "properties": {} }
+  },
+  {
+    "name": "show_vacuum_progress",
+    "description": "Show progress of currently running VACUUM operations",
+    "inputSchema": { "type": "object", "properties": {} }
+  },
+  {
+    "name": "get_object_details",
+    "description": "Get detailed info about a table: columns, constraints, indexes, foreign keys, size estimates",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": { "type": "string", "description": "Table name" },
+        "schema": { "type": "string", "description": "Schema name (default: public)" }
+      },
+      "required": ["table"]
+    }
+  },
+  {
+    "name": "batch_insert_copy",
+    "description": "Auto-batched massive insert using COPY protocol",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": { "type": "string" },
+        "columns": { "type": "array", "items": { "type": "string" } },
+        "rows": { "type": "array", "items": { "type": "array" } },
+        "batch_size": { "type": "integer", "description": "Rows per batch (default: 1000)" }
+      },
+      "required": ["table", "columns", "rows"]
+    }
+  },
+  {
+    "name": "list_database_privileges",
+    "description": "List database-level access privileges",
+    "inputSchema": { "type": "object", "properties": {} }
+  },
+  {
+    "name": "list_users",
+    "description": "List all database users",
+    "inputSchema": { "type": "object", "properties": {} }
+  },
+  {
+    "name": "list_role_memberships",
+    "description": "List role memberships",
+    "inputSchema": { "type": "object", "properties": {} }
+  },
+  {
+    "name": "list_indexes",
+    "description": "List all indexes",
+    "inputSchema": { "type": "object", "properties": {} }
+  },
+  {
+    "name": "list_schemas",
+    "description": "List all schemas",
+    "inputSchema": { "type": "object", "properties": {} }
+  },
+  {
+    "name": "show_constraints",
+    "description": "Show table constraints",
+    "inputSchema": { "type": "object", "properties": {} }
+  },
+  {
+    "name": "describe_table",
+    "description": "Describe table structure",
+    "inputSchema": {
+      "type": "object",
+      "properties": { "table": { "type": "string" } },
+      "required": ["table"]
+    }
+  },
+  {
+    "name": "get_cache_hit_ratio",
+    "description": "Get buffer cache hit ratio",
+    "inputSchema": { "type": "object", "properties": {} }
+  },
+  {
+    "name": "get_pg_stat_statements",
+    "description": "Get top queries by total time from pg_stat_statements",
+    "inputSchema": { "type": "object", "properties": {} }
+  },
+  {
+    "name": "get_setting",
+    "description": "Get a specific PostgreSQL setting value",
+    "inputSchema": {
+      "type": "object",
+      "properties": { "setting": { "type": "string" } },
+      "required": ["setting"]
+    }
+  },
+  {
+    "name": "show_current_user",
+    "description": "Show current user, database, and PostgreSQL version",
+    "inputSchema": { "type": "object", "properties": {} }
+  },
+  {
+    "name": "show_session_info",
+    "description": "Show current session connection info",
+    "inputSchema": { "type": "object", "properties": {} }
   }
 ]
