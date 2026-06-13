@@ -708,7 +708,7 @@ dependencies = [
 
 [[package]]
 name = "mcp-postgres"
-version = "1.0.3"
+version = "1.0.4"
 dependencies = [
  "anyhow",
  "clap",
