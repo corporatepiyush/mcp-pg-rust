@@ -1,6 +1,5 @@
 /// Input validation for tool parameters
 /// Validates tool arguments against defined schemas and provides helpful error messages
-
 use serde_json::Value;
 
 #[derive(Debug, Clone)]
@@ -35,7 +34,7 @@ pub fn validate_tool_input(tool_name: &str, arguments: &Value) -> Result<(), Vec
                     errors.push(ValidationError {
                         tool: tool_name.to_string(),
                         param: "table".to_string(),
-                        error: "Expected string, got ".to_string() + &table.type_str(),
+                        error: format!("Expected string, got {}", table.type_str()),
                         suggestion: "Example: {\"table\": \"users\"} or {\"table\": \"public.orders\"}".to_string(),
                     });
                 } else {
@@ -180,7 +179,7 @@ pub fn validate_tool_input(tool_name: &str, arguments: &Value) -> Result<(), Vec
                     errors.push(ValidationError {
                         tool: tool_name.to_string(),
                         param: "sql".to_string(),
-                        error: "Expected string, got ".to_string() + &sql.type_str(),
+                        error: format!("Expected string, got {}", sql.type_str()),
                         suggestion: "Example: {\"sql\": \"SELECT * FROM users\"}".to_string(),
                     });
                 } else if sql.as_str().unwrap().is_empty() {
@@ -421,7 +420,7 @@ fn validate_batch_insert(tool_name: &str, arguments: &Value, errors: &mut Vec<Va
                     suggestion: "Example: {\"batch_size\": 1000}".to_string(),
                 });
             } else if let Some(size) = batch_size.as_i64() {
-                if size < 100 || size > 5000 {
+                if !((100..=5000).contains(&size)) {
                     errors.push(ValidationError {
                         tool: tool_name.to_string(),
                         param: "batch_size".to_string(),

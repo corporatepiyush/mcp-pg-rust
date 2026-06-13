@@ -13,7 +13,7 @@ fn validate_sql(sql: &str, allowed_prefix: &str, label: &str) -> std::result::Re
             format!("SQL exceeds maximum length of {MAX_SQL_LEN} characters (got {})", sql.len())
         ));
     }
-    let first_word = sql.trim_start().split_whitespace().next().unwrap_or("").to_uppercase();
+    let first_word = sql.split_whitespace().next().unwrap_or("").to_uppercase();
     if first_word != allowed_prefix {
         return Err(crate::errors::MCPError::InvalidParams(
             format!("Invalid {label} query: expected '{allowed_prefix}'")

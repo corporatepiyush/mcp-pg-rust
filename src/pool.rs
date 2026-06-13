@@ -49,7 +49,7 @@ impl ConnectionPool {
         self.pool
             .get()
             .await
-            .map(|obj| Arc::new(obj))
+            .map(Arc::new)
             .map_err(|_| MCPError::PoolError("Connection pool exhausted".into()))
     }
 

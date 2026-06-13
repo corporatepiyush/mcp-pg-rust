@@ -2,8 +2,6 @@ use serde_json::{json, Value};
 use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
 
-const MAX_PID: i64 = 4_000_000;
-
 /// 16. List connections
 pub async fn list_connections(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     let rows = client

@@ -69,14 +69,6 @@ criterion = "0.5"
 # Latest minor version fetches
 # Run: cargo update --aggressive
 
-[[bench]]
-name = "micro_bench"
-harness = false
-
-[[bench]]
-name = "pool_stress_bench"
-harness = false
-
 [[bin]]
 name = "mcp-postgres"
 path = "src/main.rs"

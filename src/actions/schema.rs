@@ -345,12 +345,12 @@ pub async fn list_triggers(client: &Client, params: &Option<&Value>) -> MCPResul
     let limit = params
         .as_ref()
         .and_then(|p| p.get("limit").and_then(|v| v.as_i64()))
-        .unwrap_or(1000) as i64;
+        .unwrap_or(1000);
 
     validate_identifier(table, "table")?;
     validate_identifier(schema, "schema")?;
 
-    if limit < 1 || limit > 10000 {
+    if !((1..=10000).contains(&limit)) {
         return Err(MCPError::InvalidParams(
             format!("'limit' must be between 1 and 10000 (got {})", limit)
         ));
@@ -1048,7 +1048,7 @@ pub async fn backup_table(client: &Client, params: &Option<&Value>) -> MCPResult
     validate_identifier(&backup_name, "backup_name")?;
 
     // Verify source table exists
-    let exists: (i64,) = client
+    let _: (i64,) = client
         .query_one(
             "SELECT 1 FROM information_schema.tables
              WHERE table_name = $1 AND table_schema NOT IN ('pg_catalog', 'information_schema')",
@@ -1125,7 +1125,7 @@ pub async fn backup_table(client: &Client, params: &Option<&Value>) -> MCPResult
             .replace(&format!("ON {}", table), &format!("ON {}", backup_name))
             .replace(&idx_name, &new_idx_name);
 
-        if let Ok(_) = client.execute(&updated_def, &[]).await {
+        if client.execute(&updated_def, &[]).await.is_ok() {
             indexes_created += 1;
         }
     }

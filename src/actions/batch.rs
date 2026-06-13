@@ -361,7 +361,7 @@ pub async fn async_batch_insert_copy(client: &Client, params: &Option<&Value>) -
 
             let row_values: Vec<String> = row_array
                 .iter()
-                .map(|v| format_sql_value(v))
+                .map(format_sql_value)
                 .collect();
 
             value_parts.push(format!("({})", row_values.join(", ")));
