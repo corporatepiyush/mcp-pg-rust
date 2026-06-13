@@ -5,10 +5,9 @@ High-performance MCP (Model Context Protocol) server for PostgreSQL, written in 
 ## Features
 
 - **61 database tools** — schema inspection, queries, monitoring, maintenance, security, replication, transactions, batch operations, health analysis
-- **Lock-free connection pool** — high throughput with minimal contention, CPU-aware sizing (8× CPU cores by default)
-- **Optimized buffers** — per-connection 4KB result buffers reduce allocation overhead
-- **Smart socket tuning** — 256KB socket buffers (vs 4MB default) reduce memory while maintaining throughput
-- **Dual transport** — TCP (HTTP-like) and stdio (Claude Desktop compatible)
+- **Production-grade connection pool** — deadpool-postgres with health checks, idle timeout, configurable sizing (default: min=5, max=20)
+- **4KB message buffers** — efficient JSON-RPC request/response handling with minimal memory per connection
+- **Dual transport** — TCP and HTTP/2 with SSE, plus stdio for Claude Desktop
 - **Thread-local metrics** — zero-allocation sharded counters (no lock contention)
 - **Data-oriented design** — cache-line aligned hot data, no false sharing
 - **~20,000+ req/s** — with 10 concurrent clients; scales to 50K+ with larger pools
@@ -41,8 +40,9 @@ Options:
   -d, --database-url <URL>       PostgreSQL connection string
   -H, --host <HOST>              Server host [default: 127.0.0.1]
   -p, --port <PORT>              Server port [default: 3000]
-      --min-connections <N>      Minimum pool connections [default: 1]
-      --max-connections <N>      Maximum pool connections [default: 8 * num_cpus]
+      --http-port <PORT>         HTTP/2 server port [default: 3001]
+      --min-connections <N>      Minimum pool connections [default: 5]
+      --max-connections <N>      Maximum pool connections [default: 20]
       --log-level <LEVEL>        Log level [default: info]
       --enable-metrics           Enable Prometheus /metrics endpoint
       --metrics-port <PORT>      Metrics port [default: 9090]
@@ -723,8 +723,8 @@ Show current `statement_timeout` setting.
                             │
                    ┌────────┴────────┐
                    │  ConnectionPool  │
-                   │ (lock-free       │
-                   │  SegQueue)       │
+                   │ (deadpool-      │
+                   │  postgres)       │
                    │  ┌──┐ ┌──┐ ┌──┐ │
                    │  │C1│ │C2│ │C3│ │
                    │  └──┘ └──┘ └──┘ │
@@ -737,9 +737,9 @@ Show current `statement_timeout` setting.
 
 ### Performance Design
 
-- **Hot/cold data separation** — pool configuration sits on its own cache line, away from the frequently-accessed idle connection queue
+- **Production-grade connection pool** — deadpool-postgres handles connection lifecycle, health checks, idle timeout, and recycling
+- **Minimal per-connection overhead** — 4KB message buffers, no unnecessary buffering or allocations
 - **Thread-local sharded metrics** — request counting uses per-CPU `AtomicU64` shards instead of a synchronized queue (single `fetch_add(Relaxed)` per request)
-- **Lock-free connection pool** — `crossbeam::SegQueue` with no mutex contention
 - **Mimalloc** — fast allocation/deallocation with tuned page reset and eager commit
 - **Fat LTO + panic=abort** — release profile optimizes aggressively
 
@@ -765,15 +765,15 @@ Avg Latency: ~48µs
 ## Test Suite
 
 ```bash
-# Unit tests (63 tests, no DB required)
+# Unit tests (144 tests, no DB required)
 cargo test
 
-# Integration tests (16 tests, requires running server)
-cargo test -- --ignored
+# Integration tests (25 tool tests, requires running server on localhost:3000)
+# Terminal 1: 
+mcp-postgres --database-url "postgres://..." --log-level error
 
-# Full suite
-# Terminal 1: mcp-postgres --log-level error &
-# Terminal 2: cargo test -- --ignored
+# Terminal 2:
+cargo test --test integration_all_tools -- --nocapture
 ```
 
 ## Development
