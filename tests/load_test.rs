@@ -9,7 +9,7 @@ use tokio::task::JoinSet;
 #[tokio::test]
 #[ignore]  // Run with: cargo test --test load_test -- --ignored --nocapture
 async fn load_test_concurrent_requests() {
-    let base_url = "http://127.0.0.1:3000/rpc";
+    let base_url = "http://127.0.0.1:3001/rpc";
 
     // Create HTTP client with connection pooling
     let client = reqwest::Client::builder()
@@ -126,7 +126,7 @@ async fn load_test_concurrent_requests() {
 #[tokio::test]
 #[ignore]  // Run with: cargo test --test load_test -- --ignored --nocapture
 async fn load_test_sequential_baseline() {
-    let base_url = "http://127.0.0.1:3000/rpc";
+    let base_url = "http://127.0.0.1:3001/rpc";
     let client = reqwest::Client::new();
 
     println!("🚀 Sequential Baseline Test (for reference)");
@@ -180,7 +180,7 @@ async fn load_test_sequential_baseline() {
 #[tokio::test]
 #[ignore]
 async fn load_test_tool_variations() {
-    let base_url = "http://127.0.0.1:3000/rpc";
+    let base_url = "http://127.0.0.1:3001/rpc";
     let client = Arc::new(reqwest::Client::builder()
         .pool_max_idle_per_host(20)
         .build()
