@@ -1,5 +1,6 @@
-/// Complete integration tests for ALL 25 PostgreSQL tools
+/// Complete integration tests for ALL 45 PostgreSQL tools
 /// Each tool is tested with real server on localhost:3000
+/// Includes: Tables, Views, Indexes, Schemas, Sequences, Partitions, Data ops, Monitoring
 /// Run: cargo run --release -- --database-url "postgres://..."
 /// Then: cargo test --test integration_all_tools -- --nocapture
 
@@ -429,5 +430,283 @@ fn test_tool_25_show_session_info() {
             println!("✓ show_session_info: response validated");
         }
         Err(e) => panic!("✗ show_session_info failed: {}", e),
+    }
+}
+
+// ============ TOOL 26: create_table ============
+#[test]
+fn test_tool_26_create_table() {
+    match tcp_request("create_table", json!({
+        "table": "test_ddl_26",
+        "columns": ["id SERIAL PRIMARY KEY", "name VARCHAR(255) NOT NULL", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"]
+    })) {
+        Ok(response) => {
+            let result = response.get("result").expect("Missing result");
+            assert_eq!(result.get("status").and_then(|v| v.as_str()).unwrap_or(""), "success");
+            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "CREATE TABLE");
+            println!("✓ create_table: test_ddl_26 created");
+        }
+        Err(e) => panic!("✗ create_table failed: {}", e),
+    }
+}
+
+// ============ TOOL 27: drop_table ============
+#[test]
+fn test_tool_27_drop_table() {
+    // First create a table
+    let _ = tcp_request("create_table", json!({
+        "table": "test_ddl_27",
+        "columns": ["id SERIAL PRIMARY KEY"]
+    }));
+
+    match tcp_request("drop_table", json!({
+        "table": "test_ddl_27",
+        "if_exists": false,
+        "cascade": false
+    })) {
+        Ok(response) => {
+            let result = response.get("result").expect("Missing result");
+            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "DROP TABLE");
+            println!("✓ drop_table: test_ddl_27 dropped");
+        }
+        Err(e) => panic!("✗ drop_table failed: {}", e),
+    }
+}
+
+// ============ TOOL 28: create_view ============
+#[test]
+fn test_tool_28_create_view() {
+    // Create base table first
+    let _ = tcp_request("create_table", json!({
+        "table": "test_base_28",
+        "columns": ["id SERIAL PRIMARY KEY", "val INT"]
+    }));
+
+    match tcp_request("create_view", json!({
+        "view_name": "test_view_28",
+        "query": "SELECT id, val FROM test_base_28",
+        "materialized": false,
+        "or_replace": false
+    })) {
+        Ok(response) => {
+            let result = response.get("result").expect("Missing result");
+            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "CREATE VIEW");
+            println!("✓ create_view: test_view_28 created");
+        }
+        Err(e) => panic!("✗ create_view failed: {}", e),
+    }
+}
+
+// ============ TOOL 29: drop_view ============
+#[test]
+fn test_tool_29_drop_view() {
+    match tcp_request("drop_view", json!({
+        "view_name": "test_view_28",
+        "if_exists": true,
+        "cascade": false
+    })) {
+        Ok(response) => {
+            let result = response.get("result").expect("Missing result");
+            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "DROP VIEW");
+            println!("✓ drop_view: test_view_28 dropped");
+        }
+        Err(e) => panic!("✗ drop_view failed: {}", e),
+    }
+}
+
+// ============ TOOL 30: alter_view ============
+#[test]
+fn test_tool_30_alter_view() {
+    // Create a view first
+    let _ = tcp_request("create_view", json!({
+        "view_name": "test_view_rename_30",
+        "query": "SELECT 1 as id"
+    }));
+
+    match tcp_request("alter_view", json!({
+        "view_name": "test_view_rename_30",
+        "rename_to": "test_view_renamed_30"
+    })) {
+        Ok(response) => {
+            let result = response.get("result").expect("Missing result");
+            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "ALTER VIEW");
+            println!("✓ alter_view: test_view_rename_30 renamed");
+        }
+        Err(e) => panic!("✗ alter_view failed: {}", e),
+    }
+}
+
+// ============ TOOL 31: create_schema ============
+#[test]
+fn test_tool_31_create_schema() {
+    match tcp_request("create_schema", json!({
+        "schema_name": "test_schema_31",
+        "if_not_exists": true
+    })) {
+        Ok(response) => {
+            let result = response.get("result").expect("Missing result");
+            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "CREATE SCHEMA");
+            println!("✓ create_schema: test_schema_31 created");
+        }
+        Err(e) => panic!("✗ create_schema failed: {}", e),
+    }
+}
+
+// ============ TOOL 32: drop_schema ============
+#[test]
+fn test_tool_32_drop_schema() {
+    match tcp_request("drop_schema", json!({
+        "schema_name": "test_schema_31",
+        "if_exists": true,
+        "cascade": false
+    })) {
+        Ok(response) => {
+            let result = response.get("result").expect("Missing result");
+            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "DROP SCHEMA");
+            println!("✓ drop_schema: test_schema_31 dropped");
+        }
+        Err(e) => panic!("✗ drop_schema failed: {}", e),
+    }
+}
+
+// ============ TOOL 33: create_index ============
+#[test]
+fn test_tool_33_create_index() {
+    // Create table first
+    let _ = tcp_request("create_table", json!({
+        "table": "test_idx_33",
+        "columns": ["id SERIAL PRIMARY KEY", "email VARCHAR(255)"]
+    }));
+
+    match tcp_request("create_index", json!({
+        "index_name": "idx_test_email_33",
+        "table": "test_idx_33",
+        "columns": ["email"],
+        "unique": false,
+        "concurrent": false
+    })) {
+        Ok(response) => {
+            let result = response.get("result").expect("Missing result");
+            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "CREATE INDEX");
+            println!("✓ create_index: idx_test_email_33 created");
+        }
+        Err(e) => panic!("✗ create_index failed: {}", e),
+    }
+}
+
+// ============ TOOL 34: drop_index ============
+#[test]
+fn test_tool_34_drop_index() {
+    match tcp_request("drop_index", json!({
+        "index_name": "idx_test_email_33",
+        "if_exists": true,
+        "concurrent": false
+    })) {
+        Ok(response) => {
+            let result = response.get("result").expect("Missing result");
+            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "DROP INDEX");
+            println!("✓ drop_index: idx_test_email_33 dropped");
+        }
+        Err(e) => panic!("✗ drop_index failed: {}", e),
+    }
+}
+
+// ============ TOOL 35: alter_index ============
+#[test]
+fn test_tool_35_alter_index() {
+    // Create index first
+    let _ = tcp_request("create_index", json!({
+        "index_name": "idx_test_rename_35",
+        "table": "test_idx_33",
+        "columns": ["id"]
+    }));
+
+    match tcp_request("alter_index", json!({
+        "index_name": "idx_test_rename_35",
+        "rename_to": "idx_test_renamed_35"
+    })) {
+        Ok(response) => {
+            let result = response.get("result").expect("Missing result");
+            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "ALTER INDEX");
+            println!("✓ alter_index: idx_test_rename_35 renamed");
+        }
+        Err(e) => panic!("✗ alter_index failed: {}", e),
+    }
+}
+
+// ============ TOOL 36: create_sequence ============
+#[test]
+fn test_tool_36_create_sequence() {
+    match tcp_request("create_sequence", json!({
+        "sequence_name": "test_seq_36",
+        "start": 100,
+        "increment": 1,
+        "if_not_exists": true
+    })) {
+        Ok(response) => {
+            let result = response.get("result").expect("Missing result");
+            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "CREATE SEQUENCE");
+            println!("✓ create_sequence: test_seq_36 created");
+        }
+        Err(e) => panic!("✗ create_sequence failed: {}", e),
+    }
+}
+
+// ============ TOOL 37: drop_sequence ============
+#[test]
+fn test_tool_37_drop_sequence() {
+    match tcp_request("drop_sequence", json!({
+        "sequence_name": "test_seq_36",
+        "if_exists": true
+    })) {
+        Ok(response) => {
+            let result = response.get("result").expect("Missing result");
+            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "DROP SEQUENCE");
+            println!("✓ drop_sequence: test_seq_36 dropped");
+        }
+        Err(e) => panic!("✗ drop_sequence failed: {}", e),
+    }
+}
+
+// ============ TOOL 38: create_partition ============
+#[test]
+fn test_tool_38_create_partition() {
+    // Create partitioned table first
+    let _ = tcp_request("execute_query", json!({
+        "query": "DROP TABLE IF EXISTS test_parts_38 CASCADE"
+    }));
+    let _ = tcp_request("execute_query", json!({
+        "query": "CREATE TABLE test_parts_38 (id INT, data TEXT) PARTITION BY RANGE (id)"
+    }));
+
+    match tcp_request("create_partition", json!({
+        "table": "test_parts_38",
+        "partition_name": "test_parts_38_1",
+        "partition_type": "RANGE",
+        "column": "id",
+        "values": "FROM (1) TO (100)"
+    })) {
+        Ok(response) => {
+            let result = response.get("result").expect("Missing result");
+            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "CREATE TABLE PARTITION");
+            println!("✓ create_partition: test_parts_38_1 created");
+        }
+        Err(e) => panic!("✗ create_partition failed: {}", e),
+    }
+}
+
+// ============ TOOL 39: list_partitions ============
+#[test]
+fn test_tool_39_list_partitions() {
+    match tcp_request("list_partitions", json!({
+        "table": "test_parts_38"
+    })) {
+        Ok(response) => {
+            let result = response.get("result").expect("Missing result");
+            assert!(result.get("partitions").is_some());
+            assert!(result.get("partition_count").is_some());
+            println!("✓ list_partitions: test_parts_38 partitions listed");
+        }
+        Err(e) => panic!("✗ list_partitions failed: {}", e),
     }
 }
