@@ -3,7 +3,6 @@ use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
 
 const MAX_SQL_LEN: usize = 10_000;
-const MAX_IDENTIFIER_LEN: usize = 255;
 
 fn validate_sql(sql: &str, allowed_prefix: &str, label: &str) -> std::result::Result<(), crate::errors::MCPError> {
     if sql.is_empty() {
