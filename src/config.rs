@@ -72,9 +72,8 @@ impl Config {
             .or_else(|| std::env::var("DATABASE_URL").ok())
             .unwrap_or_else(|| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
 
-        let num_cpus = num_cpus::get() as u32;
-        let min_size = args.min_connections.unwrap_or(1);
-        let max_size = args.max_connections.unwrap_or(num_cpus * 8);
+        let min_size = args.min_connections.unwrap_or(5);
+        let max_size = args.max_connections.unwrap_or(20);
 
         Ok(Config {
             database: DatabaseConfig {
@@ -101,10 +100,6 @@ impl Config {
 
 impl Default for Config {
     fn default() -> Self {
-        let num_cpus = num_cpus::get() as u32;
-        let max_size = num_cpus * 8;
-        let min_size = 1;
-
         Self {
             database: DatabaseConfig {
                 url: "postgres://postgres:postgres@localhost:5432/postgres".to_string(),
@@ -116,8 +111,8 @@ impl Default for Config {
                 access_mode: AccessMode::Unrestricted,
             },
             pool: PoolConfig {
-                min_size,
-                max_size,
+                min_size: 5,
+                max_size: 20,
                 queue_timeout: Duration::from_secs(10),
             },
             metrics: MetricsConfig {
@@ -150,9 +145,8 @@ mod tests {
     #[test]
     fn test_pool_config_defaults() {
         let cfg = Config::default();
-        let num_cpus = num_cpus::get() as u32;
-        assert_eq!(cfg.pool.min_size, 1);
-        assert_eq!(cfg.pool.max_size, num_cpus * 8);
+        assert_eq!(cfg.pool.min_size, 5);
+        assert_eq!(cfg.pool.max_size, 20);
         assert_eq!(cfg.pool.queue_timeout, Duration::from_secs(10));
     }
 

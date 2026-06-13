@@ -20,6 +20,7 @@ static TOOLS_LIST: Lazy<Value> = Lazy::new(|| {
 });
 
 const BUFFER_CAPACITY: usize = 16384;
+const SOCKET_BUFFER_SIZE: libc::c_int = 4 * 1024;  // 4KB per socket direction
 const NEWLINE: &[u8] = b"\n";
 
 #[inline]
@@ -85,17 +86,14 @@ impl MCPServer {
             if let Err(e) = socket.set_nodelay(true) {
                 warn!("Failed to set TCP_NODELAY: {}", e);
             }
-            // Apply TCP socket options via raw fd (SO_KEEPALIVE, optimized buffer sizes)
+            // Apply TCP socket options via raw fd (SO_KEEPALIVE, 4KB socket buffers)
             use std::os::unix::io::AsRawFd;
             let raw = socket.as_raw_fd();
             let on: libc::c_int = 1;
             unsafe {
                 libc::setsockopt(raw, libc::SOL_SOCKET, libc::SO_KEEPALIVE, &on as *const _ as *const libc::c_void, std::mem::size_of_val(&on) as libc::socklen_t);
-                // Optimized buffer sizes for JSON-RPC: 256KB instead of 4MB
-                // 4MB was excessive for typical JSON requests/responses
-                let buf_size: libc::c_int = 256 * 1024;
-                libc::setsockopt(raw, libc::SOL_SOCKET, libc::SO_RCVBUF, &buf_size as *const _ as *const libc::c_void, std::mem::size_of_val(&buf_size) as libc::socklen_t);
-                libc::setsockopt(raw, libc::SOL_SOCKET, libc::SO_SNDBUF, &buf_size as *const _ as *const libc::c_void, std::mem::size_of_val(&buf_size) as libc::socklen_t);
+                libc::setsockopt(raw, libc::SOL_SOCKET, libc::SO_RCVBUF, &SOCKET_BUFFER_SIZE as *const _ as *const libc::c_void, std::mem::size_of_val(&SOCKET_BUFFER_SIZE) as libc::socklen_t);
+                libc::setsockopt(raw, libc::SOL_SOCKET, libc::SO_SNDBUF, &SOCKET_BUFFER_SIZE as *const _ as *const libc::c_void, std::mem::size_of_val(&SOCKET_BUFFER_SIZE) as libc::socklen_t);
             }
 
             let pool = Arc::clone(&self.pool);
