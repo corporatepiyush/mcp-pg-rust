@@ -1,62 +1,10 @@
-mod config;
-mod server;
-mod pool;
-mod protocol;
-mod actions;
-mod errors;
-mod metrics;
-
 use anyhow::Result;
 use clap::Parser;
 use tracing::info;
+use mcp_postgres::{config, pool, server, metrics, Args};
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
-
-#[derive(Parser, Debug)]
-#[command(name = "MCP PostgreSQL Server")]
-#[command(about = "High-performance Model Context Protocol server for PostgreSQL", long_about = None)]
-struct Args {
-    /// PostgreSQL connection string
-    #[arg(short, long)]
-    database_url: Option<String>,
-
-    /// Server host
-    #[arg(short = 'H', long, default_value = "127.0.0.1")]
-    host: String,
-
-    /// Server port
-    #[arg(short = 'p', long, default_value = "3000")]
-    port: u16,
-
-    /// Minimum pool connections
-    #[arg(long, default_value = "5")]
-    min_connections: u32,
-
-    /// Maximum pool connections
-    #[arg(long, default_value = "20")]
-    max_connections: u32,
-
-    /// Log level
-    #[arg(short, long, default_value = "info")]
-    log_level: String,
-
-    /// Enable metrics endpoint
-    #[arg(long)]
-    enable_metrics: bool,
-
-    /// Metrics port
-    #[arg(long, default_value = "9090")]
-    metrics_port: u16,
-
-    /// Run in stdio mode for MCP compatibility (Claude Desktop)
-    #[arg(long)]
-    stdio: bool,
-
-    /// Access mode: unrestricted (full read/write) or restricted (read-only)
-    #[arg(long, default_value = "unrestricted")]
-    access_mode: config::AccessMode,
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {

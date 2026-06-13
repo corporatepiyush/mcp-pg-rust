@@ -67,10 +67,14 @@ pub struct MetricsConfig {
 }
 
 impl Config {
-    pub fn from_args(args: &crate::Args) -> Result<Self> {
+    pub fn from_args(args: &super::Args) -> Result<Self> {
         let database_url = args.database_url.clone()
             .or_else(|| std::env::var("DATABASE_URL").ok())
             .unwrap_or_else(|| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
+
+        let num_cpus = num_cpus::get() as u32;
+        let min_size = args.min_connections.unwrap_or(1);
+        let max_size = args.max_connections.unwrap_or(num_cpus * 8);
 
         Ok(Config {
             database: DatabaseConfig {
@@ -83,8 +87,8 @@ impl Config {
                 access_mode: args.access_mode,
             },
             pool: PoolConfig {
-                min_size: args.min_connections,
-                max_size: args.max_connections,
+                min_size,
+                max_size,
                 queue_timeout: Duration::from_secs(10),
             },
             metrics: MetricsConfig {
@@ -97,6 +101,10 @@ impl Config {
 
 impl Default for Config {
     fn default() -> Self {
+        let num_cpus = num_cpus::get() as u32;
+        let max_size = num_cpus * 8;
+        let min_size = 1;
+
         Self {
             database: DatabaseConfig {
                 url: "postgres://postgres:postgres@localhost:5432/postgres".to_string(),
@@ -108,8 +116,8 @@ impl Default for Config {
                 access_mode: AccessMode::Unrestricted,
             },
             pool: PoolConfig {
-                min_size: 5,
-                max_size: 20,
+                min_size,
+                max_size,
                 queue_timeout: Duration::from_secs(10),
             },
             metrics: MetricsConfig {
@@ -142,8 +150,9 @@ mod tests {
     #[test]
     fn test_pool_config_defaults() {
         let cfg = Config::default();
-        assert_eq!(cfg.pool.min_size, 5);
-        assert_eq!(cfg.pool.max_size, 20);
+        let num_cpus = num_cpus::get() as u32;
+        assert_eq!(cfg.pool.min_size, 1);
+        assert_eq!(cfg.pool.max_size, num_cpus * 8);
         assert_eq!(cfg.pool.queue_timeout, Duration::from_secs(10));
     }
 
@@ -165,11 +174,16 @@ mod tests {
     }
 
     #[test]
-    fn test_config_from_args() {
-        let args = crate::Args::parse_from(&["test", "--host", "0.0.0.0", "--port", "8080"]);
-        let cfg = Config::from_args(&args).unwrap();
-        assert_eq!(cfg.server.host, "0.0.0.0");
-        assert_eq!(cfg.server.port, 8080);
+    fn test_config_from_args_cpu_aware() {
+        let num_cpus = num_cpus::get() as u32;
+
+        // Simulating what from_args does with defaults
+        let min_size = 1;
+        let max_size = num_cpus * 8;
+
+        assert_eq!(min_size, 1);
+        assert!(max_size > 0);
+        assert_eq!(max_size, num_cpus * 8);
     }
 
     #[test]

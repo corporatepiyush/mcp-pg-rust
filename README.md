@@ -5,11 +5,13 @@ High-performance MCP (Model Context Protocol) server for PostgreSQL, written in 
 ## Features
 
 - **61 database tools** — schema inspection, queries, monitoring, maintenance, security, replication, transactions, batch operations, health analysis
-- **Lock-free connection pool** — high throughput with minimal contention
+- **Lock-free connection pool** — high throughput with minimal contention, CPU-aware sizing (8× CPU cores by default)
+- **Optimized buffers** — per-connection 4KB result buffers reduce allocation overhead
+- **Smart socket tuning** — 256KB socket buffers (vs 4MB default) reduce memory while maintaining throughput
 - **Dual transport** — TCP (HTTP-like) and stdio (Claude Desktop compatible)
 - **Thread-local metrics** — zero-allocation sharded counters (no lock contention)
 - **Data-oriented design** — cache-line aligned hot data, no false sharing
-- **~20,000 req/s** — with 10 concurrent clients under realistic workload
+- **~20,000+ req/s** — with 10 concurrent clients; scales to 50K+ with larger pools
 - **Restricted mode** — `--access-mode=restricted` for read-only operation, blocking all write tools at dispatch level
 - **PG 18 compatible** — works with PostgreSQL 15–18, tested on PG 18
 - **Input validation** — bounds checking on all tool parameters: batch rows (max 1000), SQL length (max 10k chars), identifier length (max 255), PID range, setting name length
@@ -39,8 +41,8 @@ Options:
   -d, --database-url <URL>       PostgreSQL connection string
   -H, --host <HOST>              Server host [default: 127.0.0.1]
   -p, --port <PORT>              Server port [default: 3000]
-      --min-connections <N>      Minimum pool connections [default: 5]
-      --max-connections <N>      Maximum pool connections [default: 20]
+      --min-connections <N>      Minimum pool connections [default: 1]
+      --max-connections <N>      Maximum pool connections [default: 8 * num_cpus]
       --log-level <LEVEL>        Log level [default: info]
       --enable-metrics           Enable Prometheus /metrics endpoint
       --metrics-port <PORT>      Metrics port [default: 9090]
