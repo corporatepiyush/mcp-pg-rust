@@ -16,7 +16,8 @@ Reference documentation for mcp-postgres development and operations.
 ## Performance & Optimization
 
 - **[OPTIMIZATION_STRATEGIES.md](./OPTIMIZATION_STRATEGIES.md)** - Comparison of manual vs self-optimizing loop agents, hybrid approaches, decision framework (STRATEGIC OVERVIEW)
-- **[CODE_OPTIMIZATION.md](./CODE_OPTIMIZATION.md)** - Verified optimizations, measured regressions, profiling guide, benchmarking strategies
+- **[CODE_OPTIMIZATION.md](./CODE_OPTIMIZATION.md)** - Verified optimizations, measured regressions, profiling guide, benchmarking strategies (mcp-postgres specific)
+- **[LOW_LEVEL_OPTIMIZATION.md](./LOW_LEVEL_OPTIMIZATION.md)** - Hardware-level optimization: cache lines, mechanical sympathy, CPU architecture, lock-free concurrency (universal principles)
 - **[OPTIMIZATIONS.md](./OPTIMIZATIONS.md)** - Tuning parameters, bottleneck analysis, performance targets
 
 ---

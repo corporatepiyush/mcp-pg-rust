@@ -1128,7 +1128,8 @@ Comprehensive guides available in `/guides` folder:
 
 ### Performance & Optimization
 - **[OPTIMIZATION_STRATEGIES.md](./guides/OPTIMIZATION_STRATEGIES.md)** - Manual vs self-optimizing loops, hybrid approach, decision framework (READ FIRST for optimization strategy)
-- **[CODE_OPTIMIZATION.md](./guides/CODE_OPTIMIZATION.md)** - Verified optimizations, measured regressions, profiling guide, benchmarking strategies (TACTICAL implementation)
+- **[CODE_OPTIMIZATION.md](./guides/CODE_OPTIMIZATION.md)** - Verified optimizations, measured regressions, profiling guide, benchmarking strategies (TACTICAL implementation for mcp-postgres)
+- **[LOW_LEVEL_OPTIMIZATION.md](./guides/LOW_LEVEL_OPTIMIZATION.md)** - Hardware-level optimization: cache lines, mechanical sympathy, CPU architecture, lock-free concurrency (UNIVERSAL principles applicable across all systems)
 - **[OPTIMIZATIONS.md](./guides/OPTIMIZATIONS.md)** - Performance tuning parameters
 
 ### Compliance & Verification
