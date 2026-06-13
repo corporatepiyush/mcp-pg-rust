@@ -1,6 +1,6 @@
 # SKILLS: Automated SDLC & Agent Workflow Guide
 
-**Version**: 1.3.0 | **Type**: SDLC Automation | **For**: Coding Agents
+**Version**: 2.0.0 | **Type**: SDLC Automation | **For**: Coding Agents | **Updated**: Added control flow & post-activity verification
 
 ---
 
@@ -43,6 +43,148 @@ Mimalloc: LARGE_OS_PAGES=1, PAGE_RESET=0, EAGER_COMMIT=0
 
 ---
 
+## 1.5 CONTROL FLOW DECISIONS & POST-ACTIVITY VERIFICATION
+
+### Critical Decision Tree
+
+```
+START TASK
+├─ Tool parameter validation
+│  ├─ DECISION: Parameter names match actual tool schema?
+│  │  ├─ NO → FIX: Verify against tools/list response
+│  │  │        ACTION: Use 'sql' not 'query', validate all param names
+│  │  └─ YES → Continue
+│  └─ DECISION: Required parameters provided?
+│     ├─ NO → FIX: Add missing required params
+│     │        EXAMPLE: list_triggers needs 'table' param
+│     └─ YES → Continue
+│
+├─ Tool existence verification
+│  ├─ DECISION: Tool exists in tools/list?
+│  │  ├─ NO → FIX: Use alternative tool
+│  │  │        MAPPING: list_databases → use list_schemas
+│  │  │        MAPPING: show_table_structure → use describe_table
+│  │  │        ACTION: Query tools/list before test
+│  │  └─ YES → Continue
+│  └─ DECISION: Tool is implemented (not returning Method not found)?
+│     ├─ NO → FIX: Verify implementation exists in src/actions/
+│     │        ACTION: grep for tool name in source
+│     └─ YES → Continue
+│
+├─ Database state verification
+│  ├─ DECISION: Required test data exists?
+│  │  ├─ NO → FIX: Load test data first
+│  │  │        ACTION: Run load_test_data binary
+│  │  │        ACTION: Verify tables exist via list_tables
+│  │  └─ YES → Continue
+│  └─ DECISION: Trigger prerequisites met (for list_triggers)?
+│     ├─ NO → FIX: Use table that exists
+│     │        ACTION: Query available tables first
+│     └─ YES → Continue
+│
+├─ Protocol verification (TCP vs HTTP)
+│  ├─ DECISION: Both TCP and HTTP working?
+│  │  ├─ TCP FAIL → FIX: Check server on port 3000
+│  │  │         ACTION: nc -zv 127.0.0.1 3000
+│  │  ├─ HTTP FAIL → FIX: Check server on port 3001
+│  │  │          ACTION: curl http://127.0.0.1:3001/health
+│  │  └─ BOTH OK → Continue
+│  └─ DECISION: Same success rate on both protocols?
+│     ├─ NO → FIX: Investigate protocol-specific issue
+│     │        ACTION: Run dual_protocol tests
+│     │        ACTION: Check latency difference
+│     └─ YES → Continue
+│
+└─ Proceed with task
+```
+
+### Post-Activity Verification Checklist
+
+**AFTER RUNNING ANY TEST SUITE:**
+
+- [ ] **Success Rate Check**
+  - [ ] Minimum 90% success rate? (NOT 40%!)
+  - [ ] If < 90%: STOP and investigate
+  - [ ] Root causes:
+    - [ ] Wrong parameter names (e.g., 'query' vs 'sql')
+    - [ ] Tool doesn't exist (use tools/list to verify)
+    - [ ] Missing required parameters
+    - [ ] Database object doesn't exist
+
+- [ ] **Latency Verification**
+  - [ ] TCP latency < 20ms per request?
+  - [ ] HTTP latency < 200ms per request?
+  - [ ] If outlier found (e.g., 175ms on list_tables):
+    - [ ] Check for first-request overhead (server initialization)
+    - [ ] Run test again to verify it wasn't a one-time issue
+
+- [ ] **Protocol Parity Check**
+  - [ ] TCP and HTTP have same success rate?
+  - [ ] Both protocols return same result format?
+  - [ ] Latency difference < 15x (HTTP slower is normal)?
+
+- [ ] **Tool Availability Check**
+  - [ ] All tools in test are in tools/list response?
+  - [ ] No "Method not found" errors in logs?
+  - [ ] Run diagnostic:
+    ```bash
+    curl -s http://127.0.0.1:3001/rpc \
+      -d '{"jsonrpc":"2.0","method":"tools/list","params":{},"id":1}' \
+      -H "Content-Type: application/json" | jq '.result.tools[] | .name'
+    ```
+
+**AFTER MODIFYING TOOL TESTS:**
+
+- [ ] **Parameter Validation**
+  - [ ] All tool parameters match tool definition in tools.json?
+  - [ ] Required parameters are always provided?
+  - [ ] Parameter types are correct (string, number, boolean, object)?
+
+- [ ] **Test Coverage**
+  - [ ] Both TCP and HTTP tested for each tool?
+  - [ ] Success cases tested?
+  - [ ] Error cases tested?
+  - [ ] Edge cases (empty params, null values) tested?
+
+- [ ] **Result Validation**
+  - [ ] Response contains jsonrpc, id, result/error?
+  - [ ] Error responses have code and message?
+  - [ ] Success responses have non-null result?
+
+**AFTER DATABASE OPERATIONS (CREATE/DROP/MODIFY):**
+
+- [ ] **Immediate Verification (within 5 seconds)**
+  - [ ] Object exists/doesn't exist as expected?
+  - [ ] list_tables shows new table?
+  - [ ] list_indexes shows new index?
+  - [ ] list_schemas shows new schema?
+
+- [ ] **Backup Verification**
+  - [ ] backup_table created backup_<name> table?
+  - [ ] Backup contains all columns from original?
+  - [ ] Backup contains all rows from original?
+  - [ ] Backup created before any dangerous operation?
+
+- [ ] **Cleanup Verification**
+  - [ ] No orphaned objects left from test?
+  - [ ] No duplicate indexes?
+  - [ ] All temporary tables dropped?
+
+**AFTER PERFORMANCE TESTING:**
+
+- [ ] **Baseline Comparison**
+  - [ ] P95 latency < 10ms (vs 17,713 req/sec baseline)?
+  - [ ] Throughput >= 17,000 req/sec?
+  - [ ] No regression vs previous baseline?
+
+- [ ] **Load Test Health**
+  - [ ] 100% request success rate under concurrent load?
+  - [ ] No timeouts or connection resets?
+  - [ ] Connection pool not exhausted?
+  - [ ] Memory usage stable (not growing)?
+
+---
+
 ## 2. AUTOMATED TEST WORKFLOW
 
 ### 2.1 Unit Test Execution
@@ -72,6 +214,7 @@ cargo test --lib
 - PostgreSQL running on localhost:5432
 - Database accessible via `postgres://piyush:@localhost:5432/postgres`
 - Server NOT already running on port 3000
+- Load test data already in database (run load_test_data binary)
 
 **PROCEDURE**:
 
@@ -85,26 +228,54 @@ sleep 3
 **Step 2**: Verify server is running
 ```bash
 nc -zv 127.0.0.1 3000 || exit 1
+curl -s http://127.0.0.1:3001/health | jq -r '.status' | grep -q "healthy" || exit 1
 ```
 
-**Step 3**: Run integration tests
+**Step 3**: Run dual-protocol integration tests (CRITICAL for protocol parity)
+```bash
+cargo test --test integration_dual_protocol -- --nocapture --test-threads=1
+# MUST SEE: "TCP  │ Success: 10/10 (100.0%) │ ..." and "HTTP │ Success: 10/10 (100.0%) │ ..."
+# FAIL IF: < 90% success rate on either protocol
+```
+
+**Step 4**: Run integration tests
 ```bash
 cargo test --test integration_all_tools -- --nocapture --test-threads=1
 ```
 
-**Step 4**: Run data tests
+**Step 5**: Run data tests
 ```bash
 cargo test --test integration_test_data_tools -- --nocapture --test-threads=1
 ```
 
-**Step 5**: Cleanup
+**Step 6**: Run load tests (Rust-based, not shell)
 ```bash
-pkill -f "mcp-postgres --http-port"
+cargo test --test load_test -- --ignored --nocapture
+# MUST SEE: "GOOD" or "EXCELLENT" performance tier
+# FAIL IF: "DEGRADED" or "CRITICAL"
 ```
 
+**Step 7**: Cleanup
+```bash
+pkill -f "mcp-postgres"
+```
+
+**POST-EXECUTION VERIFICATION** (from Section 1.5):
+- [ ] Dual-protocol test: 100% success on both TCP (port 3000) and HTTP (port 3001)?
+  - [ ] If one protocol fails: INVESTIGATE protocol-specific issue
+  - [ ] If both fail: Tool doesn't exist (verify with tools/list)
+- [ ] Individual test latencies make sense?
+  - [ ] TCP should be 2-20ms per call
+  - [ ] HTTP should be 1-200ms per call (first call may be slower)
+  - [ ] If outlier > 200ms: Check if it's first request or database-dependent
+- [ ] All assertions passed (no panics)?
+  - [ ] If panic: Read error message, likely parameter or data mismatch
+
 **ACCEPTANCE CRITERIA**:
+- ✅ Dual-protocol tests: 100% success (10/10 on both TCP and HTTP)
 - ✅ All 12 integration_all_tools tests pass
 - ✅ All 17 integration_test_data_tools tests pass
+- ✅ Load test: 100% success, GOOD or EXCELLENT tier
 - ✅ No #[ignore] annotations on any test
 - ✅ All tools tested (no missing tool tests)
 - ✅ Response validation successful
@@ -201,6 +372,56 @@ tools/call drop_table {table: "important_data"}
 ```
 
 **FAILURE ACTION**: Block commit, list failing tests, require fix before retry
+
+---
+
+### 2.2.5 Dual-Protocol Integration Test
+
+**NEW**: Tests both TCP and HTTP with statistics tracking and comparison
+
+**TRIGGER**: After any protocol-related changes, as part of integration testing
+
+**WHAT IT TESTS**:
+- Both TCP (port 3000) and HTTP (port 3001) for each tool
+- Side-by-side latency comparison
+- Success/failure rates per protocol
+- Protocol parity (same result on both transports)
+
+**PROCEDURE**:
+```bash
+# Start server
+cargo run --bin mcp-postgres -- --database-url "$DATABASE_URL" &
+sleep 4
+
+# Run dual-protocol tests
+cargo test --test integration_dual_protocol -- --nocapture --test-threads=1
+
+# Kill server
+pkill -f "mcp-postgres"
+```
+
+**EXPECTED OUTPUT**:
+```
+✓ TCP    0ms | ✓ HTTP    1ms | show_current_user
+✓ TCP    1ms | ✓ HTTP    1ms | list_schemas
+✓ TCP    5ms | ✓ HTTP    1ms | list_triggers
+...
+TCP  │ Success: 10/10 (100.0%) │ Avg latency: 5.6ms
+HTTP │ Success: 10/10 (100.0%) │ Avg latency: 20.1ms
+```
+
+**ACCEPTANCE CRITERIA**:
+- ✅ Both TCP and HTTP: 100% success (10/10)
+- ✅ TCP latency: 2-20ms per request
+- ✅ HTTP latency: 1-200ms per request
+- ✅ Protocol parity: Same success rate on both
+- ✅ Per-tool comparison table generated
+
+**FAILURE ACTION**: 
+- If TCP fails: Check TCP server on port 3000
+- If HTTP fails: Check HTTP server on port 3001
+- If one protocol succeeds but other fails: Protocol-specific issue detected
+- If both fail: Tool likely doesn't exist (verify tools/list)
 
 ---
 
