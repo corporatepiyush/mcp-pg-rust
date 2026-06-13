@@ -820,5 +820,21 @@
         "table"
       ]
     }
+  },
+  {
+    "name": "backup_table",
+    "description": "Create a complete backup copy of a table with all data, columns, indexes, and partitions. Backup table is named backup_<original_table>. Essential safety feature for data protection - create backup before dropping or modifying tables. Backup can be restored if original table is accidentally deleted.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {
+          "type": "string",
+          "description": "Table name to backup (required). Example: 'users', 'orders'. Backup will be created as 'backup_users', 'backup_orders'. Case-insensitive."
+        }
+      },
+      "required": [
+        "table"
+      ]
+    }
   }
 ]

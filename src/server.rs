@@ -236,7 +236,7 @@ async fn handle_tools_call(
         "execute_insert", "execute_update", "execute_delete",
         "async_execute_insert", "async_execute_update", "async_execute_delete",
         "async_batch_insert", "async_batch_update", "async_batch_delete", "async_batch_insert_copy",
-        "create_table", "drop_table", "create_view", "drop_view", "alter_view", "create_schema", "drop_schema", "create_sequence", "drop_sequence", "alter_index", "create_index", "drop_index", "create_partition", "drop_partition",
+        "create_table", "drop_table", "create_view", "drop_view", "alter_view", "create_schema", "drop_schema", "create_sequence", "drop_sequence", "alter_index", "backup_table", "create_index", "drop_index", "create_partition", "drop_partition",
         "vacuum_analyze", "analyze_table", "reindex_table",
         "reset_statistics", "truncate_table",
     ];
@@ -304,6 +304,7 @@ async fn handle_tools_call(
         "drop_sequence" => actions::schema::drop_sequence(&client, &tool_args).await,
         "alter_index" => actions::schema::alter_index(&client, &tool_args).await,
         "list_partitions" => actions::schema::list_partitions(&client, &tool_args).await,
+        "backup_table" => actions::schema::backup_table(&client, &tool_args).await,
         "create_index" => actions::schema::create_index(&client, &tool_args).await,
         "drop_index" => actions::schema::drop_index(&client, &tool_args).await,
         "create_partition" => actions::schema::create_partition(&client, &tool_args).await,

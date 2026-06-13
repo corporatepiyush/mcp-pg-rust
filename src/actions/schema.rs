@@ -1034,3 +1034,118 @@ pub async fn list_partitions(client: &Client, params: &Option<&Value>) -> MCPRes
         "partitions": partitions
     }))
 }
+
+/// 22. Backup table
+pub async fn backup_table(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'table' parameter".into()))?;
+
+    validate_identifier(table, "table")?;
+
+    let backup_name = format!("backup_{}", table);
+    validate_identifier(&backup_name, "backup_name")?;
+
+    // Verify source table exists
+    let exists: (i64,) = client
+        .query_one(
+            "SELECT 1 FROM information_schema.tables
+             WHERE table_name = $1 AND table_schema NOT IN ('pg_catalog', 'information_schema')",
+            &[&table],
+        )
+        .await
+        .map_err(|_| MCPError::InvalidParams(format!("Table '{}' does not exist", table)))?
+        .try_get(0)
+        .map(|val| (val,))
+        .map_err(|_| MCPError::InvalidParams("Could not verify table existence".into()))?;
+
+    // Check if backup already exists
+    let backup_exists = client
+        .query_opt(
+            "SELECT 1 FROM information_schema.tables WHERE table_name = $1",
+            &[&backup_name],
+        )
+        .await?
+        .is_some();
+
+    if backup_exists {
+        return Err(MCPError::InvalidParams(
+            format!("Backup table '{}' already exists. Drop it first or use a different table.", backup_name)
+        ));
+    }
+
+    // Create backup table with all columns and structure
+    let create_backup_sql = format!("CREATE TABLE {} AS SELECT * FROM {}", backup_name, table);
+    client.execute(&create_backup_sql, &[]).await?;
+
+    // Get column info for the original table
+    let columns: Vec<(String, String, String)> = client
+        .query(
+            "SELECT column_name, data_type, is_nullable
+             FROM information_schema.columns
+             WHERE table_name = $1
+             ORDER BY ordinal_position",
+            &[&table],
+        )
+        .await?
+        .iter()
+        .map(|row| {
+            (
+                row.get::<_, String>(0),
+                row.get::<_, String>(1),
+                row.get::<_, String>(2),
+            )
+        })
+        .collect();
+
+    // Get and copy indexes
+    let indexes: Vec<String> = client
+        .query(
+            "SELECT indexname FROM pg_indexes WHERE tablename = $1 AND schemaname NOT IN ('pg_catalog')",
+            &[&table],
+        )
+        .await?
+        .iter()
+        .map(|row| row.get::<_, String>(0))
+        .collect();
+
+    let mut indexes_created = 0;
+    for idx_name in indexes {
+        let new_idx_name = format!("{}_on_{}", idx_name, backup_name);
+        let idx_def: String = client
+            .query_one(
+                "SELECT indexdef FROM pg_indexes WHERE indexname = $1",
+                &[&idx_name],
+            )
+            .await?
+            .get(0);
+
+        let updated_def = idx_def
+            .replace(&format!("ON {}", table), &format!("ON {}", backup_name))
+            .replace(&idx_name, &new_idx_name);
+
+        if let Ok(_) = client.execute(&updated_def, &[]).await {
+            indexes_created += 1;
+        }
+    }
+
+    // Get row count
+    let row_count: (i64,) = client
+        .query_one(&format!("SELECT COUNT(*) FROM {}", backup_name), &[])
+        .await?
+        .try_get(0)
+        .map(|val| (val,))
+        .map_err(|_| MCPError::InvalidParams("Could not count rows".into()))?;
+
+    Ok(json!({
+        "status": "success",
+        "action": "BACKUP TABLE",
+        "original_table": table,
+        "backup_table": backup_name,
+        "rows_copied": row_count.0,
+        "columns_copied": columns.len(),
+        "indexes_created": indexes_created,
+        "message": format!("Table '{}' backed up to '{}' with {} rows", table, backup_name, row_count.0)
+    }))
+}

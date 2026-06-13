@@ -1112,3 +1112,244 @@ fn test_edge_case_sql_injection_in_identifier() {
         }
     }
 }
+
+// ============ TOOL 40: backup_table - Happy Path ============
+#[test]
+fn test_tool_40_backup_table_happy_path() {
+    // Create a test table with data
+    let _ = tcp_request("create_table", json!({
+        "table": "test_backup_source_40",
+        "columns": ["id SERIAL PRIMARY KEY", "name VARCHAR(255)", "value INT"]
+    }));
+
+    // Insert some data
+    let _ = tcp_request("execute_insert", json!({
+        "table": "test_backup_source_40",
+        "columns": ["name", "value"],
+        "rows": [["Alice", 100], ["Bob", 200], ["Charlie", 300]]
+    }));
+
+    // Create backup
+    match tcp_request("backup_table", json!({
+        "table": "test_backup_source_40"
+    })) {
+        Ok(response) => {
+            let result = response.get("result").expect("Missing result");
+            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "BACKUP TABLE");
+            assert_eq!(result.get("status").and_then(|v| v.as_str()).unwrap_or(""), "success");
+            assert!(result.get("rows_copied").is_some());
+            assert_eq!(result.get("rows_copied").and_then(|v| v.as_i64()).unwrap_or(0), 3);
+            println!("✓ backup_table: test_backup_source_40 backed up with 3 rows");
+        }
+        Err(e) => panic!("✗ backup_table failed: {}", e),
+    }
+}
+
+// ============ ERROR: backup_table - missing table parameter ============
+#[test]
+fn test_error_backup_table_missing_table() {
+    match tcp_request("backup_table", json!({})) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ backup_table error handling: correctly rejected missing table");
+            } else {
+                panic!("✗ backup_table should fail when table missing");
+            }
+        }
+        Err(_) => {
+            println!("✓ backup_table error handling: correctly rejected missing table");
+        }
+    }
+}
+
+// ============ ERROR: backup_table - nonexistent table ============
+#[test]
+fn test_error_backup_table_nonexistent() {
+    match tcp_request("backup_table", json!({
+        "table": "nonexistent_table_xyz_999"
+    })) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ backup_table error handling: correctly rejected nonexistent table");
+            } else {
+                panic!("✗ backup_table should fail for nonexistent table");
+            }
+        }
+        Err(_) => {
+            println!("✓ backup_table error handling: correctly rejected nonexistent table");
+        }
+    }
+}
+
+// ============ ERROR: backup_table - backup already exists ============
+#[test]
+fn test_error_backup_table_already_exists() {
+    // Create table
+    let _ = tcp_request("create_table", json!({
+        "table": "test_backup_dup_41",
+        "columns": ["id SERIAL PRIMARY KEY"]
+    }));
+
+    // First backup should succeed
+    let _ = tcp_request("backup_table", json!({
+        "table": "test_backup_dup_41"
+    }));
+
+    // Second backup should fail (backup table already exists)
+    match tcp_request("backup_table", json!({
+        "table": "test_backup_dup_41"
+    })) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ backup_table error handling: correctly rejected duplicate backup");
+            } else {
+                panic!("✗ backup_table should fail when backup table already exists");
+            }
+        }
+        Err(_) => {
+            println!("✓ backup_table error handling: correctly rejected duplicate backup");
+        }
+    }
+}
+
+// ============ EDGE CASE: backup_table - empty table (0 rows) ============
+#[test]
+fn test_edge_case_backup_empty_table() {
+    // Create empty table
+    let _ = tcp_request("create_table", json!({
+        "table": "test_backup_empty_42",
+        "columns": ["id SERIAL PRIMARY KEY", "data TEXT"]
+    }));
+
+    match tcp_request("backup_table", json!({
+        "table": "test_backup_empty_42"
+    })) {
+        Ok(response) => {
+            let result = response.get("result").expect("Missing result");
+            assert_eq!(result.get("rows_copied").and_then(|v| v.as_i64()).unwrap_or(-1), 0);
+            println!("✓ backup_table: correctly backed up empty table with 0 rows");
+        }
+        Err(e) => panic!("✗ backup_table should handle empty tables: {}", e),
+    }
+}
+
+// ============ EDGE CASE: backup_table - large table with many columns ============
+#[test]
+fn test_edge_case_backup_many_columns() {
+    // Create table with many columns
+    let _ = tcp_request("create_table", json!({
+        "table": "test_backup_wide_43",
+        "columns": [
+            "id SERIAL PRIMARY KEY",
+            "col1 VARCHAR(50)",
+            "col2 VARCHAR(50)",
+            "col3 INT",
+            "col4 INT",
+            "col5 BOOLEAN",
+            "col6 TIMESTAMP",
+            "col7 TEXT",
+            "col8 NUMERIC",
+            "col9 VARCHAR(100)",
+            "col10 VARCHAR(100)"
+        ]
+    }));
+
+    match tcp_request("backup_table", json!({
+        "table": "test_backup_wide_43"
+    })) {
+        Ok(response) => {
+            let result = response.get("result").expect("Missing result");
+            assert_eq!(result.get("columns_copied").and_then(|v| v.as_i64()).unwrap_or(0), 11);
+            println!("✓ backup_table: correctly backed up table with 11 columns");
+        }
+        Err(e) => panic!("✗ backup_table should handle many columns: {}", e),
+    }
+}
+
+// ============ EDGE CASE: backup_table - table with indexes ============
+#[test]
+fn test_edge_case_backup_with_indexes() {
+    // Create table with index
+    let _ = tcp_request("create_table", json!({
+        "table": "test_backup_idx_44",
+        "columns": ["id SERIAL PRIMARY KEY", "email VARCHAR(255)"]
+    }));
+
+    // Create index
+    let _ = tcp_request("create_index", json!({
+        "index_name": "idx_backup_email_44",
+        "table": "test_backup_idx_44",
+        "columns": ["email"]
+    }));
+
+    match tcp_request("backup_table", json!({
+        "table": "test_backup_idx_44"
+    })) {
+        Ok(response) => {
+            let result = response.get("result").expect("Missing result");
+            assert!(result.get("indexes_created").is_some());
+            println!("✓ backup_table: correctly backed up table with indexes");
+        }
+        Err(e) => panic!("✗ backup_table should backup indexes: {}", e),
+    }
+}
+
+// ============ SECURITY: backup_table - SQL injection in table name (should fail) ============
+#[test]
+fn test_security_backup_table_sql_injection() {
+    match tcp_request("backup_table", json!({
+        "table": "test; DROP TABLE test; --"
+    })) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ backup_table security: correctly rejected SQL injection");
+            } else {
+                panic!("✗ backup_table should reject SQL injection");
+            }
+        }
+        Err(_) => {
+            println!("✓ backup_table security: correctly rejected SQL injection");
+        }
+    }
+}
+
+// ============ RECOVERY: backup_table followed by original table drop (data safety) ============
+#[test]
+fn test_recovery_backup_before_drop() {
+    // Create table with data
+    let _ = tcp_request("create_table", json!({
+        "table": "test_recovery_45",
+        "columns": ["id SERIAL PRIMARY KEY", "important_data TEXT"]
+    }));
+
+    let _ = tcp_request("execute_insert", json!({
+        "table": "test_recovery_45",
+        "columns": ["important_data"],
+        "rows": [["critical data"], ["more critical data"]]
+    }));
+
+    // Create backup first (safety measure)
+    let backup_result = tcp_request("backup_table", json!({
+        "table": "test_recovery_45"
+    }));
+
+    assert!(backup_result.is_ok(), "Backup should succeed");
+
+    // Now drop the original (simulating accidental deletion)
+    let _ = tcp_request("drop_table", json!({
+        "table": "test_recovery_45"
+    }));
+
+    // Verify backup still exists with data
+    match tcp_request("execute_query", json!({
+        "query": "SELECT COUNT(*) as row_count FROM backup_test_recovery_45"
+    })) {
+        Ok(response) => {
+            let result = response.get("result").expect("Missing result");
+            let rows = result.get("rows").and_then(|v| v.as_array()).unwrap_or(&vec![]);
+            assert!(!rows.is_empty(), "Backup table should have data");
+            println!("✓ backup_table: recovery successful - backup preserved after original drop");
+        }
+        Err(e) => panic!("✗ backup should preserve data: {}", e),
+    }
+}
