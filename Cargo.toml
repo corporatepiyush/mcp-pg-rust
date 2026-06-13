@@ -90,6 +90,10 @@ path = "bin/batch_load.rs"
 name = "benchmark"
 path = "bin/benchmark.rs"
 
+[[bin]]
+name = "load_test_data"
+path = "bin/load_test_data.rs"
+
 [profile.release]
 opt-level = 3
 lto = "fat"
