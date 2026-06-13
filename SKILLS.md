@@ -715,62 +715,10 @@ cargo publish
 gh release create v[VERSION] --title "v[VERSION]" --notes "Release notes"
 ```
 
-**Step 4**: Update Package Managers
+**Step 4**: Update Package Managers (HUMAN RESPONSIBILITY)
 
-**4a. Update Homebrew Formula (macOS)**
-```bash
-# After successful crates.io publication, update the homebrew formula
-# 1. Get the tarball SHA256 from the GitHub release
-cd /tmp
-curl -L https://github.com/corporatepiyush/mcp-pg-rust/archive/refs/tags/v[VERSION].tar.gz -o mcp-postgres-[VERSION].tar.gz
-SHA256=$(shasum -a 256 mcp-postgres-[VERSION].tar.gz | awk '{print $1}')
-
-# 2. Update the formula in the main repo
-cd /path/to/mcp-postgres
-sed -i '' "s/sha256 \".*\"/sha256 \"$SHA256\"/" homebrew-mcp-postgres/Formula/mcp_postgres.rb
-sed -i '' "s|tags/v[0-9.]*|tags/v[VERSION]|g" homebrew-mcp-postgres/Formula/mcp_postgres.rb
-
-# 3. Verify the update
-grep "sha256\|tags/v" homebrew-mcp-postgres/Formula/mcp_postgres.rb
-
-# 4. Commit changes (don't push yet - see 4c)
-git add homebrew-mcp-postgres/Formula/mcp_postgres.rb
-```
-
-**4b. Update Chocolatey Package (Windows)**
-```powershell
-# 1. Get Windows binary from release and calculate SHA256
-$zipUrl = "https://github.com/corporatepiyush/mcp-pg-rust/releases/download/v[VERSION]/mcp-postgres-x86_64-pc-windows-gnu.zip"
-$outputPath = "$env:TEMP\mcp-postgres-[VERSION].zip"
-Invoke-WebRequest -Uri $zipUrl -OutFile $outputPath
-$sha256 = (Get-FileHash -Path $outputPath -Algorithm SHA256).Hash
-
-# 2. Update version in nuspec
-$nuspecPath = "chocolatey-mcp-postgres\mcp-postgres.nuspec"
-(Get-Content $nuspecPath) -replace '<version>.*</version>', '<version>[VERSION]</version>' | Set-Content $nuspecPath
-
-# 3. Update URL and checksum in install script
-$installScript = "chocolatey-mcp-postgres\tools\chocolateyinstall.ps1"
-(Get-Content $installScript) -replace 'v[0-9.]*', 'v[VERSION]' | Set-Content $installScript
-(Get-Content $installScript) -replace "checksum = '.*'", "checksum = '$sha256'" | Set-Content $installScript
-
-# 4. Commit changes (don't push yet - see 4c)
-git add chocolatey-mcp-postgres/
-```
-
-**4c. Push all changes**
-```bash
-git commit -m "Update package managers (Homebrew, Chocolatey) for [VERSION] release"
-git push
-```
-
-**ACCEPTANCE CRITERIA**:
-- ✅ Git tag created and pushed
-- ✅ Package published to crates.io
-- ✅ GitHub release created
-- ✅ Homebrew formula updated with new version and SHA256
-- ✅ Formula changes committed and pushed
-- ✅ Documentation updated
+**Note**: Do not update Homebrew or Chocolatey packages - this is your responsibility.
+Inform you when crates.io publish is complete so you can update those separately.
 
 ---
 
