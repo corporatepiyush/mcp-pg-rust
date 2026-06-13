@@ -1,6 +1,6 @@
 [package]
 name = "mcp-postgres"
-version = "1.2.0"
+version = "1.2.1"
 edition = "2021"
 authors = ["Piyush"]
 description = "High-performance MCP server for PostgreSQL with CPU-aware connection pooling and optimized buffers"
