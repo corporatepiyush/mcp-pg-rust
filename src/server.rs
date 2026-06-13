@@ -237,8 +237,7 @@ async fn handle_tools_call(
         "async_execute_insert", "async_execute_update", "async_execute_delete",
         "async_batch_insert", "async_batch_update", "async_batch_delete", "async_batch_insert_copy",
         "vacuum_analyze", "analyze_table", "reindex_table",
-        "reset_statistics", "kill_connection",
-        "begin_transaction", "commit_transaction", "rollback_transaction",
+        "reset_statistics",
     ];
 
     if config.server.access_mode == crate::config::AccessMode::Restricted
@@ -260,7 +259,7 @@ async fn handle_tools_call(
             | "async_batch_insert" | "async_batch_update" | "async_batch_delete" | "async_batch_insert_copy"
             | "get_table_stats" | "get_index_stats" | "show_database_size"
             | "show_table_size" | "get_cache_hit_ratio"
-            | "list_connections" | "kill_connection" | "show_current_user"
+            | "list_connections" | "show_current_user"
             | "show_running_queries" | "show_connection_summary"
             | "vacuum_analyze" | "analyze_table" | "reindex_table"
             | "get_pg_stat_statements" | "reset_statistics"
@@ -271,7 +270,6 @@ async fn handle_tools_call(
             | "show_replication_status" | "list_replication_slots"
             | "list_standby_servers" | "show_wal_info" | "show_base_backup_progress"
             | "show_active_transactions" | "show_locks" | "show_waiting_locks"
-            | "begin_transaction" | "commit_transaction" | "rollback_transaction"
             | "show_transaction_isolation" | "show_deadlocks"
             | "show_autocommit_status" | "show_transaction_timeout"
             | "analyze_db_health" | "list_unused_indexes" | "list_duplicate_indexes"
@@ -314,7 +312,6 @@ async fn handle_tools_call(
         "get_cache_hit_ratio" => actions::monitoring::get_cache_hit_ratio(&client, &tool_args).await,
         // Connection actions
         "list_connections" => actions::connections::list_connections(&client, &tool_args).await,
-        "kill_connection" => actions::connections::kill_connection(&client, &tool_args).await,
         "show_current_user" => actions::connections::show_current_user(&client, &tool_args).await,
         "show_running_queries" => actions::connections::show_running_queries(&client, &tool_args).await,
         "show_connection_summary" => actions::connections::show_connection_summary(&client, &tool_args).await,
@@ -346,9 +343,6 @@ async fn handle_tools_call(
         "show_active_transactions" => actions::transactions::show_active_transactions(&client, &tool_args).await,
         "show_locks" => actions::transactions::show_locks(&client, &tool_args).await,
         "show_waiting_locks" => actions::transactions::show_waiting_locks(&client, &tool_args).await,
-        "begin_transaction" => actions::transactions::begin_transaction(&client, &tool_args).await,
-        "commit_transaction" => actions::transactions::commit_transaction(&client, &tool_args).await,
-        "rollback_transaction" => actions::transactions::rollback_transaction(&client, &tool_args).await,
         "show_transaction_isolation" => actions::transactions::show_transaction_isolation(&client, &tool_args).await,
         "show_deadlocks" => actions::transactions::show_deadlocks(&client, &tool_args).await,
         "show_autocommit_status" => actions::transactions::show_autocommit_status(&client, &tool_args).await,

@@ -95,50 +95,7 @@ pub async fn show_waiting_locks(client: &Client, _params: &Option<&Value>) -> MC
 }
 
 /// 44. Begin transaction
-pub async fn begin_transaction(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let isolation_level = params
-        .as_ref()
-        .and_then(|p| p.get("isolation_level").and_then(|v| v.as_str()).map(|s| s.to_string()))
-        .unwrap_or_else(|| "READ COMMITTED".to_string());
-
-    let valid_levels = vec!["SERIALIZABLE", "REPEATABLE READ", "READ COMMITTED", "READ UNCOMMITTED"];
-    if !valid_levels.contains(&isolation_level.as_str()) {
-        return Err(crate::errors::MCPError::InvalidParams(
-            format!("Invalid isolation level: {}", isolation_level)
-        ));
-    }
-
-    let sql = format!("BEGIN ISOLATION LEVEL {}", isolation_level);
-    client.execute(&sql, &[]).await?;
-
-    Ok(json!({
-        "status": "success",
-        "action": "BEGIN",
-        "isolation_level": isolation_level
-    }))
-}
-
-/// 45. Commit transaction
-pub async fn commit_transaction(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
-    client.execute("COMMIT", &[]).await?;
-
-    Ok(json!({
-        "status": "success",
-        "action": "COMMIT"
-    }))
-}
-
-/// 46. Rollback transaction
-pub async fn rollback_transaction(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
-    client.execute("ROLLBACK", &[]).await?;
-
-    Ok(json!({
-        "status": "success",
-        "action": "ROLLBACK"
-    }))
-}
-
-/// 47. Show transaction isolation levels
+/// 45. Show transaction isolation levels
 pub async fn show_transaction_isolation(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     let rows = client
         .query("SHOW transaction_isolation", &[])

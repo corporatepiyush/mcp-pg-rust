@@ -9,7 +9,7 @@
 ### Current Production State
 - **Version**: 1.3.0
 - **Status**: Production Ready ✅
-- **28 Tools**: All implemented and MCP v1.0 compliant (includes 3 async DML tools)
+- **24 Tools**: All implemented and MCP v1.0 compliant (removed non-functional transaction tools)
 - **Transports**: TCP (3000), HTTP/2 (3001), stdio
 - **Test Coverage**: 29 tests (12 integration, 17 data), 100% tool coverage
 - **Performance**: P95 < 10ms all tools, 17K+ req/sec concurrent
@@ -106,7 +106,7 @@ pkill -f "mcp-postgres --http-port"
 - ✅ All 12 integration_all_tools tests pass
 - ✅ All 17 integration_test_data_tools tests pass
 - ✅ No #[ignore] annotations on any test
-- ✅ All 28 tools tested (no missing tool tests)
+- ✅ All 24 tools tested (no missing tool tests)
 - ✅ Response validation successful
 - ✅ All tests use REAL database (verified via SQL queries in logs)
 
@@ -137,7 +137,7 @@ TOOLS=$(curl -s -X POST http://127.0.0.1:3001/rpc \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"tools/list","id":1}' | \
   jq -r '.result.tools | length')
-[ "$TOOLS" = "28" ] || exit 1
+[ "$TOOLS" = "24" ] || exit 1
 ```
 
 **Test 3: tools/call via HTTP**
@@ -160,7 +160,7 @@ ERROR=$(curl -s -X POST http://127.0.0.1:3001/rpc \
 
 **ACCEPTANCE CRITERIA**:
 - ✅ Health endpoint responds with status=healthy
-- ✅ tools/list returns exactly 28 tools
+- ✅ tools/list returns exactly 24 tools
 - ✅ tools/call executes tool correctly
 - ✅ Error handling returns proper JSON-RPC error code
 - ✅ HTTP/2 response headers valid
@@ -261,7 +261,7 @@ echo "$RESP" | jq -e '.result.serverInfo' >/dev/null || exit 1
 ```bash
 RESP=$(echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | nc 127.0.0.1 3000)
 COUNT=$(echo "$RESP" | jq '.result.tools | length')
-[ "$COUNT" = "28" ] || exit 1
+[ "$COUNT" = "24" ] || exit 1
 # Verify each tool has required fields
 echo "$RESP" | jq -e '.result.tools[] | select(.name and .description and .inputSchema)' >/dev/null || exit 1
 ```
@@ -308,7 +308,7 @@ echo "Tools count: $COUNT"
 
 **ACCEPTANCE CRITERIA**:
 - ✅ tools.json is valid JSON
-- ✅ Exactly 28 tools defined
+- ✅ Exactly 24 tools defined
 - ✅ Each tool has name, description, inputSchema
 - ✅ All inputSchemas have type=object and properties
 - ✅ All required parameters listed in required array
@@ -349,7 +349,7 @@ fn test_tool_<name>_correctness() {
 - ✅ Tool rejects invalid inputs with proper error
 - ✅ Tool validates required parameters
 - ✅ Response JSON is valid and parseable
-- ✅ All 28 tools have at least 1 correctness test
+- ✅ All 24 tools have at least 1 correctness test
 
 **FAILURE ACTION**: BLOCK commit, fix failing tool test
 
@@ -449,7 +449,7 @@ cargo outdated --format list
 [ ] Security audit passed
 [ ] Version number incremented in Cargo.toml
 [ ] CHANGELOG.md updated
-[ ] tools.json has exactly 28 tools
+[ ] tools.json has exactly 24 tools
 [ ] Homebrew formula will be updated after crates.io release
 [ ] Chocolatey package will be updated after crates.io release
 ```
@@ -698,7 +698,7 @@ echo "Rolled back due to [reason]"
 | Metric | Threshold | Action |
 |--------|-----------|--------|
 | Test pass rate | < 100% | BLOCK |
-| Tool coverage | < 28 tools tested | BLOCK |
+| Tool coverage | < 24 tools tested | BLOCK |
 | Integration tests | < 29 passing | BLOCK |
 | HTTP tests | Any fail | BLOCK |
 
@@ -706,7 +706,7 @@ echo "Rolled back due to [reason]"
 
 | Metric | Threshold | Action |
 |--------|-----------|--------|
-| tools.json count | != 28 | BLOCK |
+| tools.json count | != 24 | BLOCK |
 | JSON-RPC format | Non-compliant | BLOCK |
 | MCP protocol version | Missing | BLOCK |
 | Error responses | Invalid format | BLOCK |
@@ -750,7 +750,7 @@ cargo test --test integration_all_tools -- --nocapture
 - All P95 latencies < 10ms
 - Concurrent throughput >= 17,713 req/sec
 - All 29 tests passing
-- 28 tools exactly
+- 24 tools exactly
 - 100% MCP v1.0 compliance
 
 ---

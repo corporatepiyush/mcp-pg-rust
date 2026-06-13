@@ -35,31 +35,6 @@ pub async fn list_connections(client: &Client, _params: &Option<&Value>) -> MCPR
     Ok(json!({ "connections": connections }))
 }
 
-/// 17. Kill connection
-pub async fn kill_connection(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let pid = params
-        .as_ref()
-        .and_then(|p| p.get("pid").and_then(|v| v.as_i64()))
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'pid' parameter".into()))?;
-
-    if pid <= 0 || pid > MAX_PID {
-        return Err(crate::errors::MCPError::InvalidParams(
-            format!("'pid' must be between 1 and {MAX_PID}")
-        ));
-    }
-
-    let rows = client
-        .query("SELECT pg_terminate_backend($1)", &[&(pid as i32)])
-        .await?;
-
-    let terminated = rows[0].get::<_, bool>(0);
-
-    Ok(json!({
-        "pid": pid,
-        "terminated": terminated
-    }))
-}
-
 /// 18. Show current user
 pub async fn show_current_user(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     let rows = client
