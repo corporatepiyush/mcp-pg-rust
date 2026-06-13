@@ -12,7 +12,7 @@
 - Direct JSON-RPC 2.0 protocol over TCP socket
 - Stateful connection per client
 - Supports parameterized queries via tokio_postgres Client
-- Latency baseline: 2-20ms per request
+- Latency baseline: < 10ms per request (STRICT: > 10ms is not acceptable, > 20ms is deal breaker)
 - No connection pooling needed (one client per connection)
 
 **HTTP/2 Server (Port 3001)**:
@@ -20,7 +20,7 @@
 - Stateless (each request is independent)
 - Connection pooling via `deadpool::postgres` (Pool<Client>)
 - Each request randomly selects connection from pool
-- Latency baseline: 1-200ms per request (first request may be slow due to pool initialization)
+- Latency baseline: < 10ms per request (STRICT: > 10ms is not acceptable, > 20ms is deal breaker; pool init overhead acceptable only for first request)
 - Health endpoint: GET `/health` returns `{"status": "healthy"}`
 
 **Critical**: HTTP cannot maintain transaction state across requests. No transaction tools (begin_transaction, commit_transaction, rollback_transaction, kill_connection) are implemented.
@@ -247,24 +247,25 @@ TEST COMPLETED
 │  │  │        └─ Retry after fixes
 │  │  └─ YES → Continue
 │  │
-├─ LATENCY CHECK
+├─ LATENCY CHECK (STRICT REQUIREMENTS)
 │  ├─ TCP LATENCY
 │  │  ├─ MEASUREMENT: Average of all TCP requests
-│  │  ├─ DECISION: 2-20ms?
-│  │  │  ├─ < 2ms   → Suspicious, may be cached
-│  │  │  ├─ 2-20ms  → OK
-│  │  │  ├─ 20-100ms  → Acceptable (depends on query)
-│  │  │  └─ > 100ms  → INVESTIGATE (slow query? network?)
-│  │  └─ Continue
+│  │  ├─ DECISION: < 10ms?
+│  │  │  ├─ < 5ms   → Excellent
+│  │  │  ├─ 5-10ms  → Good
+│  │  │  ├─ 10-20ms → Not acceptable (> 10ms is not good)
+│  │  │  └─ > 20ms  → DEAL BREAKER, STOP AND INVESTIGATE
+│  │  └─ If > 10ms: INVESTIGATE immediately
 │  │
 │  ├─ HTTP LATENCY
 │  │  ├─ MEASUREMENT: Average of all HTTP requests
-│  │  ├─ DECISION: 1-200ms?
-│  │  │  ├─ < 1ms   → Suspicious, may be cached
-│  │  │  ├─ 1-75ms  → Excellent
-│  │  │  ├─ 75-200ms → Acceptable (pool overhead)
-│  │  │  └─ > 200ms → INVESTIGATE
-│  │  └─ Continue
+│  │  ├─ DECISION: < 10ms?
+│  │  │  ├─ < 5ms   → Excellent
+│  │  │  ├─ 5-10ms  → Good
+│  │  │  ├─ 10-20ms → Not acceptable (> 10ms is not good)
+│  │  │  └─ > 20ms  → DEAL BREAKER, STOP AND INVESTIGATE
+│  │  └─ Exception: First request may have pool init overhead, acceptable if subsequent requests < 10ms
+│  │  └─ If avg > 10ms: INVESTIGATE immediately
 │  │
 │  ├─ DIFFERENCE CHECK
 │  │  ├─ MEASUREMENT: HTTP avg / TCP avg
