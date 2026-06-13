@@ -1,185 +1,315 @@
 [
   {
     "name": "list_tables",
-    "description": "List all tables in the database",
-    "inputSchema": { "type": "object", "properties": {} }
+    "description": "List all user-defined tables in the database with schema, name, and table type. Use this to discover available tables, understand the database structure, and identify which tables are available for querying or modification. Returns a list of tables (BASE TABLE, TEMPORARY, etc.) excluding system tables. Useful for schema exploration and data modeling.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
   },
   {
-    "name": "batch_insert",
-    "description": "High-performance batch insert",
+    "name": "describe_table",
+    "description": "Get detailed column information for a specific table including column names, data types, nullability, default values, and column order. Essential for understanding table structure before querying or modifying data. Shows constraints, triggers, and column descriptions. Use this to explore unfamiliar tables or verify schema assumptions.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "table": { "type": "string" },
-        "columns": { "type": "array", "items": { "type": "string" } },
-        "rows": { "type": "array", "items": { "type": "array" } },
-        "returning": { "type": "string", "description": "Optional column to return (e.g. 'id')" }
+        "table": {
+          "type": "string",
+          "description": "Table name to describe"
+        }
       },
-      "required": ["table", "columns", "rows"]
+      "required": ["table"]
     }
   },
   {
     "name": "execute_query",
-    "description": "Execute SELECT query",
+    "description": "Execute a SELECT query and retrieve data. Returns result rows as arrays with column values. Supports all SELECT operations: filtering, aggregation, joins, subqueries, window functions, CTEs. Use for data retrieval, analysis, and reporting. Maximum query execution time enforced to prevent runaway queries.",
     "inputSchema": {
       "type": "object",
-      "properties": { "sql": { "type": "string" } },
+      "properties": {
+        "sql": {
+          "type": "string",
+          "description": "SELECT SQL query to execute (max 10,000 characters)"
+        }
+      },
       "required": ["sql"]
     }
   },
   {
     "name": "execute_insert",
-    "description": "Execute INSERT query",
+    "description": "Execute an INSERT statement to add new records to a table. Returns the number of rows affected and optionally inserted IDs if RETURNING clause is used. Supports single row, multi-row, and SELECT-based inserts. Useful for adding new data, bulk imports, and data migrations. Rows are returned in the order inserted.",
     "inputSchema": {
       "type": "object",
-      "properties": { "sql": { "type": "string" } },
+      "properties": {
+        "sql": {
+          "type": "string",
+          "description": "INSERT SQL statement (use RETURNING clause to get inserted IDs)"
+        }
+      },
       "required": ["sql"]
     }
   },
   {
     "name": "execute_update",
-    "description": "Execute UPDATE query",
+    "description": "Execute an UPDATE statement to modify existing records. Returns the number of rows affected. Supports conditional updates with WHERE clause, computed values, and RETURNING clause for verification. Essential for data corrections, status changes, and bulk updates. Consider using RETURNING to verify the changes.",
     "inputSchema": {
       "type": "object",
-      "properties": { "sql": { "type": "string" } },
+      "properties": {
+        "sql": {
+          "type": "string",
+          "description": "UPDATE SQL statement with WHERE clause for safety"
+        }
+      },
       "required": ["sql"]
     }
   },
   {
     "name": "execute_delete",
-    "description": "Execute DELETE query",
+    "description": "Execute a DELETE statement to remove records from a table. Returns the number of rows deleted. Always requires careful WHERE clauses to prevent accidental data loss. Consider backing up or using soft-delete (UPDATE status) for critical data. RETURNING clause shows which rows were deleted.",
     "inputSchema": {
       "type": "object",
-      "properties": { "sql": { "type": "string" } },
+      "properties": {
+        "sql": {
+          "type": "string",
+          "description": "DELETE SQL statement (ALWAYS include WHERE clause)"
+        }
+      },
       "required": ["sql"]
     }
   },
   {
-    "name": "explain_query",
-    "description": "Explain a SELECT query with optional ANALYZE, BUFFERS, and format options",
+    "name": "batch_insert",
+    "description": "High-performance multi-row insert optimized for speed with synchronous_commit temporarily disabled. Insert up to 1,000 rows in a single operation. Much faster than individual INSERT statements for bulk loads. Returns rows affected count and optionally inserted IDs via RETURNING. Perfect for importing CSV data, test data loading, and bulk operations.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "sql": { "type": "string", "description": "SELECT query to explain" },
-        "analyze": { "type": "boolean", "description": "Execute and show actual timings (default: false)" },
-        "buffers": { "type": "boolean", "description": "Include buffer usage (default: false)" },
-        "format": { "type": "string", "enum": ["json", "text", "xml", "yaml"], "description": "Output format (default: json)" }
+        "table": {
+          "type": "string",
+          "description": "Target table name"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Column names in order matching rows data"
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "array"
+          },
+          "description": "Array of rows, each row is an array of values (max 1,000 rows)"
+        },
+        "returning": {
+          "type": "string",
+          "description": "Optional column to return after insert (e.g. 'id' for new IDs)"
+        }
+      },
+      "required": ["table", "columns", "rows"]
+    }
+  },
+  {
+    "name": "batch_insert_copy",
+    "description": "Ultra-high-performance bulk insert using PostgreSQL's COPY protocol. Optimized for massive imports (10K+ rows). Uses automatic batching with configurable batch size. Returns total rows affected and batch count. Perfect for data warehouse loads, ETL operations, and large-scale migrations. Much faster than batch_insert for very large datasets.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {
+          "type": "string",
+          "description": "Target table name"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Column names matching rows data"
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "array"
+          },
+          "description": "Array of rows as arrays of values"
+        },
+        "batch_size": {
+          "type": "integer",
+          "description": "Rows per batch statement (default: 1,000, max: 5,000)"
+        }
+      },
+      "required": ["table", "columns", "rows"]
+    }
+  },
+  {
+    "name": "explain_query",
+    "description": "Analyze query execution plans to understand performance characteristics. Shows how PostgreSQL will execute a SELECT query including sequential vs index scans, join types, and estimated rows. ANALYZE option executes the query and shows actual execution metrics. Use to identify missing indexes, slow joins, or inefficient query plans. Output format can be JSON (machine readable) or text (human readable).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sql": {
+          "type": "string",
+          "description": "SELECT query to explain"
+        },
+        "analyze": {
+          "type": "boolean",
+          "description": "Execute query and show actual metrics (default: false, use true for diagnosis)"
+        },
+        "buffers": {
+          "type": "boolean",
+          "description": "Show buffer usage statistics (default: false, requires analyze=true)"
+        },
+        "format": {
+          "type": "string",
+          "enum": ["json", "text", "xml", "yaml"],
+          "description": "Output format (default: json for parsing, text for reading)"
+        }
       },
       "required": ["sql"]
     }
   },
   {
     "name": "analyze_db_health",
-    "description": "Comprehensive database health check: buffer cache, connections, indexes, vacuum, and performance",
-    "inputSchema": { "type": "object", "properties": {} }
+    "description": "Comprehensive one-stop health dashboard checking: buffer cache hit ratios, active/idle connection counts, unused and duplicate indexes, VACUUM progress, tables needing maintenance, and tables with excessive sequential scans. Excellent for spotting performance issues, identifying optimization opportunities, and monitoring overall database wellness. Runs multiple diagnostics and returns consolidated health status.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
   },
   {
     "name": "list_unused_indexes",
-    "description": "List indexes with zero scans that may be unused",
-    "inputSchema": { "type": "object", "properties": {} }
+    "description": "Identify indexes that have never been used (zero index scans) or are not helping with performance. These indexes consume disk space, slow down writes, and should be considered for removal. Returns index metadata including size estimates. Useful for cleanup and performance tuning. Review before removing to ensure they're truly unused (consider index-only scans).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
   },
   {
     "name": "list_duplicate_indexes",
-    "description": "List potential duplicate or overlapping indexes",
-    "inputSchema": { "type": "object", "properties": {} }
+    "description": "Find potentially redundant or duplicate indexes that overlap in functionality. Duplicate indexes waste storage and slow down DML operations without benefiting queries. Shows which indexes are candidates for consolidation or removal. Useful for index optimization and cleanup after schema changes or migrations.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
   },
   {
     "name": "show_vacuum_progress",
-    "description": "Show progress of currently running VACUUM operations",
-    "inputSchema": { "type": "object", "properties": {} }
+    "description": "Monitor ongoing VACUUM and AUTOVACUUM operations in real-time. Shows which tables are being vacuumed, progress percentage, blocks processed, index vacuum count, and estimated time remaining. Use to track maintenance operations and identify long-running vacuum processes that might impact performance.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
   },
   {
     "name": "get_object_details",
-    "description": "Get detailed info about a table: columns, constraints, indexes, foreign keys, size estimates",
+    "description": "Get comprehensive information about a specific table including: all columns with types, primary key, foreign keys, all indexes with definitions, constraints, table size estimates, row counts, description/comments. Use for thorough schema exploration, dependency mapping, and understanding table relationships. Returns everything needed to understand a table's role in the database.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "table": { "type": "string", "description": "Table name" },
-        "schema": { "type": "string", "description": "Schema name (default: public)" }
+        "table": {
+          "type": "string",
+          "description": "Table name to get details for"
+        },
+        "schema": {
+          "type": "string",
+          "description": "Schema name containing the table (default: public)"
+        }
       },
       "required": ["table"]
     }
   },
   {
-    "name": "batch_insert_copy",
-    "description": "Auto-batched massive insert using COPY protocol",
+    "name": "list_indexes",
+    "description": "List all indexes in the database with their definitions, associated tables, columns, and types (unique, partial, expression, etc.). Use for index inventory, migration planning, and understanding database indexing strategy. Shows CREATE INDEX statements that can be copied for replication.",
     "inputSchema": {
       "type": "object",
-      "properties": {
-        "table": { "type": "string" },
-        "columns": { "type": "array", "items": { "type": "string" } },
-        "rows": { "type": "array", "items": { "type": "array" } },
-        "batch_size": { "type": "integer", "description": "Rows per batch (default: 1000)" }
-      },
-      "required": ["table", "columns", "rows"]
+      "properties": {}
+    }
+  },
+  {
+    "name": "list_schemas",
+    "description": "List all non-system schemas in the database with their owners and descriptions. Shows the organizational structure of database objects. Useful for understanding multi-schema setups, permissions, and logical data organization. Excludes system schemas like pg_catalog and information_schema.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "show_constraints",
+    "description": "List all table constraints across the entire database including PRIMARY KEY, FOREIGN KEY, UNIQUE, CHECK, and NOT NULL constraints. Shows constraint definitions and which tables/columns are affected. Use for understanding data integrity rules, dependency chains, and constraint-driven optimization opportunities.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
     }
   },
   {
     "name": "list_database_privileges",
-    "description": "List database-level access privileges",
-    "inputSchema": { "type": "object", "properties": {} }
+    "description": "List database-level access control lists (ACLs) and permissions for all non-template databases. Shows which users/roles have which privileges on each database (CONNECT, CREATE, TEMPORARY, etc.). Use for auditing access control, understanding permission structure, and verifying security policies.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
   },
   {
     "name": "list_users",
-    "description": "List all database users",
-    "inputSchema": { "type": "object", "properties": {} }
+    "description": "List all database users and roles with their attributes: superuser status, can create databases, can create roles, can login, connection limits, and validity expiration dates. Use for user administration auditing, understanding team access levels, and identifying unused or expired accounts.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
   },
   {
     "name": "list_role_memberships",
-    "description": "List role memberships",
-    "inputSchema": { "type": "object", "properties": {} }
-  },
-  {
-    "name": "list_indexes",
-    "description": "List all indexes",
-    "inputSchema": { "type": "object", "properties": {} }
-  },
-  {
-    "name": "list_schemas",
-    "description": "List all schemas",
-    "inputSchema": { "type": "object", "properties": {} }
-  },
-  {
-    "name": "show_constraints",
-    "description": "Show table constraints",
-    "inputSchema": { "type": "object", "properties": {} }
-  },
-  {
-    "name": "describe_table",
-    "description": "Describe table structure",
+    "description": "Show role membership hierarchy - which users belong to which roles and who has admin grant options. Useful for understanding permission inheritance, group membership structure, and organizational access patterns. Essential for permission auditing and understanding delegation levels.",
     "inputSchema": {
       "type": "object",
-      "properties": { "table": { "type": "string" } },
-      "required": ["table"]
+      "properties": {}
     }
   },
   {
     "name": "get_cache_hit_ratio",
-    "description": "Get buffer cache hit ratio",
-    "inputSchema": { "type": "object", "properties": {} }
+    "description": "Get buffer cache hit ratio metrics from pg_stat_user_tables and pg_stat_user_indexes. Shows what percentage of data is being read from cache vs disk. High ratio (>95%) indicates efficient buffering. Low ratio suggests missing indexes, insufficient shared_buffers setting, or cold cache. Use to diagnose I/O performance issues.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
   },
   {
     "name": "get_pg_stat_statements",
-    "description": "Get top queries by total time from pg_stat_statements",
-    "inputSchema": { "type": "object", "properties": {} }
+    "description": "Get top 50 slowest queries from pg_stat_statements extension ranked by total execution time. Shows query text, call count, mean time, max time, and total time. Essential for identifying performance bottlenecks and optimization targets. Requires pg_stat_statements extension to be installed and enabled. Use after enabling statistics for a representative period.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
   },
   {
     "name": "get_setting",
-    "description": "Get a specific PostgreSQL setting value",
+    "description": "Retrieve a specific PostgreSQL configuration setting with full metadata: current value, unit (bytes/seconds/etc), description, context (when it can be changed), and default value. Use to inspect any configuration parameter (e.g., max_connections, shared_buffers, work_mem). Helpful for understanding database tuning and current configuration state.",
     "inputSchema": {
       "type": "object",
-      "properties": { "setting": { "type": "string" } },
-      "required": ["setting"]
+      "properties": {
+        "setting_name": {
+          "type": "string",
+          "description": "PostgreSQL setting name (e.g., 'max_connections', 'shared_buffers', 'work_mem')"
+        }
+      },
+      "required": ["setting_name"]
     }
   },
   {
     "name": "show_current_user",
-    "description": "Show current user, database, and PostgreSQL version",
-    "inputSchema": { "type": "object", "properties": {} }
+    "description": "Show information about the current database connection: authenticated user, current database, PostgreSQL version with platform details, and system info. Use to verify connection identity, check PostgreSQL version compatibility, and understand session context. Helpful for debugging permission issues or verifying server configuration.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
   },
   {
     "name": "show_session_info",
-    "description": "Show current session connection info",
-    "inputSchema": { "type": "object", "properties": {} }
+    "description": "Show current session connection details: current user, database, client IP address and port, server address and port, and application name. Useful for debugging connection issues, understanding session context in multi-client scenarios, and auditing who is connected where.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
   }
 ]
