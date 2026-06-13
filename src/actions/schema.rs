@@ -330,8 +330,8 @@ pub async fn get_object_details(client: &Client, params: &Option<&Value>) -> MCP
     }))
 }
 
-/// 6. Show triggers for table
-pub async fn show_triggers_for_table(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+/// 6. List triggers
+pub async fn list_triggers(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
     let table = params
         .as_ref()
         .and_then(|p| p.get("table").and_then(|v| v.as_str()))
@@ -458,8 +458,8 @@ pub async fn create_index(client: &Client, params: &Option<&Value>) -> MCPResult
     }))
 }
 
-/// 8. Remove index
-pub async fn remove_index(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+/// 8. Drop index
+pub async fn drop_index(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
     let index_name = params
         .as_ref()
         .and_then(|p| p.get("index_name").and_then(|v| v.as_str()))
@@ -498,8 +498,8 @@ pub async fn remove_index(client: &Client, params: &Option<&Value>) -> MCPResult
     }))
 }
 
-/// 9. Create table partition
-pub async fn create_table_partition(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+/// 9. Create partition
+pub async fn create_partition(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
     let table = params
         .as_ref()
         .and_then(|p| p.get("table").and_then(|v| v.as_str()))
@@ -564,8 +564,8 @@ pub async fn create_table_partition(client: &Client, params: &Option<&Value>) ->
     }))
 }
 
-/// 10. Delete table partition
-pub async fn delete_table_partition(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+/// 10. Drop partition
+pub async fn drop_partition(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
     let table = params
         .as_ref()
         .and_then(|p| p.get("table").and_then(|v| v.as_str()))

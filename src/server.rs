@@ -236,7 +236,7 @@ async fn handle_tools_call(
         "execute_insert", "execute_update", "execute_delete",
         "async_execute_insert", "async_execute_update", "async_execute_delete",
         "async_batch_insert", "async_batch_update", "async_batch_delete", "async_batch_insert_copy",
-        "create_index", "remove_index", "create_table_partition", "delete_table_partition",
+        "create_index", "drop_index", "create_partition", "drop_partition",
         "vacuum_analyze", "analyze_table", "reindex_table",
         "reset_statistics", "truncate_table",
     ];
@@ -254,11 +254,11 @@ async fn handle_tools_call(
     if !no_db_tools.contains(&tool_name) {
         // Verify tool exists before acquiring a connection
         let tool_exists = matches!(tool_name,
-            "describe_table" | "show_triggers_for_table" | "list_indexes" | "execute_query" | "execute_insert"
+            "describe_table" | "list_triggers" | "list_indexes" | "execute_query" | "execute_insert"
             | "execute_update" | "execute_delete" | "explain_query"
             | "async_execute_insert" | "async_execute_update" | "async_execute_delete"
             | "async_batch_insert" | "async_batch_update" | "async_batch_delete" | "async_batch_insert_copy"
-            | "create_index" | "remove_index" | "create_table_partition" | "delete_table_partition"
+            | "create_index" | "drop_index" | "create_partition" | "drop_partition"
             | "get_table_stats" | "get_index_stats" | "show_database_size"
             | "show_table_size" | "get_cache_hit_ratio"
             | "list_connections" | "show_current_user"
@@ -292,11 +292,11 @@ async fn handle_tools_call(
         "list_indexes" => actions::schema::list_indexes(&client, &tool_args).await,
         "list_schemas" => actions::schema::list_schemas(&client, &tool_args).await,
         "show_constraints" => actions::schema::show_constraints(&client, &tool_args).await,
-        "show_triggers_for_table" => actions::schema::show_triggers_for_table(&client, &tool_args).await,
+        "list_triggers" => actions::schema::list_triggers(&client, &tool_args).await,
         "create_index" => actions::schema::create_index(&client, &tool_args).await,
-        "remove_index" => actions::schema::remove_index(&client, &tool_args).await,
-        "create_table_partition" => actions::schema::create_table_partition(&client, &tool_args).await,
-        "delete_table_partition" => actions::schema::delete_table_partition(&client, &tool_args).await,
+        "drop_index" => actions::schema::drop_index(&client, &tool_args).await,
+        "create_partition" => actions::schema::create_partition(&client, &tool_args).await,
+        "drop_partition" => actions::schema::drop_partition(&client, &tool_args).await,
         // Query actions
         "execute_query" => actions::query::execute_query(&client, &tool_args).await,
         "execute_insert" => actions::query::execute_insert(&client, &tool_args).await,
