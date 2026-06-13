@@ -1,143 +1,70 @@
 use anyhow::Result;
-use std::sync::atomic::{AtomicU32, Ordering};
+use deadpool_postgres::{Pool, Config as DeadpoolConfig, PoolConfig as DeadpoolPoolConfig, Runtime, Object};
+use tokio_postgres::NoTls;
+use tracing::debug;
 use std::sync::Arc;
-use tokio::sync::Notify;
-use tokio_postgres::{connect, Client, NoTls};
-use tracing::{debug, error, warn};
 
 use crate::config::PoolConfig;
 use crate::errors::{MCPError, Result as MCPResult};
 
-/// Lock-free connection pool using a lock-free idle queue
-/// and tokio::sync::Notify for efficient blocking when at capacity.
-///
-/// Design:
-///   - Idle connections in SegQueue (lock-free, no contention).
-///   - AtomicU32 tracks total connections (idle + borrowed).
-///   - Notify wakes waiters when a connection is released.
-///   - No mutexes, no spin-waiting, no semaphore overhead.
+/// Connection pool wrapper using deadpool-postgres
 pub struct ConnectionPool {
-    config: PoolConfig,
-    connection_string: String,
-    idle_connections: crossbeam::queue::SegQueue<Arc<Client>>,
-    active_connections: AtomicU32,
-    notify: Notify,
+    pool: Pool,
+    max_size: u32,
 }
 
 impl ConnectionPool {
     pub async fn new(connection_string: &str, config: PoolConfig) -> Result<Self> {
         debug!("Creating connection pool with config: {:?}", config);
 
-        let idle_queue = crossbeam::queue::SegQueue::new();
-        let mut created = 0u32;
+        let cfg = DeadpoolConfig {
+            url: Some(connection_string.to_string()),
+            pool: Some(DeadpoolPoolConfig {
+                max_size: config.max_size as usize,
+                timeouts: deadpool_postgres::Timeouts {
+                    wait: Some(config.queue_timeout),
+                    create: Some(std::time::Duration::from_secs(5)),
+                    recycle: Some(std::time::Duration::from_secs(300)),
+                },
+                queue_mode: deadpool::managed::QueueMode::Lifo,
+            }),
+            ..Default::default()
+        };
 
-        for _ in 0..config.min_size {
-            match connect(connection_string, NoTls).await {
-                Ok((client, connection)) => {
-                    tokio::spawn(async move {
-                        if let Err(e) = connection.await {
-                            error!("Connection error: {}", e);
-                        }
-                    });
-                    idle_queue.push(Arc::new(client));
-                    created += 1;
-                }
-                Err(e) => {
-                    warn!("Failed to create initial connection: {}", e);
-                }
-            }
-        }
+        let pool = cfg.create_pool(Some(Runtime::Tokio1), NoTls)?;
 
-        if created == 0 {
-            return Err(anyhow::anyhow!(
-                "Failed to establish any database connection. Check DATABASE_URL and ensure PostgreSQL is running."
-            ));
-        }
+        // Test the pool by acquiring a connection
+        let _conn = pool.get().await
+            .map_err(|e| anyhow::anyhow!("Failed to establish database connection: {}", e))?;
 
         Ok(Self {
-            config,
-            connection_string: connection_string.to_string(),
-            idle_connections: idle_queue,
-            active_connections: AtomicU32::new(created),
-            notify: Notify::new(),
+            pool,
+            max_size: config.max_size,
         })
     }
 
-    /// Acquire a connection from the pool.
-    ///
-    /// Fast path: pop from idle queue (lock-free, ~20ns).
-    /// Slow path: create new connection (up to max_size), or block via Notify.
-    pub async fn acquire(&self) -> MCPResult<Arc<Client>> {
-        loop {
-            // Fast path: return idle connection immediately
-            if let Some(conn) = self.idle_connections.pop() {
-                if is_connection_alive(&conn) {
-                    return Ok(conn);
-                }
-                self.active_connections.fetch_sub(1, Ordering::Relaxed);
-                continue;
-            }
-
-            // No idle connection available. Try to create a new one.
-            let prev = self.active_connections.fetch_add(1, Ordering::Relaxed);
-
-            if prev < self.config.max_size {
-                // We have room to create a new connection
-                match connect(&self.connection_string, NoTls).await {
-                    Ok((client, connection)) => {
-                        tokio::spawn(async move {
-                            if let Err(e) = connection.await {
-                                error!("Lazy connection error: {}", e);
-                            }
-                        });
-                        return Ok(Arc::new(client));
-                    }
-                    Err(e) => {
-                        error!("Failed to create lazy connection: {}", e);
-                        self.active_connections.fetch_sub(1, Ordering::Relaxed);
-
-                        // If we haven't hit the retry limit, loop back
-                        // (might be transient, try idle again first)
-                        continue;
-                    }
-                }
-            } else {
-                // At capacity — undo our speculative increment and wait.
-                self.active_connections.fetch_sub(1, Ordering::Relaxed);
-
-                // Wait for a release signal with timeout
-                tokio::time::timeout(self.config.queue_timeout, self.notify.notified())
-                    .await
-                    .map_err(|_| MCPError::PoolError("Connection pool exhausted".into()))?;
-
-                // Loop back and try again
-            }
-        }
+    /// Acquire a connection from the pool
+    /// Returns Arc<Object> which dereferences to Client
+    pub async fn acquire(&self) -> MCPResult<Arc<Object>> {
+        self.pool
+            .get()
+            .await
+            .map(|obj| Arc::new(obj))
+            .map_err(|_| MCPError::PoolError("Connection pool exhausted".into()))
     }
 
-    /// Release a connection back to the pool.
-    pub fn release(&self, conn: Arc<Client>) {
-        if is_connection_alive(&conn) {
-            self.idle_connections.push(conn);
-        } else {
-            self.active_connections.fetch_sub(1, Ordering::Relaxed);
-        }
-        // Wake one waiter (if any) — they'll try to pop from idle
-        self.notify.notify_one();
-        debug!("Connection released back to pool");
+    /// Release a connection back to the pool (handled automatically by deadpool)
+    pub fn release(&self, _conn: Arc<Object>) {
+        // deadpool automatically returns connections to the pool
     }
 
     pub fn active_count(&self) -> u32 {
-        self.active_connections.load(Ordering::Relaxed)
+        self.pool.status().size as u32
     }
 
     pub fn max_size(&self) -> u32 {
-        self.config.max_size
+        self.max_size
     }
-}
-
-fn is_connection_alive(conn: &Client) -> bool {
-    !conn.is_closed()
 }
 
 #[cfg(test)]

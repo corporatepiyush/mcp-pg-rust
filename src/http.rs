@@ -60,7 +60,7 @@ async fn handle_rpc(
 
 /// Handle SSE subscriptions
 async fn handle_subscribe(
-    State(state): State<HttpState>,
+    State(_state): State<HttpState>,
 ) -> Sse<impl Stream<Item = Result<Event, axum::Error>>> {
     debug!("SSE subscription established");
 
