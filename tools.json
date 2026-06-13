@@ -823,7 +823,7 @@
   },
   {
     "name": "backup_table",
-    "description": "Create a complete backup copy of a table with all data, columns, indexes, and partitions. Backup table is named backup_<original_table>. Essential safety feature for data protection - create backup before dropping or modifying tables. Backup can be restored if original table is accidentally deleted.",
+    "description": "Complete table backup copying columns, data, indexes, and partitions. Creates backup_<table_name> with full schema preservation. Columns: all column definitions (names, types, defaults, nullability). Data: all rows copied (complete dataset). Indexes: all indexes recreated with same structure. Partitions: partition structure preserved for partitioned tables. Essential safety feature - backup before DROP, bulk DELETE, or schema changes. If original deleted: full backup with all data survives. Recovery mechanism for accidental deletion protection.",
     "inputSchema": {
       "type": "object",
       "properties": {
