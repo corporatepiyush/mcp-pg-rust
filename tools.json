@@ -664,5 +664,29 @@
         "view_name"
       ]
     }
+  },
+  {
+    "name": "alter_view",
+    "description": "Modify a view by renaming it or changing its schema. Use to reorganize views or fix naming.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "view_name": {
+          "type": "string",
+          "description": "View name to alter (required). Example: 'user_summary'."
+        },
+        "rename_to": {
+          "type": "string",
+          "description": "New name for the view (optional). Example: 'users_summary'. Either this or set_schema required."
+        },
+        "set_schema": {
+          "type": "string",
+          "description": "New schema for the view (optional). Example: 'analytics'. Either this or rename_to required."
+        }
+      },
+      "required": [
+        "view_name"
+      ]
+    }
   }
 ]

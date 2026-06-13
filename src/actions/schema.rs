@@ -764,3 +764,50 @@ pub async fn drop_view(client: &Client, params: &Option<&Value>) -> MCPResult<Va
         "cascade": cascade
     }))
 }
+
+/// 15. Alter view
+pub async fn alter_view(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+    let view_name = params
+        .as_ref()
+        .and_then(|p| p.get("view_name").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'view_name' parameter".into()))?;
+
+    validate_identifier(view_name, "view_name")?;
+
+    let rename_to = params
+        .as_ref()
+        .and_then(|p| p.get("rename_to").and_then(|v| v.as_str()));
+
+    let set_schema = params
+        .as_ref()
+        .and_then(|p| p.get("set_schema").and_then(|v| v.as_str()));
+
+    if rename_to.is_none() && set_schema.is_none() {
+        return Err(MCPError::InvalidParams(
+            "Must provide either 'rename_to' or 'set_schema' parameter".into()
+        ));
+    }
+
+    let mut action_desc = Vec::new();
+
+    if let Some(new_name) = rename_to {
+        validate_identifier(new_name, "rename_to")?;
+        let sql = format!("ALTER VIEW {} RENAME TO {}", view_name, new_name);
+        client.execute(&sql, &[]).await?;
+        action_desc.push(format!("renamed to {}", new_name));
+    }
+
+    if let Some(schema) = set_schema {
+        validate_identifier(schema, "set_schema")?;
+        let sql = format!("ALTER VIEW {} SET SCHEMA {}", view_name, schema);
+        client.execute(&sql, &[]).await?;
+        action_desc.push(format!("moved to schema {}", schema));
+    }
+
+    Ok(json!({
+        "status": "success",
+        "action": "ALTER VIEW",
+        "view_name": view_name,
+        "changes": action_desc
+    }))
+}
