@@ -19,7 +19,7 @@ static TOOLS_LIST: Lazy<Value> = Lazy::new(|| {
     json!({ "tools": tools })
 });
 
-const BUFFER_CAPACITY: usize = 16384;
+const BUFFER_CAPACITY: usize = 4096;
 const NEWLINE: &[u8] = b"\n";
 
 #[inline]

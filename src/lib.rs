@@ -5,7 +5,6 @@ pub mod protocol;
 pub mod actions;
 pub mod errors;
 pub mod metrics;
-pub mod buffers;
 pub mod http;
 
 use clap::Parser;

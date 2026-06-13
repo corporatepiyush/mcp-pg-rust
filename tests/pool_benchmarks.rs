@@ -74,36 +74,6 @@ fn test_socket_buffer_reduction() {
     assert_eq!(reduction as i32, 16);  // 16x reduction
 }
 
-#[test]
-fn test_buffer_pool_memory_impact() {
-    use mcp_postgres::buffers::BufferPool;
-
-    println!("\n=== Buffer Pool Memory Impact ===");
-
-    let buffer_size = 4096;  // 4KB
-    let max_cached = 80;     // Match typical max_connections
-
-    let pool = BufferPool::new(max_cached);
-
-    println!("\nBuffer Pool Configuration:");
-    println!("  Buffer size: {} bytes (4 KB)", buffer_size);
-    println!("  Max cached: {}", max_cached);
-
-    // Fill pool
-    let mut buffers = vec![];
-    for _ in 0..max_cached {
-        buffers.push(pool.acquire());
-    }
-
-    for buf in buffers {
-        pool.release(buf);
-    }
-
-    println!("  Memory per pool: ~{} KB", (buffer_size * max_cached) / 1024);
-    println!("  This is negligible compared to socket buffers");
-
-    assert_eq!(pool.size(), max_cached);
-}
 
 #[test]
 fn test_config_default_values() {
