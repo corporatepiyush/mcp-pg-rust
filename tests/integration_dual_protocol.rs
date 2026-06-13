@@ -210,52 +210,52 @@ fn test_02_show_current_user() {
 fn test_03_execute_query() {
     test_tool_dual_protocol(
         "execute_query",
-        json!({"query": "SELECT 1 as col"}),
-        "execute_query",
+        json!({"sql": "SELECT 1 as col"}),
+        "execute_query (SELECT 1)",
     );
 }
 
 #[test]
-fn test_04_list_databases() {
-    test_tool_dual_protocol("list_databases", json!({}), "list_databases");
-}
-
-#[test]
-fn test_05_list_schemas() {
+fn test_04_list_schemas() {
     test_tool_dual_protocol("list_schemas", json!({}), "list_schemas");
 }
 
 #[test]
-fn test_06_show_table_structure() {
+fn test_05_describe_table() {
     test_tool_dual_protocol(
-        "show_table_structure",
+        "describe_table",
         json!({"table": "pg_tables"}),
-        "show_table_structure",
+        "describe_table",
     );
 }
 
 #[test]
-fn test_07_list_columns() {
-    test_tool_dual_protocol(
-        "list_columns",
-        json!({"table": "pg_tables"}),
-        "list_columns",
-    );
-}
-
-#[test]
-fn test_08_list_indexes() {
+fn test_06_list_indexes() {
     test_tool_dual_protocol("list_indexes", json!({}), "list_indexes");
 }
 
 #[test]
-fn test_09_list_views() {
-    test_tool_dual_protocol("list_views", json!({}), "list_views");
+fn test_07_list_triggers() {
+    test_tool_dual_protocol(
+        "list_triggers",
+        json!({"table": "pg_tables"}),
+        "list_triggers",
+    );
 }
 
 #[test]
-fn test_10_list_triggers() {
-    test_tool_dual_protocol("list_triggers", json!({}), "list_triggers");
+fn test_08_show_session_info() {
+    test_tool_dual_protocol("show_session_info", json!({}), "show_session_info");
+}
+
+#[test]
+fn test_09_list_users() {
+    test_tool_dual_protocol("list_users", json!({}), "list_users");
+}
+
+#[test]
+fn test_10_analyze_db_health() {
+    test_tool_dual_protocol("analyze_db_health", json!({}), "analyze_db_health");
 }
 
 // ============ REPORT AT END ============
