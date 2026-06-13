@@ -9,7 +9,7 @@
 ### Current Production State
 - **Version**: 2.0.0
 - **Status**: Production Ready ✅
-- **45 Tools**: All implemented and MCP v1.0 compliant (comprehensive DDL + DML operations)
+- **46 Tools**: All implemented and MCP v1.0 compliant (comprehensive DDL + DML operations + data safety)
 - **Transports**: TCP (3000), HTTP/2 (3001), stdio
 - **Test Coverage**: 45 tools with full integration test cases, 100% tool coverage
 - **Performance**: P95 < 10ms all tools, 17K+ req/sec concurrent
@@ -106,7 +106,7 @@ pkill -f "mcp-postgres --http-port"
 - ✅ All 12 integration_all_tools tests pass
 - ✅ All 17 integration_test_data_tools tests pass
 - ✅ No #[ignore] annotations on any test
-- ✅ All 45 tools tested (no missing tool tests)
+- ✅ All 46 tools tested (no missing tool tests)
 - ✅ Response validation successful
 - ✅ All tests use REAL database (verified via SQL queries in logs)
 
@@ -186,6 +186,20 @@ tools/call drop_partition {partition_name: "test_parts_1"}
 tools/call drop_table {table: "test_parts", cascade: true}
 ```
 
+**Data Safety (backup_table)**:
+```bash
+# Create table with data
+tools/call create_table {table: "important_data", columns: ["id SERIAL PRIMARY KEY", "data TEXT"]}
+tools/call execute_insert {table: "important_data", columns: ["data"], rows: [["critical"]]}
+# CRITICAL: Backup before any risky operation
+tools/call backup_table {table: "important_data"}
+# Table is now safe: backup_important_data contains full copy with data
+# If original is dropped: data recoverable from backup_important_data
+# Drop with confidence (data is safe)
+tools/call drop_table {table: "important_data"}
+# Recovery: data still exists in backup_important_data
+```
+
 **FAILURE ACTION**: Block commit, list failing tests, require fix before retry
 
 ---
@@ -213,7 +227,7 @@ TOOLS=$(curl -s -X POST http://127.0.0.1:3001/rpc \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"tools/list","id":1}' | \
   jq -r '.result.tools | length')
-[ "$TOOLS" = "45" ] || exit 1
+[ "$TOOLS" = "46" ] || exit 1
 ```
 
 **Test 3: tools/call via HTTP**
@@ -337,7 +351,7 @@ echo "$RESP" | jq -e '.result.serverInfo' >/dev/null || exit 1
 ```bash
 RESP=$(echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | nc 127.0.0.1 3000)
 COUNT=$(echo "$RESP" | jq '.result.tools | length')
-[ "$COUNT" = "45" ] || exit 1
+[ "$COUNT" = "46" ] || exit 1
 # Verify each tool has required fields
 echo "$RESP" | jq -e '.result.tools[] | select(.name and .description and .inputSchema)' >/dev/null || exit 1
 ```
