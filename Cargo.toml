@@ -52,8 +52,8 @@ prometheus = { version = "0.13", default-features = false }
 # CLI
 clap = { version = "4.5", features = ["derive"] }
 
-# Memory Allocator
-mimalloc = "0.1"
+# Memory Allocator (wraps mimalloc C library - currently v2.1.x with v2 features)
+mimalloc = { version = "0.1", features = ["local_dynamic_tls", "extended", "override"] }
 
 # System (TCP socket options, CPU detection)
 libc = "0.2"

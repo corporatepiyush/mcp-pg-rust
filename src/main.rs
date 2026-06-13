@@ -8,11 +8,14 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Configure mimalloc before any allocations
-    // Disable page reset (faster short-lived alloc reuse), set decommit delay, eager commit
-    std::env::set_var("MIMALLOC_PAGE_RESET", "0");
-    std::env::set_var("MIMALLOC_DECOMMIT_DELAY", "500");
-    std::env::set_var("MIMALLOC_ARENA_EAGER_COMMIT", "1");
+    // Configure mimalloc v3 before any allocations
+    // Memory efficiency for high-throughput server
+    std::env::set_var("MIMALLOC_PAGE_RESET", "0");           // Don't reset pages (reuse faster)
+    std::env::set_var("MIMALLOC_DECOMMIT_DELAY", "500");     // Decommit unused pages after 500ms
+    std::env::set_var("MIMALLOC_ARENA_EAGER_COMMIT", "1");   // Eager commit for predictable latency
+    std::env::set_var("MIMALLOC_LARGE_OS_PAGES", "1");       // Use large pages (2MB) to reduce TLB misses
+    std::env::set_var("MIMALLOC_EAGER_REGION_COMMIT", "1");  // Eagerly commit regions for fast allocation
+    std::env::set_var("MIMALLOC_RESET_DELAY", "0");          // No delay resetting freed allocations
 
     let args = Args::parse();
 
