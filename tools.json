@@ -78,7 +78,7 @@
     }
   },
   {
-    "name": "batch_insert",
+    "name": "async_batch_insert",
     "description": "High-performance multi-row insert optimized for speed with synchronous_commit temporarily disabled. Insert up to 1,000 rows in a single operation. Much faster than individual INSERT statements for bulk loads. Returns rows affected count and optionally inserted IDs via RETURNING. Perfect for importing CSV data, test data loading, and bulk operations.",
     "inputSchema": {
       "type": "object",
@@ -110,7 +110,7 @@
     }
   },
   {
-    "name": "batch_insert_copy",
+    "name": "async_batch_insert_copy",
     "description": "Ultra-high-performance bulk insert using PostgreSQL's COPY protocol. Optimized for massive imports (10K+ rows). Uses automatic batching with configurable batch size. Returns total rows affected and batch count. Perfect for data warehouse loads, ETL operations, and large-scale migrations. Much faster than batch_insert for very large datasets.",
     "inputSchema": {
       "type": "object",

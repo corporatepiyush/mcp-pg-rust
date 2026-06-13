@@ -235,7 +235,7 @@ async fn handle_tools_call(
     let write_tools: &[&str] = &[
         "execute_insert", "execute_update", "execute_delete",
         "async_execute_insert", "async_execute_update", "async_execute_delete",
-        "batch_insert", "batch_update", "batch_delete", "batch_insert_copy",
+        "async_batch_insert", "async_batch_update", "async_batch_delete", "async_batch_insert_copy",
         "vacuum_analyze", "analyze_table", "reindex_table",
         "reset_statistics", "kill_connection",
         "begin_transaction", "commit_transaction", "rollback_transaction",
@@ -257,7 +257,7 @@ async fn handle_tools_call(
             "describe_table" | "list_indexes" | "execute_query" | "execute_insert"
             | "execute_update" | "execute_delete" | "explain_query"
             | "async_execute_insert" | "async_execute_update" | "async_execute_delete"
-            | "batch_insert" | "batch_update" | "batch_delete" | "batch_insert_copy"
+            | "async_batch_insert" | "async_batch_update" | "async_batch_delete" | "async_batch_insert_copy"
             | "get_table_stats" | "get_index_stats" | "show_database_size"
             | "show_table_size" | "get_cache_hit_ratio"
             | "list_connections" | "kill_connection" | "show_current_user"
@@ -302,10 +302,10 @@ async fn handle_tools_call(
         "async_execute_delete" => actions::query::async_execute_delete(&client, &tool_args).await,
         "explain_query" => actions::query::explain_query(&client, &tool_args).await,
         // Batch operations
-        "batch_insert" => actions::batch::batch_insert(&client, &tool_args).await,
-        "batch_update" => actions::batch::batch_update(&client, &tool_args).await,
-        "batch_delete" => actions::batch::batch_delete(&client, &tool_args).await,
-        "batch_insert_copy" => actions::batch::batch_insert_copy(&client, &tool_args).await,
+        "async_batch_insert" => actions::batch::async_batch_insert(&client, &tool_args).await,
+        "async_batch_update" => actions::batch::async_batch_update(&client, &tool_args).await,
+        "async_batch_delete" => actions::batch::async_batch_delete(&client, &tool_args).await,
+        "async_batch_insert_copy" => actions::batch::async_batch_insert_copy(&client, &tool_args).await,
         // Monitoring actions
         "get_table_stats" => actions::monitoring::get_table_stats(&client, &tool_args).await,
         "get_index_stats" => actions::monitoring::get_index_stats(&client, &tool_args).await,
