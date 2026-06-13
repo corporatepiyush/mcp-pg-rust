@@ -601,3 +601,52 @@ pub async fn drop_partition(client: &Client, params: &Option<&Value>) -> MCPResu
         "if_exists": if_exists
     }))
 }
+
+/// 11. Create table
+pub async fn create_table(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'table' parameter".into()))?;
+
+    let columns = params
+        .as_ref()
+        .and_then(|p| p.get("columns").and_then(|v| v.as_array()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'columns' parameter (array)".into()))?;
+
+    if columns.is_empty() {
+        return Err(MCPError::InvalidParams("'columns' array must not be empty".into()));
+    }
+
+    validate_identifier(table, "table")?;
+
+    let mut column_defs = Vec::new();
+    for (idx, col) in columns.iter().enumerate() {
+        let col_def = col.as_str()
+            .ok_or_else(|| MCPError::InvalidParams(format!("Column {} must be a string with format: 'name TYPE [constraints]'", idx)))?;
+
+        if col_def.is_empty() {
+            return Err(MCPError::InvalidParams(format!("Column {} definition cannot be empty", idx)));
+        }
+
+        if col_def.contains(';') || col_def.contains("--") {
+            return Err(MCPError::InvalidParams(
+                format!("Column {} definition contains dangerous SQL patterns", idx)
+            ));
+        }
+
+        column_defs.push(col_def.to_string());
+    }
+
+    let columns_str = column_defs.join(", ");
+    let sql = format!("CREATE TABLE {} ({})", table, columns_str);
+
+    client.execute(&sql, &[]).await?;
+
+    Ok(json!({
+        "status": "success",
+        "action": "CREATE TABLE",
+        "table": table,
+        "column_count": columns.len()
+    }))
+}

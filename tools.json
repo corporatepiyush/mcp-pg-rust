@@ -1,5 +1,29 @@
 [
   {
+    "name": "create_table",
+    "description": "Create a new table with specified columns and constraints. Define each column with type and optional constraints (PRIMARY KEY, UNIQUE, NOT NULL, DEFAULT, etc.). Use for creating new tables with custom schemas.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {
+          "type": "string",
+          "description": "Table name (required). Example: 'users', 'products'. Case-insensitive."
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Column definitions (required). Each string defines one column with type and constraints. Examples: ['id SERIAL PRIMARY KEY', 'email VARCHAR(255) UNIQUE NOT NULL', 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP', 'status VARCHAR(20) DEFAULT \\'active\\'']. Format: 'column_name TYPE [CONSTRAINT...]'"
+        }
+      },
+      "required": [
+        "table",
+        "columns"
+      ]
+    }
+  },
+  {
     "name": "list_tables",
     "description": "List all user-defined tables in the database with schema, name, and table type. Use this to discover available tables, understand the database structure, and identify which tables are available for querying or modification. Returns a list of tables (BASE TABLE, TEMPORARY, etc.) excluding system tables. Useful for schema exploration and data modeling.",
     "inputSchema": {
