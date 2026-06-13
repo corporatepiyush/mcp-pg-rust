@@ -732,5 +732,53 @@
         "schema_name"
       ]
     }
+  },
+  {
+    "name": "create_sequence",
+    "description": "Create a sequence for generating auto-incrementing values. Used for PRIMARY KEY values and counter columns. Sequences are independent objects that can be shared across multiple tables.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sequence_name": {
+          "type": "string",
+          "description": "Sequence name to create (required). Example: 'user_id_seq', 'order_seq'. Case-insensitive."
+        },
+        "if_not_exists": {
+          "type": "boolean",
+          "description": "Only create if sequence doesn't exist (optional, default: false)."
+        },
+        "start": {
+          "type": "integer",
+          "description": "Starting value for sequence (optional, default: 1). Example: 100 to start from 100."
+        },
+        "increment": {
+          "type": "integer",
+          "description": "Increment by this value each time (optional, default: 1). Example: 5 increments by 5 each time."
+        }
+      },
+      "required": [
+        "sequence_name"
+      ]
+    }
+  },
+  {
+    "name": "drop_sequence",
+    "description": "Drop (delete) a sequence. Use IF EXISTS to avoid errors if sequence doesn't exist.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sequence_name": {
+          "type": "string",
+          "description": "Sequence name to drop (required). Example: 'user_id_seq'."
+        },
+        "if_exists": {
+          "type": "boolean",
+          "description": "Only drop if exists, don't error if missing (optional, default: false)."
+        }
+      },
+      "required": [
+        "sequence_name"
+      ]
+    }
   }
 ]

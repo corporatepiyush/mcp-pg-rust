@@ -874,3 +874,77 @@ pub async fn drop_schema(client: &Client, params: &Option<&Value>) -> MCPResult<
         "cascade": cascade
     }))
 }
+
+/// 18. Create sequence
+pub async fn create_sequence(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+    let sequence_name = params
+        .as_ref()
+        .and_then(|p| p.get("sequence_name").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'sequence_name' parameter".into()))?;
+
+    validate_identifier(sequence_name, "sequence_name")?;
+
+    let if_not_exists = params
+        .as_ref()
+        .and_then(|p| p.get("if_not_exists").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+
+    let start = params
+        .as_ref()
+        .and_then(|p| p.get("start").and_then(|v| v.as_i64()))
+        .unwrap_or(1);
+
+    let increment = params
+        .as_ref()
+        .and_then(|p| p.get("increment").and_then(|v| v.as_i64()))
+        .unwrap_or(1);
+
+    let if_not_exists_str = if if_not_exists { "IF NOT EXISTS " } else { "" };
+
+    let sql = format!(
+        "CREATE SEQUENCE {}{}START {} INCREMENT {}",
+        if_not_exists_str,
+        sequence_name,
+        start,
+        increment
+    );
+
+    client.execute(&sql, &[]).await?;
+
+    Ok(json!({
+        "status": "success",
+        "action": "CREATE SEQUENCE",
+        "sequence_name": sequence_name,
+        "start": start,
+        "increment": increment,
+        "if_not_exists": if_not_exists
+    }))
+}
+
+/// 19. Drop sequence
+pub async fn drop_sequence(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+    let sequence_name = params
+        .as_ref()
+        .and_then(|p| p.get("sequence_name").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'sequence_name' parameter".into()))?;
+
+    validate_identifier(sequence_name, "sequence_name")?;
+
+    let if_exists = params
+        .as_ref()
+        .and_then(|p| p.get("if_exists").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+
+    let if_exists_str = if if_exists { "IF EXISTS " } else { "" };
+
+    let sql = format!("DROP SEQUENCE {}{}", if_exists_str, sequence_name);
+
+    client.execute(&sql, &[]).await?;
+
+    Ok(json!({
+        "status": "success",
+        "action": "DROP SEQUENCE",
+        "sequence_name": sequence_name,
+        "if_exists": if_exists
+    }))
+}
