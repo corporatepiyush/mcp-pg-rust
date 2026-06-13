@@ -653,7 +653,6 @@ cargo outdated --format list
 [ ] CHANGELOG.md updated
 [ ] tools.json has exactly 34 tools
 [ ] Homebrew formula will be updated after crates.io release
-[ ] Chocolatey package will be updated after crates.io release
 ```
 
 **EXECUTION**:
@@ -737,30 +736,9 @@ grep "sha256\|tags/v" homebrew-mcp-postgres/Formula/mcp_postgres.rb
 git add homebrew-mcp-postgres/Formula/mcp_postgres.rb
 ```
 
-**4b. Update Chocolatey Package (Windows)**
-```powershell
-# 1. Get Windows binary from release and calculate SHA256
-$zipUrl = "https://github.com/corporatepiyush/mcp-pg-rust/releases/download/v[VERSION]/mcp-postgres-x86_64-pc-windows-gnu.zip"
-$outputPath = "$env:TEMP\mcp-postgres-[VERSION].zip"
-Invoke-WebRequest -Uri $zipUrl -OutFile $outputPath
-$sha256 = (Get-FileHash -Path $outputPath -Algorithm SHA256).Hash
-
-# 2. Update version in nuspec
-$nuspecPath = "chocolatey-mcp-postgres\mcp-postgres.nuspec"
-(Get-Content $nuspecPath) -replace '<version>.*</version>', '<version>[VERSION]</version>' | Set-Content $nuspecPath
-
-# 3. Update URL and checksum in install script
-$installScript = "chocolatey-mcp-postgres\tools\chocolateyinstall.ps1"
-(Get-Content $installScript) -replace 'v[0-9.]*', 'v[VERSION]' | Set-Content $installScript
-(Get-Content $installScript) -replace "checksum = '.*'", "checksum = '$sha256'" | Set-Content $installScript
-
-# 4. Commit changes (don't push yet - see 4c)
-git add chocolatey-mcp-postgres/
-```
-
-**4c. Push all changes**
+**4b. Push changes**
 ```bash
-git commit -m "Update package managers (Homebrew, Chocolatey) for [VERSION] release"
+git commit -m "Update Homebrew formula for [VERSION] release"
 git push
 ```
 
@@ -770,7 +748,6 @@ git push
 - ✅ GitHub release created
 - ✅ Homebrew formula updated with new version and SHA256
 - ✅ Formula changes committed and pushed
-- ✅ Documentation updated
 
 ---
 

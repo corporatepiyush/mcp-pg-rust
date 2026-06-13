@@ -1,12 +1,11 @@
 # CLAUDE.md: Developer Responsibilities & Agent Behavior
 
-## Package Manager Updates
+## Homebrew Updates
 
 **Responsibility**: Human developer
 
 **What needs updating after each release**:
 - Homebrew formula in `homebrew-mcp-postgres/Formula/mcp_postgres.rb`
-- Chocolatey package in `chocolatey-mcp-postgres/mcp-postgres.nuspec`
 
 **When**: After successful crates.io publication and GitHub release creation
 
@@ -18,8 +17,8 @@
 **Agent behavior**: 
 - I will NOT push to package manager repositories
 - I will verify SKILLS.md procedures are followed before each release
-- I will remind you to update Homebrew/Chocolatey if missing from release checklist
-- If you ask me to update them, I will first confirm you've provided the release artifacts (SHA256, version number)
+- I will remind you to update Homebrew if missing from release checklist
+- If you ask me to update it, I will first confirm you've provided the release artifacts (SHA256, version number)
 
 ## Document Authority
 
