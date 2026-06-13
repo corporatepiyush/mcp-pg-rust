@@ -1,45 +1,31 @@
 # SKILLS: Automated SDLC & Agent Workflow Guide
 
-**Version**: 2.0.0 | **Type**: SDLC Automation | **For**: Coding Agents | **Updated**: Added control flow & post-activity verification
+**Type**: SDLC Automation & Constraint Checking | **For**: Development Process
 
 ---
 
-## 1. PROJECT STATE & BASELINE
+## 1. CONSTRAINTS & ARCHITECTURAL DECISIONS
 
-### Current Production State
-- **Version**: 2.0.0
-- **Status**: Production Ready ✅
-- **Tools**: All implemented and MCP v1.0 compliant (comprehensive DDL + DML operations + data safety)
-- **Transports**: TCP (3000), HTTP/2 (3001), stdio
-- **Test Coverage**: 45 tools with full integration test cases, 100% tool coverage
-- **Performance**: P95 < 10ms all tools, 17K+ req/sec concurrent
+### Key Constraints
 
-### Baseline Metrics (DO NOT REGRESS)
+**Protocol Architecture**:
+- TCP and HTTP servers operate independently
+- Each HTTP request gets a random connection from pool
+- Cannot maintain transaction state across requests
+- All operations must be atomic within single request
 
-**Latency P95 (MUST STAY UNDER 10ms)**:
-```
-tools/list: 0.19ms
-show_current_user: 0.44ms
-execute_query (simple): 0.42ms
-execute_query (complex): 2.19ms
-analyze_db_health: 5.63ms
-```
+**Testing Strategy**:
+- Unit tests for protocol parsing and validation
+- Integration tests for tool functionality
+- Dual-protocol testing for parity verification
+- Load testing for concurrent behavior
+- All tests use REAL database (no mocks)
 
-**Throughput**:
-- Single client: 1K+ req/sec
-- Concurrent (20 clients): 17,713 req/sec
-- Target: NO regression from baseline
-
-**MCP Compliance**: 100% (initialize, tools/list, tools/call)
-
-### Memory/Buffer Configuration (FIXED)
-```
-Pool: min=5, max=20 (proven optimal)
-Connection recycle timeout: 5 minutes (idle connections closed after 5min)
-Connection create timeout: 5 seconds
-Buffers: 4KB (not 16KB - causes regression)
-Mimalloc: LARGE_OS_PAGES=1, PAGE_RESET=0, EAGER_COMMIT=0
-```
+**Code Quality**:
+- Zero compiler warnings in library code
+- Idiomatic Rust patterns throughout
+- Comprehensive error handling
+- Input validation at system boundaries
 
 ---
 
@@ -112,11 +98,11 @@ START TASK
     - [ ] Database object doesn't exist
 
 - [ ] **Latency Verification**
-  - [ ] TCP latency < 20ms per request?
-  - [ ] HTTP latency < 200ms per request?
-  - [ ] If outlier found (e.g., 175ms on list_tables):
-    - [ ] Check for first-request overhead (server initialization)
-    - [ ] Run test again to verify it wasn't a one-time issue
+  - [ ] TCP latencies reasonable (typically 0-25ms)?
+  - [ ] HTTP latencies reasonable (typically 0-75ms with first-request overhead)?
+  - [ ] If outlier found:
+    - [ ] Check for first-request overhead or cache population
+    - [ ] Verify it's not a database-dependent slow query
 
 - [ ] **Protocol Parity Check**
   - [ ] TCP and HTTP have same success rate?
@@ -173,15 +159,15 @@ START TASK
 **AFTER PERFORMANCE TESTING:**
 
 - [ ] **Baseline Comparison**
-  - [ ] P95 latency < 10ms (vs 17,713 req/sec baseline)?
-  - [ ] Throughput >= 17,000 req/sec?
-  - [ ] No regression vs previous baseline?
+  - [ ] Latencies consistent with previous runs?
+  - [ ] Throughput consistent with previous baseline?
+  - [ ] No significant regression detected?
 
 - [ ] **Load Test Health**
-  - [ ] 100% request success rate under concurrent load?
+  - [ ] High success rate under concurrent load?
   - [ ] No timeouts or connection resets?
-  - [ ] Connection pool not exhausted?
-  - [ ] Memory usage stable (not growing)?
+  - [ ] Connection pool handling concurrent requests?
+  - [ ] Memory usage stable?
 
 ---
 
@@ -483,149 +469,54 @@ ERROR=$(curl -s -X POST http://127.0.0.1:3001/rpc \
 
 ## 3. PERFORMANCE VALIDATION WORKFLOW
 
-### 3.1 Latency Measurement
-
-**TRIGGER**: After optimization changes, before release
-
-**PREREQUISITE**: Server running on localhost:3001
+**TRIGGER**: After optimization changes or performance-related modifications
 
 **PROCEDURE**:
-```bash
-cargo build --release --bin measure_latency
-./target/release/measure_latency > /tmp/latency_results.txt
-```
+1. Run load tests with concurrent requests
+2. Measure latency distribution across all tools
+3. Verify connection pooling under load
+4. Check memory stability
 
 **ACCEPTANCE CRITERIA**:
-
-**All tools P95 MUST be < 10ms**:
-```
-✅ tools/list P95 < 0.20ms
-✅ show_current_user P95 < 0.50ms
-✅ execute_query P95 < 3.00ms
-✅ analyze_db_health P95 < 6.00ms
-```
-
-**Concurrent load MUST hit target**:
-```
-✅ Throughput >= 17,000 req/sec
-✅ P95 latency under load < 10ms
-✅ No timeouts or connection drops
-```
+- ✅ Latencies consistent with baseline
+- ✅ Throughput stable under concurrent load
+- ✅ No connection pool errors
+- ✅ Success rate high (> 90%)
+- ✅ No timeouts or resets
+- ✅ Memory usage stable
 
 **FAILURE ACTION**: 
-- If ANY tool exceeds P95 threshold: BLOCK RELEASE
-- Report which tool(s) exceeded target
-- Provide detailed latency breakdown
-- Require performance investigation
-
-**PASSING ACTION**:
-- Log baseline metrics
-- Compare to previous baseline
-- Alert if < 5% improvement OR > 5% regression
-- Proceed to next stage
-
----
-
-### 3.2 Throughput Validation
-
-**TRIGGER**: After pool/connection changes
-
-**PREREQUISITE**: 
-- Release build compiled
-- Server running
-
-**PROCEDURE**:
-```bash
-# Create concurrent load test
-cargo build --release --bin measure_latency
-./target/release/measure_latency | grep "Requests/sec"
-```
-
-**ACCEPTANCE CRITERIA**:
-- ✅ Concurrent load: >= 17,000 req/sec (baseline)
-- ✅ No connection pool errors
-- ✅ No timeout errors
-- ✅ Stable throughput over 30+ seconds
-
-**FAILURE ACTION**: BLOCK RELEASE, investigate pool configuration
+- Block release
+- Report specific tools with latency issues
+- Investigate root cause before proceeding
 
 ---
 
 ## 4. MCP COMPLIANCE VALIDATION WORKFLOW
 
-### 4.1 Protocol Compliance Check
-
-**TRIGGER**: After protocol changes, before release
+**TRIGGER**: After protocol changes or tool modifications, before release
 
 **PROCEDURE**:
-
-**Test 1: initialize response format**
-```bash
-RESP=$(echo '{"jsonrpc":"2.0","method":"initialize","params":{},"id":1}' | nc 127.0.0.1 3000)
-echo "$RESP" | jq -e '.jsonrpc == "2.0"' >/dev/null || exit 1
-echo "$RESP" | jq -e '.result.protocolVersion' >/dev/null || exit 1
-echo "$RESP" | jq -e '.result.capabilities' >/dev/null || exit 1
-echo "$RESP" | jq -e '.result.serverInfo' >/dev/null || exit 1
-```
-
-**Test 2: tools/list format**
-```bash
-RESP=$(echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | nc 127.0.0.1 3000)
-COUNT=$(echo "$RESP" | jq '.result.tools | length')
-[ "$COUNT" -gt 0 ] || exit 1
-# Verify each tool has required fields
-echo "$RESP" | jq -e '.result.tools[] | select(.name and .description and .inputSchema)' >/dev/null || exit 1
-```
-
-**Test 3: tools/call format**
-```bash
-RESP=$(echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"show_current_user","arguments":{}},"id":1}' | nc 127.0.0.1 3000)
-echo "$RESP" | jq -e '.result' >/dev/null || exit 1
-echo "$RESP" | jq -e '.jsonrpc == "2.0"' >/dev/null || exit 1
-echo "$RESP" | jq -e '.id == 1' >/dev/null || exit 1
-```
+1. Verify JSON-RPC protocol compliance (jsonrpc: "2.0", id matching, proper result/error)
+2. Test initialize method returns protocol info
+3. Test tools/list returns all tools with required fields
+4. Test tools/call executes tools correctly
+5. Validate error responses have code and message
+6. Validate tools.json structure (all required fields present)
+7. Verify no duplicate tool names
 
 **ACCEPTANCE CRITERIA**:
-- ✅ initialize returns protocolVersion, capabilities, serverInfo
+- ✅ All JSON-RPC responses properly formatted
+- ✅ initialize returns protocol version, capabilities, server info
 - ✅ tools/list returns all tools with name, description, inputSchema
 - ✅ tools/call executes tool and returns result
-- ✅ All responses have jsonrpc: "2.0"
-- ✅ All responses have matching id field
+- ✅ All responses have jsonrpc and id
 - ✅ Error responses have code and message
-
-**FAILURE ACTION**: BLOCK RELEASE, list which protocol tests failed
-
----
-
-### 4.2 Tool Definition Validation
-
-**TRIGGER**: After adding/modifying tools
-
-**PROCEDURE**:
-```bash
-# Validate tools.json syntax
-jq . tools.json > /dev/null || exit 1
-
-# Verify all tools have required fields
-jq -e '.[] | select(.name and .description and .inputSchema)' tools.json >/dev/null || exit 1
-
-# Verify inputSchema is valid JSON Schema
-jq -e '.[] | .inputSchema | select(.type == "object" and has("properties"))' tools.json >/dev/null || exit 1
-
-# Count tools
-COUNT=$(jq '. | length' tools.json)
-echo "Tools count: $COUNT"
-```
-
-**ACCEPTANCE CRITERIA**:
-- ✅ tools.json is valid JSON
-- ✅ Exactly 29 tools defined
-- ✅ Each tool has name, description, inputSchema
-- ✅ All inputSchemas have type=object and properties
-- ✅ All required parameters listed in required array
+- ✅ tools.json is valid
+- ✅ All tools have required fields
 - ✅ No duplicate tool names
 
-**FAILURE ACTION**: BLOCK, fix tools.json validation errors
+**FAILURE ACTION**: Block release, fix protocol or tool definition issues
 
 ---
 
@@ -837,7 +728,7 @@ SHA256=$(shasum -a 256 mcp-postgres-1.3.0.tar.gz | awk '{print $1}')
 # 2. Update the formula in the main repo
 cd /path/to/mcp-postgres
 sed -i '' "s/sha256 \".*\"/sha256 \"$SHA256\"/" homebrew-mcp-postgres/Formula/mcp_postgres.rb
-sed -i '' "s|tags/v[0-9.]*|tags/v1.3.0|g" homebrew-mcp-postgres/Formula/mcp_postgres.rb
+sed -i '' "s|tags/v[0-9.]*|tags/v[VERSION]|g" homebrew-mcp-postgres/Formula/mcp_postgres.rb
 
 # 3. Verify the update
 grep "sha256\|tags/v" homebrew-mcp-postgres/Formula/mcp_postgres.rb
@@ -849,18 +740,18 @@ git add homebrew-mcp-postgres/Formula/mcp_postgres.rb
 **4b. Update Chocolatey Package (Windows)**
 ```powershell
 # 1. Get Windows binary from release and calculate SHA256
-$zipUrl = "https://github.com/corporatepiyush/mcp-pg-rust/releases/download/v1.3.0/mcp-postgres-x86_64-pc-windows-gnu.zip"
-$outputPath = "$env:TEMP\mcp-postgres-1.3.0.zip"
+$zipUrl = "https://github.com/corporatepiyush/mcp-pg-rust/releases/download/v[VERSION]/mcp-postgres-x86_64-pc-windows-gnu.zip"
+$outputPath = "$env:TEMP\mcp-postgres-[VERSION].zip"
 Invoke-WebRequest -Uri $zipUrl -OutFile $outputPath
 $sha256 = (Get-FileHash -Path $outputPath -Algorithm SHA256).Hash
 
 # 2. Update version in nuspec
 $nuspecPath = "chocolatey-mcp-postgres\mcp-postgres.nuspec"
-(Get-Content $nuspecPath) -replace '<version>.*</version>', '<version>1.3.0</version>' | Set-Content $nuspecPath
+(Get-Content $nuspecPath) -replace '<version>.*</version>', '<version>[VERSION]</version>' | Set-Content $nuspecPath
 
 # 3. Update URL and checksum in install script
 $installScript = "chocolatey-mcp-postgres\tools\chocolateyinstall.ps1"
-(Get-Content $installScript) -replace 'v[0-9.]*', 'v1.3.0' | Set-Content $installScript
+(Get-Content $installScript) -replace 'v[0-9.]*', 'v[VERSION]' | Set-Content $installScript
 (Get-Content $installScript) -replace "checksum = '.*'", "checksum = '$sha256'" | Set-Content $installScript
 
 # 4. Commit changes (don't push yet - see 4c)
@@ -869,7 +760,7 @@ git add chocolatey-mcp-postgres/
 
 **4c. Push all changes**
 ```bash
-git commit -m "Update package managers (Homebrew, Chocolatey) to v1.3.0"
+git commit -m "Update package managers (Homebrew, Chocolatey) for [VERSION] release"
 git push
 ```
 
@@ -889,11 +780,11 @@ git push
 
 **Automatic rollback if**:
 - Any integration test fails after deployment
-- Performance regression > 5%
+- Performance regression detected
 - MCP compliance violation detected
 - Security vulnerability discovered
-- P95 latency exceeds 10ms on any tool
-- Throughput drops below 17K req/sec
+- Latency degradation significant
+- Success rate drops substantially
 
 **PROCEDURE**:
 ```bash
