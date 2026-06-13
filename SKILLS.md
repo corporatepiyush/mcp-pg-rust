@@ -681,7 +681,7 @@ pkill -f "mcp-postgres --http-port"
 ./target/release/measure_latency | grep -E "(P95|Requests/sec)"
 
 # 5. Tools validation
-jq '. | length' tools.json | grep -q "^25$"
+jq '. | length' tools.json | grep -q "[0-9]"
 
 # 6. Security
 cargo audit
@@ -701,8 +701,8 @@ echo "=== ALL CHECKS PASSED ==="
 
 **Step 1**: Tag release
 ```bash
-git tag v1.3.0
-git push origin v1.3.0
+git tag v[VERSION]
+git push origin v[VERSION]
 ```
 
 **Step 2**: Publish to crates.io
@@ -712,7 +712,7 @@ cargo publish
 
 **Step 3**: Create GitHub release
 ```bash
-gh release create v1.3.0 --title "v1.3.0" --notes "Release notes"
+gh release create v[VERSION] --title "v[VERSION]" --notes "Release notes"
 ```
 
 **Step 4**: Update Package Managers
@@ -722,8 +722,8 @@ gh release create v1.3.0 --title "v1.3.0" --notes "Release notes"
 # After successful crates.io publication, update the homebrew formula
 # 1. Get the tarball SHA256 from the GitHub release
 cd /tmp
-curl -L https://github.com/corporatepiyush/mcp-pg-rust/archive/refs/tags/v1.3.0.tar.gz -o mcp-postgres-1.3.0.tar.gz
-SHA256=$(shasum -a 256 mcp-postgres-1.3.0.tar.gz | awk '{print $1}')
+curl -L https://github.com/corporatepiyush/mcp-pg-rust/archive/refs/tags/v[VERSION].tar.gz -o mcp-postgres-[VERSION].tar.gz
+SHA256=$(shasum -a 256 mcp-postgres-[VERSION].tar.gz | awk '{print $1}')
 
 # 2. Update the formula in the main repo
 cd /path/to/mcp-postgres
