@@ -17,7 +17,7 @@ fn validate_identifier(name: &str, label: &str) -> std::result::Result<(), MCPEr
 }
 
 /// 1. List all tables
-pub async fn list_tables(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn list_tables(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT table_schema, table_name, table_type
@@ -43,7 +43,7 @@ pub async fn list_tables(client: &Client, _params: Option<Value>) -> MCPResult<V
 }
 
 /// 2. Describe table structure
-pub async fn describe_table(client: &Client, params: Option<Value>) -> MCPResult<Value> {
+pub async fn describe_table(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
     let table_name = params
         .as_ref()
         .and_then(|p| p.get("table"))
@@ -79,7 +79,7 @@ pub async fn describe_table(client: &Client, params: Option<Value>) -> MCPResult
 }
 
 /// 3. List all indexes
-pub async fn list_indexes(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn list_indexes(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT schemaname, tablename, indexname, indexdef
@@ -106,7 +106,7 @@ pub async fn list_indexes(client: &Client, _params: Option<Value>) -> MCPResult<
 }
 
 /// 4. List schemas
-pub async fn list_schemas(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn list_schemas(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT schema_name, schema_owner
@@ -131,7 +131,7 @@ pub async fn list_schemas(client: &Client, _params: Option<Value>) -> MCPResult<
 }
 
 /// 5. Show constraints
-pub async fn show_constraints(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn show_constraints(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT table_schema, table_name, constraint_name, constraint_type
@@ -158,7 +158,7 @@ pub async fn show_constraints(client: &Client, _params: Option<Value>) -> MCPRes
 }
 
 /// 5b. Get detailed object info (columns, constraints, indexes, FKs, descriptions)
-pub async fn get_object_details(client: &Client, params: Option<Value>) -> MCPResult<Value> {
+pub async fn get_object_details(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
     let schema_name = params
         .as_ref()
         .and_then(|p| p.get("schema"))

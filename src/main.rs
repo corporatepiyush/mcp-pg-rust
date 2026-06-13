@@ -5,7 +5,6 @@ mod protocol;
 mod actions;
 mod errors;
 mod metrics;
-mod intern;
 
 use anyhow::Result;
 use clap::Parser;

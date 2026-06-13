@@ -5,7 +5,7 @@ use crate::errors::Result as MCPResult;
 const MAX_IDENTIFIER_LEN: usize = 255;
 
 /// 26. List users
-pub async fn list_users(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn list_users(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     // NOTE: usecanlogin was removed in PG 16+; PG now manages login
     // privilege through LOGIN/NOLOGIN on roles (pg_authid.rolcanlogin).
     let rows = client
@@ -33,8 +33,9 @@ pub async fn list_users(client: &Client, _params: Option<Value>) -> MCPResult<Va
 }
 
 /// 27. List user privileges
-pub async fn list_user_privileges(client: &Client, params: Option<Value>) -> MCPResult<Value> {
+pub async fn list_user_privileges(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
     let username = params
+        .as_ref()
         .and_then(|p| p.get("username").and_then(|v| v.as_str()).map(|s| s.to_string()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'username' parameter".into()))?;
 
@@ -70,7 +71,7 @@ pub async fn list_user_privileges(client: &Client, params: Option<Value>) -> MCP
 }
 
 /// 28. List role memberships
-pub async fn list_role_memberships(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn list_role_memberships(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT member.usename as member, role.usename as role, admin_option
@@ -97,7 +98,7 @@ pub async fn list_role_memberships(client: &Client, _params: Option<Value>) -> M
 }
 
 /// 29. List database privileges
-pub async fn list_database_privileges(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn list_database_privileges(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT datname, datacl::text
@@ -122,7 +123,7 @@ pub async fn list_database_privileges(client: &Client, _params: Option<Value>) -
 }
 
 /// 30. Show session info
-pub async fn show_session_info(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn show_session_info(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT current_user, current_database(), inet_client_addr()::text,

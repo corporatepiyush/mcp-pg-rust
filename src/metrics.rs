@@ -21,26 +21,30 @@ static SHARDS: Lazy<[MetricShard; NUM_SHARDS]> = Lazy::new(|| {
     })
 });
 
+thread_local! {
+    static THREAD_SHARD: usize = calc_thread_shard();
+}
+
+fn calc_thread_shard() -> usize {
+    const MASK: usize = NUM_SHARDS - 1;
+    let tid = std::thread::current().id();
+    let mut hasher = DefaultHasher::new();
+    tid.hash(&mut hasher);
+    hasher.finish() as usize & MASK
+}
+
 /// Increment request count on the calling thread's shard (cheap: one atomic add).
 #[inline]
 pub fn inc_requests() {
-    let shard = thread_shard();
+    let shard = THREAD_SHARD.with(|s| *s);
     SHARDS[shard].requests.fetch_add(1, Ordering::Relaxed);
 }
 
 /// Increment error count on the calling thread's shard.
 #[inline]
 pub fn inc_errors() {
-    let shard = thread_shard();
+    let shard = THREAD_SHARD.with(|s| *s);
     SHARDS[shard].errors.fetch_add(1, Ordering::Relaxed);
-}
-
-fn thread_shard() -> usize {
-    const MASK: usize = NUM_SHARDS - 1;
-    let tid = std::thread::current().id();
-    let mut hasher = DefaultHasher::new();
-    tid.hash(&mut hasher);
-    hasher.finish() as usize & MASK
 }
 
 /// Read-and-reset all shard counters, returning totals.

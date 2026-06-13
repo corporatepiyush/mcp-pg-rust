@@ -2,7 +2,7 @@ use serde_json::{json, Value};
 use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
 
-pub async fn analyze_db_health(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn analyze_db_health(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let hit_ratio = client
         .query_one(
             "SELECT COALESCE(round(sum(blks_hit)::numeric / nullif(sum(blks_hit + blks_read), 0) * 100, 2)::float8, 0)
@@ -172,7 +172,7 @@ pub async fn analyze_db_health(client: &Client, _params: Option<Value>) -> MCPRe
     }))
 }
 
-pub async fn list_unused_indexes(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn list_unused_indexes(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT schemaname::text, indexrelname::text, relname::text, idx_scan, idx_tup_read, idx_tup_fetch
@@ -201,7 +201,7 @@ pub async fn list_unused_indexes(client: &Client, _params: Option<Value>) -> MCP
     }))
 }
 
-pub async fn list_duplicate_indexes(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn list_duplicate_indexes(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT a.schemaname::text, a.relname::text,
@@ -237,7 +237,7 @@ pub async fn list_duplicate_indexes(client: &Client, _params: Option<Value>) -> 
     }))
 }
 
-pub async fn show_vacuum_progress(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn show_vacuum_progress(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT n.nspname::text, c.relname::text, p.phase::text,

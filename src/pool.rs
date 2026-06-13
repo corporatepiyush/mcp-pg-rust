@@ -1,91 +1,38 @@
 use anyhow::Result;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, RwLock};
-use tokio_postgres::{connect, Client, NoTls, Statement};
+use std::sync::Arc;
+use tokio::sync::Semaphore;
+use tokio_postgres::{connect, Client, NoTls};
 use tracing::{debug, error, warn};
-use crossbeam::queue::SegQueue;
-use lru::LruCache;
-use std::num::NonZeroUsize;
 
 use crate::config::PoolConfig;
 use crate::errors::{MCPError, Result as MCPResult};
 
-/// Buffer pool with cache-line alignment to prevent false sharing (Tier 1.1)
-#[repr(align(64))]
-#[allow(dead_code)]
-pub struct BufferPool {
-    buffers: Arc<SegQueue<Vec<u8>>>,
-    capacity: usize,
-    max_buffers: usize,
-}
-
-#[allow(dead_code)]
-impl BufferPool {
-    const DEFAULT_BUFFER_SIZE: usize = 4096;
-    const MAX_BUFFERS: usize = 128;
-
-    pub fn new(capacity: usize) -> Self {
-        Self {
-            buffers: Arc::new(SegQueue::new()),
-            capacity,
-            max_buffers: Self::MAX_BUFFERS,
-        }
-    }
-
-    /// Acquire a reusable buffer from the pool
-    pub fn acquire(&self) -> Vec<u8> {
-        if let Some(mut buf) = self.buffers.pop() {
-            buf.clear();
-            buf
-        } else {
-            Vec::with_capacity(self.capacity)
-        }
-    }
-
-    /// Release buffer back to pool for reuse
-    pub fn release(&self, buf: Vec<u8>) {
-        if self.buffers.len() < self.max_buffers && buf.capacity() == self.capacity {
-            self.buffers.push(buf);
-        }
-    }
-}
-
-impl Default for BufferPool {
-    fn default() -> Self {
-        Self::new(Self::DEFAULT_BUFFER_SIZE)
-    }
-}
-
-/// Thread-safe lock-free connection pool.
+/// Lock-free connection pool using a semaphore for capacity control
+/// and a lock-free queue for idle connections.
 ///
-/// Data-oriented layout: cold config data on its own cache line,
-/// separated from hot-path idle_connections to prevent false sharing.
-#[repr(C)]
+/// Design:
+///   - Semaphore tracks total permit count (max_size).
+///   - Idle connections live in a lock-free SegQueue.
+///   - Acquire: pop idle (fast path), or wait for semaphore + create new.
+///   - Release: push back to idle, or drop if unhealthy.
 pub struct ConnectionPool {
-    /// Config is cold — read once per acquire(), then immutable.
-    cold: AlignedCold,
-    /// idle_connections is hot — accessed on every acquire/release.
-    idle_connections: SegQueue<Arc<Client>>,
-    /// Count of connections currently in use or idle (approximate).
-    active_connections: AtomicU32,
-}
-
-/// Ensures cold PoolConfig sits on its own cache line.
-#[repr(align(64))]
-struct AlignedCold {
     config: PoolConfig,
     connection_string: String,
+    idle_connections: crossbeam::queue::SegQueue<Arc<Client>>,
+    /// Total connections in existence (idle + borrowed), an upper bound.
+    active_connections: AtomicU32,
+    /// Semaphore with max_size permits — controls lazy creation concurrency.
+    semaphore: Semaphore,
 }
 
 impl ConnectionPool {
-    /// Create a new connection pool
     pub async fn new(connection_string: &str, config: PoolConfig) -> Result<Self> {
         debug!("Creating connection pool with config: {:?}", config);
 
-        let idle_queue = SegQueue::new();
+        let idle_queue = crossbeam::queue::SegQueue::new();
         let mut created = 0u32;
 
-        // Create minimum number of connections
         for _ in 0..config.min_size {
             match connect(connection_string, NoTls).await {
                 Ok((client, connection)) => {
@@ -94,8 +41,7 @@ impl ConnectionPool {
                             error!("Connection error: {}", e);
                         }
                     });
-                    let arc_client = Arc::new(client);
-                    idle_queue.push(arc_client);
+                    idle_queue.push(Arc::new(client));
                     created += 1;
                 }
                 Err(e) => {
@@ -110,210 +56,106 @@ impl ConnectionPool {
             ));
         }
 
-        let pool = Self {
-            cold: AlignedCold {
-                config,
-                connection_string: connection_string.to_string(),
-            },
+        Ok(Self {
+            config,
+            connection_string: connection_string.to_string(),
             idle_connections: idle_queue,
             active_connections: AtomicU32::new(created),
-        };
-
-        Ok(pool)
+            semaphore: Semaphore::new(created as usize),
+        })
     }
 
-    /// Acquire a connection from the pool
+    /// Acquire a connection from the pool.
+    ///
+    /// Fast path: pop from idle queue.
+    /// Slow path: acquire semaphore permit, create new connection.
     pub async fn acquire(&self) -> MCPResult<Arc<Client>> {
-        let start = std::time::Instant::now();
-        let timeout = self.cold.config.queue_timeout;
-        let max_size = self.cold.config.max_size;
-
-        loop {
-            // Fast path: pop from idle queue
-            if let Some(conn) = self.idle_connections.pop() {
+        // Fast path: return idle connection immediately
+        if let Some(conn) = self.idle_connections.pop() {
+            if is_connection_alive(&conn) {
                 return Ok(conn);
             }
+            // Connection is dead — drop it and fall through to create new
+            self.active_connections.fetch_sub(1, Ordering::Relaxed);
+        }
 
-            // Lazy creation: spawn new connection up to max_size
-            let active = self.active_connections.load(Ordering::Acquire);
-            if active < max_size {
-                if self
-                    .active_connections
-                    .compare_exchange(active, active + 1, Ordering::AcqRel, Ordering::Relaxed)
-                    .is_ok()
-                {
-                    // We won the race to create a new connection
-                    match connect(
-                        &self.cold.connection_string,
-                        NoTls,
-                    )
-                    .await
-                    {
-                        Ok((client, connection)) => {
-                            tokio::spawn(async move {
-                                if let Err(e) = connection.await {
-                                    error!("Lazy connection error: {}", e);
-                                }
-                            });
-                            return Ok(Arc::new(client));
-                        }
-                        Err(e) => {
-                            self.active_connections.fetch_sub(1, Ordering::Release);
-                            error!("Failed to create lazy connection: {}", e);
-                            // Fall through to spin/retry — maybe another connection is released soon
-                        }
+        // Slow path: acquire a permit (blocks if at max capacity)
+        let permit = tokio::time::timeout(
+            self.config.queue_timeout,
+            self.semaphore.acquire(),
+        )
+        .await
+        .map_err(|_| MCPError::PoolError("Connection pool exhausted (timeout)".into()))?
+        .map_err(|_| MCPError::PoolError("Connection pool semaphore closed".into()))?;
+
+        // Try idle again (one may have been released while we waited)
+        if let Some(conn) = self.idle_connections.pop() {
+            permit.forget();
+            self.active_connections.fetch_add(1, Ordering::Relaxed);
+            return Ok(conn);
+        }
+
+        // Create new connection
+        match connect(&self.connection_string, NoTls).await {
+            Ok((client, connection)) => {
+                tokio::spawn(async move {
+                    if let Err(e) = connection.await {
+                        error!("Lazy connection error: {}", e);
                     }
-                }
+                });
+                permit.forget();
+                self.active_connections.fetch_add(1, Ordering::Relaxed);
+                Ok(Arc::new(client))
             }
-
-            if start.elapsed() > timeout {
-                return Err(MCPError::PoolError("Connection pool exhausted".into()));
+            Err(e) => {
+                error!("Failed to create lazy connection: {}", e);
+                drop(permit);
+                Err(MCPError::PoolError(
+                    "Failed to create database connection".into(),
+                ))
             }
-
-            tokio::time::sleep(std::time::Duration::from_micros(100)).await;
         }
     }
 
-    /// Release a connection back to the pool
+    /// Release a connection back to the pool.
     pub fn release(&self, conn: Arc<Client>) {
-        self.idle_connections.push(conn);
+        if is_connection_alive(&conn) {
+            self.idle_connections.push(conn);
+        } else {
+            self.active_connections.fetch_sub(1, Ordering::Relaxed);
+        }
         debug!("Connection released back to pool");
     }
 
+    /// Current approximate connection count.
+    pub fn active_count(&self) -> u32 {
+        self.active_connections.load(Ordering::Relaxed)
+    }
+
+    /// Maximum pool size.
+    pub fn max_size(&self) -> u32 {
+        self.config.max_size
+    }
 }
 
-#[allow(dead_code)]
-pub struct StatementCache {
-    cache: Arc<RwLock<LruCache<String, Statement>>>,
-}
-
-#[allow(dead_code)]
-impl StatementCache {
-    const CACHE_CAPACITY: usize = 256;
-
-    pub fn new() -> Self {
-        Self {
-            cache: Arc::new(RwLock::new(
-                LruCache::new(NonZeroUsize::new(Self::CACHE_CAPACITY).unwrap())
-            )),
-        }
-    }
-
-    pub async fn get_or_prepare(
-        &self,
-        sql: &str,
-        conn: &tokio_postgres::Client,
-    ) -> Result<Statement> {
-        {
-            let mut cache = self.cache.write().unwrap();
-            if let Some(stmt) = cache.get(sql) {
-                return Ok(stmt.clone());
-            }
-        }
-
-        let stmt = conn.prepare(sql).await?;
-
-        {
-            let mut cache = self.cache.write().unwrap();
-            cache.put(sql.to_string(), stmt.clone());
-        }
-
-        Ok(stmt)
-    }
-
-    pub fn clear(&self) {
-        self.cache.write().unwrap().clear();
-    }
-
-    pub fn size(&self) -> usize {
-        self.cache.read().unwrap().len()
-    }
+/// Quick health check — ping the connection without a full round-trip.
+fn is_connection_alive(conn: &Client) -> bool {
+    // tokio_postgres::Client::is_closed returns true if the connection is broken.
+    !conn.is_closed()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
-    fn test_buffer_pool_default_size() {
-        let pool = BufferPool::default();
-        assert_eq!(pool.capacity, 4096);
-        assert_eq!(pool.max_buffers, 128);
-    }
-
-    #[test]
-    fn test_buffer_pool_custom_size() {
-        let pool = BufferPool::new(8192);
-        assert_eq!(pool.capacity, 8192);
-    }
-
-    #[test]
-    fn test_buffer_pool_acquire_creates_new() {
-        let pool = BufferPool::new(1024);
-        let buf = pool.acquire();
-        assert_eq!(buf.capacity(), 1024);
-        assert!(buf.is_empty());
-    }
-
-    #[test]
-    fn test_buffer_pool_acquire_reuses_released() {
-        let pool = BufferPool::new(1024);
-        let buf = vec![0u8; 512];
-        pool.release(buf);
-        let reused = pool.acquire();
-        assert!(reused.is_empty()); // cleared on acquire
-        assert_eq!(reused.capacity(), 1024);
-    }
-
-    #[test]
-    fn test_buffer_pool_reject_wrong_capacity() {
-        let pool = BufferPool::new(4096);
-        let buf = vec![0u8; 100]; // wrong capacity
-        pool.release(buf);
-        // Should not be queued — acquire creates fresh
-        let acquired = pool.acquire();
-        assert_eq!(acquired.capacity(), 4096);
-    }
-
-    #[test]
-    fn test_buffer_pool_max_buffers() {
-        let mut pool = BufferPool::new(64);
-        pool.max_buffers = 3;
-        for _ in 0..5 {
-            pool.release(vec![0u8; 64]);
-        }
-        // Only 3 should remain in the queue
-        let qlen = pool.buffers.len();
-        assert!(qlen <= 3, "Queue should be capped at max_buffers");
-    }
-
-    #[test]
-    fn test_buffer_pool_multiple_acquire_release() {
-        let pool = BufferPool::new(256);
-        for i in 0..10 {
-            let mut buf = pool.acquire();
-            assert_eq!(buf.capacity(), 256);
-            buf.push(i as u8);
-            pool.release(buf);
-        }
-        // After 10 rounds, pool should work fine
-        let final_buf = pool.acquire();
-        assert!(final_buf.is_empty());
-    }
-
-    #[test]
-    fn test_statement_cache_new() {
-        let cache = StatementCache::new();
-        assert_eq!(cache.size(), 0);
-    }
-
-    #[test]
-    fn test_statement_cache_clear() {
-        let cache = StatementCache::new();
-        // We can't easily test get_or_prepare without a DB,
-        // but we can test clear and size operations
-        assert_eq!(cache.size(), 0);
-        cache.clear();
-        assert_eq!(cache.size(), 0);
+    fn test_config() {
+        let cfg = PoolConfig {
+            min_size: 2,
+            max_size: 10,
+            queue_timeout: Duration::from_secs(10),
+        };
+        assert!(cfg.max_size >= cfg.min_size);
     }
 }

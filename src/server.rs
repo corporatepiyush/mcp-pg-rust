@@ -219,9 +219,10 @@ async fn handle_tools_call(
         .and_then(|p| p.get("name").and_then(|v| v.as_str()))
         .ok_or_else(|| MCPError::InvalidParams("Missing 'name' parameter".into()))?;
 
-    let tool_args = req.params.as_ref().and_then(|p| p.get("arguments"));
+    let tool_args = req.params.as_ref().and_then(|p| p.get("arguments").cloned());
 
-    let write_tools = [
+    // Restricted mode check + unknown tool check BEFORE pool acquire
+    let write_tools: &[&str] = &[
         "execute_insert", "execute_update", "execute_delete",
         "batch_insert", "batch_update", "batch_delete", "batch_insert_copy",
         "vacuum_analyze", "analyze_table", "reindex_table",
@@ -237,82 +238,113 @@ async fn handle_tools_call(
         )));
     }
 
-    // Acquire pool connection only for known tools — unknown tools
-    // (the `_` arm) return MethodNotFound without consuming a pool slot.
+    // Fast-path simple tools that don't need a DB connection
+    let no_db_tools: &[&str] = &["list_tables", "list_schemas", "show_constraints"];
+    if !no_db_tools.contains(&tool_name) {
+        // Verify tool exists before acquiring a connection
+        let tool_exists = matches!(tool_name,
+            "describe_table" | "list_indexes" | "execute_query" | "execute_insert"
+            | "execute_update" | "execute_delete" | "explain_query"
+            | "batch_insert" | "batch_update" | "batch_delete" | "batch_insert_copy"
+            | "get_table_stats" | "get_index_stats" | "show_database_size"
+            | "show_table_size" | "get_cache_hit_ratio"
+            | "list_connections" | "kill_connection" | "show_current_user"
+            | "show_running_queries" | "show_connection_summary"
+            | "vacuum_analyze" | "analyze_table" | "reindex_table"
+            | "get_pg_stat_statements" | "reset_statistics"
+            | "list_users" | "list_user_privileges" | "list_role_memberships"
+            | "list_database_privileges" | "show_session_info"
+            | "show_all_settings" | "get_setting" | "show_memory_settings"
+            | "show_performance_settings" | "show_log_settings"
+            | "show_replication_status" | "list_replication_slots"
+            | "list_standby_servers" | "show_wal_info" | "show_base_backup_progress"
+            | "show_active_transactions" | "show_locks" | "show_waiting_locks"
+            | "begin_transaction" | "commit_transaction" | "rollback_transaction"
+            | "show_transaction_isolation" | "show_deadlocks"
+            | "show_autocommit_status" | "show_transaction_timeout"
+            | "analyze_db_health" | "list_unused_indexes" | "list_duplicate_indexes"
+            | "show_vacuum_progress" | "get_object_details"
+        );
+        if !tool_exists {
+            return Err(method_not_found(tool_name));
+        }
+    }
+
+    // Acquire pool connection only for known tools
     let client = pool.acquire().await?;
 
     let result = match tool_name {
         // Schema actions
-        "list_tables" => actions::schema::list_tables(&client, tool_args.cloned()).await,
-        "describe_table" => actions::schema::describe_table(&client, tool_args.cloned()).await,
-        "list_indexes" => actions::schema::list_indexes(&client, tool_args.cloned()).await,
-        "list_schemas" => actions::schema::list_schemas(&client, tool_args.cloned()).await,
-        "show_constraints" => actions::schema::show_constraints(&client, tool_args.cloned()).await,
+        "list_tables" => actions::schema::list_tables(&client, &tool_args).await,
+        "describe_table" => actions::schema::describe_table(&client, &tool_args).await,
+        "list_indexes" => actions::schema::list_indexes(&client, &tool_args).await,
+        "list_schemas" => actions::schema::list_schemas(&client, &tool_args).await,
+        "show_constraints" => actions::schema::show_constraints(&client, &tool_args).await,
         // Query actions
-        "execute_query" => actions::query::execute_query(&client, tool_args.cloned()).await,
-        "execute_insert" => actions::query::execute_insert(&client, tool_args.cloned()).await,
-        "execute_update" => actions::query::execute_update(&client, tool_args.cloned()).await,
-        "execute_delete" => actions::query::execute_delete(&client, tool_args.cloned()).await,
-        "explain_query" => actions::query::explain_query(&client, tool_args.cloned()).await,
+        "execute_query" => actions::query::execute_query(&client, &tool_args).await,
+        "execute_insert" => actions::query::execute_insert(&client, &tool_args).await,
+        "execute_update" => actions::query::execute_update(&client, &tool_args).await,
+        "execute_delete" => actions::query::execute_delete(&client, &tool_args).await,
+        "explain_query" => actions::query::explain_query(&client, &tool_args).await,
         // Batch operations
-        "batch_insert" => actions::batch::batch_insert(&client, tool_args.cloned()).await,
-        "batch_update" => actions::batch::batch_update(&client, tool_args.cloned()).await,
-        "batch_delete" => actions::batch::batch_delete(&client, tool_args.cloned()).await,
-        "batch_insert_copy" => actions::batch::batch_insert_copy(&client, tool_args.cloned()).await,
+        "batch_insert" => actions::batch::batch_insert(&client, &tool_args).await,
+        "batch_update" => actions::batch::batch_update(&client, &tool_args).await,
+        "batch_delete" => actions::batch::batch_delete(&client, &tool_args).await,
+        "batch_insert_copy" => actions::batch::batch_insert_copy(&client, &tool_args).await,
         // Monitoring actions
-        "get_table_stats" => actions::monitoring::get_table_stats(&client, tool_args.cloned()).await,
-        "get_index_stats" => actions::monitoring::get_index_stats(&client, tool_args.cloned()).await,
-        "show_database_size" => actions::monitoring::show_database_size(&client, tool_args.cloned()).await,
-        "show_table_size" => actions::monitoring::show_table_size(&client, tool_args.cloned()).await,
-        "get_cache_hit_ratio" => actions::monitoring::get_cache_hit_ratio(&client, tool_args.cloned()).await,
+        "get_table_stats" => actions::monitoring::get_table_stats(&client, &tool_args).await,
+        "get_index_stats" => actions::monitoring::get_index_stats(&client, &tool_args).await,
+        "show_database_size" => actions::monitoring::show_database_size(&client, &tool_args).await,
+        "show_table_size" => actions::monitoring::show_table_size(&client, &tool_args).await,
+        "get_cache_hit_ratio" => actions::monitoring::get_cache_hit_ratio(&client, &tool_args).await,
         // Connection actions
-        "list_connections" => actions::connections::list_connections(&client, tool_args.cloned()).await,
-        "kill_connection" => actions::connections::kill_connection(&client, tool_args.cloned()).await,
-        "show_current_user" => actions::connections::show_current_user(&client, tool_args.cloned()).await,
-        "show_running_queries" => actions::connections::show_running_queries(&client, tool_args.cloned()).await,
-        "show_connection_summary" => actions::connections::show_connection_summary(&client, tool_args.cloned()).await,
+        "list_connections" => actions::connections::list_connections(&client, &tool_args).await,
+        "kill_connection" => actions::connections::kill_connection(&client, &tool_args).await,
+        "show_current_user" => actions::connections::show_current_user(&client, &tool_args).await,
+        "show_running_queries" => actions::connections::show_running_queries(&client, &tool_args).await,
+        "show_connection_summary" => actions::connections::show_connection_summary(&client, &tool_args).await,
         // Maintenance actions
-        "vacuum_analyze" => actions::maintenance::vacuum_analyze(&client, tool_args.cloned()).await,
-        "analyze_table" => actions::maintenance::analyze_table(&client, tool_args.cloned()).await,
-        "reindex_table" => actions::maintenance::reindex_table(&client, tool_args.cloned()).await,
-        "get_pg_stat_statements" => actions::maintenance::get_pg_stat_statements(&client, tool_args.cloned()).await,
-        "reset_statistics" => actions::maintenance::reset_statistics(&client, tool_args.cloned()).await,
+        "vacuum_analyze" => actions::maintenance::vacuum_analyze(&client, &tool_args).await,
+        "analyze_table" => actions::maintenance::analyze_table(&client, &tool_args).await,
+        "reindex_table" => actions::maintenance::reindex_table(&client, &tool_args).await,
+        "get_pg_stat_statements" => actions::maintenance::get_pg_stat_statements(&client, &tool_args).await,
+        "reset_statistics" => actions::maintenance::reset_statistics(&client, &tool_args).await,
         // Security actions
-        "list_users" => actions::security::list_users(&client, tool_args.cloned()).await,
-        "list_user_privileges" => actions::security::list_user_privileges(&client, tool_args.cloned()).await,
-        "list_role_memberships" => actions::security::list_role_memberships(&client, tool_args.cloned()).await,
-        "list_database_privileges" => actions::security::list_database_privileges(&client, tool_args.cloned()).await,
-        "show_session_info" => actions::security::show_session_info(&client, tool_args.cloned()).await,
+        "list_users" => actions::security::list_users(&client, &tool_args).await,
+        "list_user_privileges" => actions::security::list_user_privileges(&client, &tool_args).await,
+        "list_role_memberships" => actions::security::list_role_memberships(&client, &tool_args).await,
+        "list_database_privileges" => actions::security::list_database_privileges(&client, &tool_args).await,
+        "show_session_info" => actions::security::show_session_info(&client, &tool_args).await,
         // Config actions
-        "show_all_settings" => actions::config::show_all_settings(&client, tool_args.cloned()).await,
-        "get_setting" => actions::config::get_setting(&client, tool_args.cloned()).await,
-        "show_memory_settings" => actions::config::show_memory_settings(&client, tool_args.cloned()).await,
-        "show_performance_settings" => actions::config::show_performance_settings(&client, tool_args.cloned()).await,
-        "show_log_settings" => actions::config::show_log_settings(&client, tool_args.cloned()).await,
+        "show_all_settings" => actions::config::show_all_settings(&client, &tool_args).await,
+        "get_setting" => actions::config::get_setting(&client, &tool_args).await,
+        "show_memory_settings" => actions::config::show_memory_settings(&client, &tool_args).await,
+        "show_performance_settings" => actions::config::show_performance_settings(&client, &tool_args).await,
+        "show_log_settings" => actions::config::show_log_settings(&client, &tool_args).await,
         // Replication actions
-        "show_replication_status" => actions::replication::show_replication_status(&client, tool_args.cloned()).await,
-        "list_replication_slots" => actions::replication::list_replication_slots(&client, tool_args.cloned()).await,
-        "list_standby_servers" => actions::replication::list_standby_servers(&client, tool_args.cloned()).await,
-        "show_wal_info" => actions::replication::show_wal_info(&client, tool_args.cloned()).await,
-        "show_base_backup_progress" => actions::replication::show_base_backup_progress(&client, tool_args.cloned()).await,
+        "show_replication_status" => actions::replication::show_replication_status(&client, &tool_args).await,
+        "list_replication_slots" => actions::replication::list_replication_slots(&client, &tool_args).await,
+        "list_standby_servers" => actions::replication::list_standby_servers(&client, &tool_args).await,
+        "show_wal_info" => actions::replication::show_wal_info(&client, &tool_args).await,
+        "show_base_backup_progress" => actions::replication::show_base_backup_progress(&client, &tool_args).await,
         // Transaction actions
-        "show_active_transactions" => actions::transactions::show_active_transactions(&client, tool_args.cloned()).await,
-        "show_locks" => actions::transactions::show_locks(&client, tool_args.cloned()).await,
-        "show_waiting_locks" => actions::transactions::show_waiting_locks(&client, tool_args.cloned()).await,
-        "begin_transaction" => actions::transactions::begin_transaction(&client, tool_args.cloned()).await,
-        "commit_transaction" => actions::transactions::commit_transaction(&client, tool_args.cloned()).await,
-        "rollback_transaction" => actions::transactions::rollback_transaction(&client, tool_args.cloned()).await,
-        "show_transaction_isolation" => actions::transactions::show_transaction_isolation(&client, tool_args.cloned()).await,
-        "show_deadlocks" => actions::transactions::show_deadlocks(&client, tool_args.cloned()).await,
-        "show_autocommit_status" => actions::transactions::show_autocommit_status(&client, tool_args.cloned()).await,
-        "show_transaction_timeout" => actions::transactions::show_transaction_timeout(&client, tool_args.cloned()).await,
+        "show_active_transactions" => actions::transactions::show_active_transactions(&client, &tool_args).await,
+        "show_locks" => actions::transactions::show_locks(&client, &tool_args).await,
+        "show_waiting_locks" => actions::transactions::show_waiting_locks(&client, &tool_args).await,
+        "begin_transaction" => actions::transactions::begin_transaction(&client, &tool_args).await,
+        "commit_transaction" => actions::transactions::commit_transaction(&client, &tool_args).await,
+        "rollback_transaction" => actions::transactions::rollback_transaction(&client, &tool_args).await,
+        "show_transaction_isolation" => actions::transactions::show_transaction_isolation(&client, &tool_args).await,
+        "show_deadlocks" => actions::transactions::show_deadlocks(&client, &tool_args).await,
+        "show_autocommit_status" => actions::transactions::show_autocommit_status(&client, &tool_args).await,
+        "show_transaction_timeout" => actions::transactions::show_transaction_timeout(&client, &tool_args).await,
         // Health actions
-        "analyze_db_health" => actions::health::analyze_db_health(&client, tool_args.cloned()).await,
-        "list_unused_indexes" => actions::health::list_unused_indexes(&client, tool_args.cloned()).await,
-        "list_duplicate_indexes" => actions::health::list_duplicate_indexes(&client, tool_args.cloned()).await,
-        "show_vacuum_progress" => actions::health::show_vacuum_progress(&client, tool_args.cloned()).await,
+        "analyze_db_health" => actions::health::analyze_db_health(&client, &tool_args).await,
+        "list_unused_indexes" => actions::health::list_unused_indexes(&client, &tool_args).await,
+        "list_duplicate_indexes" => actions::health::list_duplicate_indexes(&client, &tool_args).await,
+        "show_vacuum_progress" => actions::health::show_vacuum_progress(&client, &tool_args).await,
         // Enhanced schema
-        "get_object_details" => actions::schema::get_object_details(&client, tool_args.cloned()).await,
+        "get_object_details" => actions::schema::get_object_details(&client, &tool_args).await,
         tool => Err(method_not_found(tool)),
     };
 

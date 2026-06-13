@@ -3,7 +3,7 @@ use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
 
 /// 36. Show replication status
-pub async fn show_replication_status(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn show_replication_status(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let (in_recovery,): (bool,) = client
         .query_one("SELECT pg_is_in_recovery()", &[])
         .await
@@ -40,7 +40,7 @@ pub async fn show_replication_status(client: &Client, _params: Option<Value>) ->
 }
 
 /// 37. List replication slots
-pub async fn list_replication_slots(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn list_replication_slots(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT slot_name, slot_type, database::text, active, restart_lsn::text, confirmed_flush_lsn::text
@@ -68,7 +68,7 @@ pub async fn list_replication_slots(client: &Client, _params: Option<Value>) -> 
 }
 
 /// 38. List standby servers
-pub async fn list_standby_servers(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn list_standby_servers(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT client_addr, client_port, state, sync_state, write_lag, flush_lag, replay_lag
@@ -97,7 +97,7 @@ pub async fn list_standby_servers(client: &Client, _params: Option<Value>) -> MC
 }
 
 /// 39. Show WAL info
-pub async fn show_wal_info(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn show_wal_info(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let (in_recovery,): (bool,) = client
         .query_one("SELECT pg_is_in_recovery()", &[])
         .await
@@ -130,7 +130,7 @@ pub async fn show_wal_info(client: &Client, _params: Option<Value>) -> MCPResult
 }
 
 /// 40. Show base backup progress
-pub async fn show_base_backup_progress(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn show_base_backup_progress(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     // PG 16-17: pg_stat_basebackup; PG 18+: pg_stat_progress_basebackup
     let query = match client.query_one(
         "SELECT count(*) FROM pg_class WHERE relname = 'pg_stat_progress_basebackup'", &[]

@@ -3,7 +3,7 @@ use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
 
 /// 11. Get table stats
-pub async fn get_table_stats(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn get_table_stats(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT schemaname, relname, n_live_tup, n_dead_tup,
@@ -32,7 +32,7 @@ pub async fn get_table_stats(client: &Client, _params: Option<Value>) -> MCPResu
 }
 
 /// 12. Get index stats
-pub async fn get_index_stats(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn get_index_stats(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT schemaname, relname, indexrelname, idx_scan, idx_tup_read, idx_tup_fetch
@@ -60,7 +60,7 @@ pub async fn get_index_stats(client: &Client, _params: Option<Value>) -> MCPResu
 }
 
 /// 13. Show database size
-pub async fn show_database_size(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn show_database_size(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT datname, pg_size_pretty(pg_database_size(datname)) as size_pretty,
@@ -87,7 +87,7 @@ pub async fn show_database_size(client: &Client, _params: Option<Value>) -> MCPR
 }
 
 /// 14. Show table size
-pub async fn show_table_size(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn show_table_size(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT schemaname, relname,
@@ -115,7 +115,7 @@ pub async fn show_table_size(client: &Client, _params: Option<Value>) -> MCPResu
 }
 
 /// 15. Get cache hit ratio
-pub async fn get_cache_hit_ratio(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn get_cache_hit_ratio(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT sum(heap_blks_hit)::float / (sum(heap_blks_hit) + sum(heap_blks_read)) as ratio

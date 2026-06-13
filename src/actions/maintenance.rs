@@ -17,8 +17,9 @@ fn validate_table_name(name: &str) -> std::result::Result<(), crate::errors::MCP
 }
 
 /// 21. Vacuum analyze
-pub async fn vacuum_analyze(client: &Client, params: Option<Value>) -> MCPResult<Value> {
+pub async fn vacuum_analyze(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
     let table_name = params
+        .as_ref()
         .and_then(|p| p.get("table").and_then(|v| v.as_str()).map(|s| s.to_string()));
 
     if let Some(ref table) = table_name {
@@ -41,8 +42,9 @@ pub async fn vacuum_analyze(client: &Client, params: Option<Value>) -> MCPResult
 }
 
 /// 22. Analyze table
-pub async fn analyze_table(client: &Client, params: Option<Value>) -> MCPResult<Value> {
+pub async fn analyze_table(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
     let table_name = params
+        .as_ref()
         .and_then(|p| p.get("table").and_then(|v| v.as_str()).map(|s| s.to_string()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table' parameter".into()))?;
 
@@ -58,8 +60,9 @@ pub async fn analyze_table(client: &Client, params: Option<Value>) -> MCPResult<
 }
 
 /// 23. Reindex table
-pub async fn reindex_table(client: &Client, params: Option<Value>) -> MCPResult<Value> {
+pub async fn reindex_table(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
     let table_name = params
+        .as_ref()
         .and_then(|p| p.get("table").and_then(|v| v.as_str()).map(|s| s.to_string()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table' parameter".into()))?;
 
@@ -75,7 +78,7 @@ pub async fn reindex_table(client: &Client, params: Option<Value>) -> MCPResult<
 }
 
 /// 24. Get pg stat statements
-pub async fn get_pg_stat_statements(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn get_pg_stat_statements(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT query, calls, mean_time, max_time, total_time
@@ -113,7 +116,7 @@ pub async fn get_pg_stat_statements(client: &Client, _params: Option<Value>) -> 
 }
 
 /// 25. Reset statistics
-pub async fn reset_statistics(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn reset_statistics(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     client.execute("SELECT pg_stat_reset()", &[]).await?;
 
     Ok(json!({

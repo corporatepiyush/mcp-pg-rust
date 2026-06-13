@@ -5,7 +5,7 @@ use crate::errors::Result as MCPResult;
 const MAX_SETTING_NAME_LEN: usize = 255;
 
 /// 31. Show all settings
-pub async fn show_all_settings(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn show_all_settings(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT name, setting, unit, short_desc, context
@@ -33,8 +33,9 @@ pub async fn show_all_settings(client: &Client, _params: Option<Value>) -> MCPRe
 }
 
 /// 32. Get setting
-pub async fn get_setting(client: &Client, params: Option<Value>) -> MCPResult<Value> {
+pub async fn get_setting(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
     let setting_name = params
+        .as_ref()
         .and_then(|p| p.get("setting").and_then(|v| v.as_str()).map(|s| s.to_string()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'setting' parameter".into()))?;
 
@@ -71,7 +72,7 @@ pub async fn get_setting(client: &Client, params: Option<Value>) -> MCPResult<Va
 }
 
 /// 33. Show memory settings
-pub async fn show_memory_settings(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn show_memory_settings(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT name, setting, unit
@@ -99,7 +100,7 @@ pub async fn show_memory_settings(client: &Client, _params: Option<Value>) -> MC
 }
 
 /// 34. Show performance settings
-pub async fn show_performance_settings(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn show_performance_settings(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT name, setting, unit
@@ -127,7 +128,7 @@ pub async fn show_performance_settings(client: &Client, _params: Option<Value>) 
 }
 
 /// 35. Show log settings
-pub async fn show_log_settings(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+pub async fn show_log_settings(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT name, setting, unit

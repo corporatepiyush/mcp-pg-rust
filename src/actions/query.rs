@@ -23,7 +23,7 @@ fn validate_sql(sql: &str, allowed_prefix: &str, label: &str) -> std::result::Re
 }
 
 /// 6. Execute query
-pub async fn execute_query(client: &Client, params: Option<Value>) -> MCPResult<Value> {
+pub async fn execute_query(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
     let sql = params
         .as_ref()
         .and_then(|p| p.get("sql"))
@@ -67,7 +67,7 @@ pub async fn execute_query(client: &Client, params: Option<Value>) -> MCPResult<
 }
 
 /// 7. Execute insert
-pub async fn execute_insert(client: &Client, params: Option<Value>) -> MCPResult<Value> {
+pub async fn execute_insert(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
     let sql = params
         .as_ref()
         .and_then(|p| p.get("sql"))
@@ -82,7 +82,7 @@ pub async fn execute_insert(client: &Client, params: Option<Value>) -> MCPResult
 }
 
 /// 8. Execute update
-pub async fn execute_update(client: &Client, params: Option<Value>) -> MCPResult<Value> {
+pub async fn execute_update(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
     let sql = params
         .as_ref()
         .and_then(|p| p.get("sql"))
@@ -97,7 +97,7 @@ pub async fn execute_update(client: &Client, params: Option<Value>) -> MCPResult
 }
 
 /// 9. Execute delete
-pub async fn execute_delete(client: &Client, params: Option<Value>) -> MCPResult<Value> {
+pub async fn execute_delete(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
     let sql = params
         .as_ref()
         .and_then(|p| p.get("sql"))
@@ -115,7 +115,7 @@ pub async fn execute_delete(client: &Client, params: Option<Value>) -> MCPResult
 ///
 /// Supports EXPLAIN with optional ANALYZE, BUFFERS, and FORMAT options.
 /// Only SELECT queries can be explained.
-pub async fn explain_query(client: &Client, params: Option<Value>) -> MCPResult<Value> {
+pub async fn explain_query(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
     let sql = params
         .as_ref()
         .and_then(|p| p.get("sql"))
