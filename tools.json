@@ -314,13 +314,13 @@
   },
   {
     "name": "async_execute_insert",
-    "description": "Execute an INSERT statement with optimized performance for high-volume operations (100+ rows affected) by temporarily disabling synchronous_commit. Returns the number of rows affected. Optimized for operations affecting more than 100 rows. Much faster than execute_insert for large batches but trades immediate durability for speed. Data is still persisted, just not guaranteed to be on disk immediately. Perfect for bulk imports, data migrations, and high-volume inserts.",
+    "description": "Execute an INSERT statement with optimized performance for high-volume operations (WHERE predicate affects 100+ rows) by temporarily disabling synchronous_commit. Returns the number of rows affected. Optimized when the operation affects more than 100 rows via the WHERE condition. Much faster than execute_insert for large batches but trades immediate durability for speed. Data is still persisted, just not guaranteed to be on disk immediately. Perfect for bulk imports, data migrations, and high-volume inserts.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "sql": {
           "type": "string",
-          "description": "INSERT SQL statement (required). Max 10,000 characters. Optimized for operations affecting more than 100 rows. Examples: 'INSERT INTO users SELECT * FROM staging WHERE active = true', 'INSERT INTO archive (id, data) VALUES (1, ''data1''), (2, ''data2''), ... (500, ''data500'')'. Use RETURNING clause to verify inserted rows. Best for operations affecting more than 100 rows for significant performance benefit."
+          "description": "INSERT SQL statement (required). Max 10,000 characters. Optimized when WHERE predicate affects more than 100 rows. Examples: 'INSERT INTO users SELECT * FROM staging WHERE active = true', 'INSERT INTO archive (id, data) VALUES (1, ''data1''), (2, ''data2''), ... (500, ''data500'')'. Use RETURNING clause to verify inserted rows. Best when WHERE predicate affects more than 100 rows for significant performance benefit."
         }
       },
       "required": ["sql"]
@@ -328,13 +328,13 @@
   },
   {
     "name": "async_execute_update",
-    "description": "Execute an UPDATE statement with optimized performance for high-volume operations (100+ rows affected) by temporarily disabling synchronous_commit. Returns the number of rows affected. Optimized for operations affecting more than 100 rows. Much faster than execute_update for bulk updates but trades immediate durability for speed. Always include WHERE clause to prevent accidental updates. Data is persisted but not guaranteed on disk immediately.",
+    "description": "Execute an UPDATE statement with optimized performance for high-volume operations (WHERE predicate affects 100+ rows) by temporarily disabling synchronous_commit. Returns the number of rows affected. Optimized when the WHERE condition matches more than 100 rows in the table. Much faster than execute_update for bulk updates but trades immediate durability for speed. Always include WHERE clause to prevent accidental updates. Data is persisted but not guaranteed on disk immediately.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "sql": {
           "type": "string",
-          "description": "UPDATE SQL statement with WHERE clause (required). Max 10,000 characters. Optimized for operations affecting more than 100 rows. Examples: 'UPDATE users SET status = ''active'' WHERE updated_at < now() - interval ''7 days'' AND status = ''pending''', 'UPDATE products SET price = price * 1.1 WHERE category IN (1, 2, 3, 4, 5)', 'UPDATE orders SET shipped_at = now() WHERE status = ''ready'' AND created_at > now() - interval ''30 days'''. ALWAYS include WHERE clause. Use RETURNING to verify changes."
+          "description": "UPDATE SQL statement with WHERE clause (required). Max 10,000 characters. Optimized when WHERE predicate affects more than 100 rows. Examples: 'UPDATE users SET status = ''active'' WHERE updated_at < now() - interval ''7 days'' AND status = ''pending''', 'UPDATE products SET price = price * 1.1 WHERE category IN (1, 2, 3, 4, 5)', 'UPDATE orders SET shipped_at = now() WHERE status = ''ready'' AND created_at > now() - interval ''30 days'''. ALWAYS include WHERE clause. Use RETURNING to verify changes."
         }
       },
       "required": ["sql"]
@@ -342,13 +342,13 @@
   },
   {
     "name": "async_execute_delete",
-    "description": "Execute a DELETE statement with optimized performance for high-volume operations (100+ rows affected) by temporarily disabling synchronous_commit. Returns the number of rows deleted. Optimized for operations affecting more than 100 rows. Much faster than execute_delete for bulk deletes but trades immediate durability for speed. ALWAYS requires WHERE clause to prevent accidental full table deletion. Data is removed but not guaranteed on disk immediately.",
+    "description": "Execute a DELETE statement with optimized performance for high-volume operations (WHERE predicate affects 100+ rows) by temporarily disabling synchronous_commit. Returns the number of rows deleted. Optimized when the WHERE condition matches more than 100 rows in the table. Much faster than execute_delete for bulk deletes but trades immediate durability for speed. ALWAYS requires WHERE clause to prevent accidental full table deletion. Data is removed but not guaranteed on disk immediately.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "sql": {
           "type": "string",
-          "description": "DELETE SQL statement with WHERE clause (required). Max 10,000 characters. Optimized for operations affecting more than 100 rows. Examples: 'DELETE FROM audit_logs WHERE created_at < now() - interval ''365 days''', 'DELETE FROM temp_uploads WHERE status = ''failed'' AND created_at < now() - interval ''1 day''', 'DELETE FROM sessions WHERE expires_at < now() AND user_id NOT IN (SELECT id FROM users WHERE premium = true)'. CRITICAL: ALWAYS include WHERE clause - deleting without one removes ALL rows. Use RETURNING to verify what was deleted."
+          "description": "DELETE SQL statement with WHERE clause (required). Max 10,000 characters. Optimized when WHERE predicate affects more than 100 rows. Examples: 'DELETE FROM audit_logs WHERE created_at < now() - interval ''365 days''', 'DELETE FROM temp_uploads WHERE status = ''failed'' AND created_at < now() - interval ''1 day''', 'DELETE FROM sessions WHERE expires_at < now() AND user_id NOT IN (SELECT id FROM users WHERE premium = true)'. CRITICAL: ALWAYS include WHERE clause - deleting without one removes ALL rows. Use RETURNING to verify what was deleted."
         }
       },
       "required": ["sql"]

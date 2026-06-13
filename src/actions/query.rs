@@ -187,9 +187,9 @@ pub async fn explain_query(client: &Client, params: &Option<Value>) -> MCPResult
 
 /// 26. Async execute insert (with synchronous_commit=off for high-volume operations)
 ///
-/// High-performance insert for operations affecting more than 100 rows.
+/// High-performance insert for WHERE predicate affecting more than 100 rows.
 /// Disables synchronous_commit temporarily for maximum throughput.
-/// Significant performance benefit when rows affected > 100.
+/// Significant performance benefit when WHERE condition matches > 100 rows.
 /// Returns rows affected count.
 pub async fn async_execute_insert(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
     let sql = params
@@ -209,9 +209,9 @@ pub async fn async_execute_insert(client: &Client, params: &Option<Value>) -> MC
 
 /// 27. Async execute update (with synchronous_commit=off for high-volume operations)
 ///
-/// High-performance update for operations affecting more than 100 rows.
+/// High-performance update for WHERE predicate affecting more than 100 rows.
 /// Disables synchronous_commit temporarily for maximum throughput.
-/// Significant performance benefit when rows affected > 100.
+/// Significant performance benefit when WHERE condition matches > 100 rows.
 /// Always include WHERE clause to prevent accidental updates.
 /// Returns rows affected count.
 pub async fn async_execute_update(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
@@ -232,9 +232,9 @@ pub async fn async_execute_update(client: &Client, params: &Option<Value>) -> MC
 
 /// 28. Async execute delete (with synchronous_commit=off for high-volume operations)
 ///
-/// High-performance delete for operations affecting more than 100 rows.
+/// High-performance delete for WHERE predicate affecting more than 100 rows.
 /// Disables synchronous_commit temporarily for maximum throughput.
-/// Significant performance benefit when rows affected > 100.
+/// Significant performance benefit when WHERE condition matches > 100 rows.
 /// Always include WHERE clause - deleting without one removes all rows.
 /// Returns rows affected count.
 pub async fn async_execute_delete(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
