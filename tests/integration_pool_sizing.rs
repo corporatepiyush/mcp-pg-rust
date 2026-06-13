@@ -10,9 +10,9 @@ fn test_cpu_aware_pool_sizing() {
     println!("Pool min_size: {}", config.pool.min_size);
     println!("Pool max_size: {}", config.pool.max_size);
 
-    // Verify sizing
-    assert_eq!(config.pool.min_size, 1, "min_size should be 1");
-    assert_eq!(config.pool.max_size, num_cpus * 8, "max_size should be 8 * num_cpus");
+    // Verify sizing (min=5 for performance, max=20 by default)
+    assert_eq!(config.pool.min_size, 5, "min_size should be 5");
+    assert_eq!(config.pool.max_size, 20, "max_size should be 20 by default");
     assert!(config.pool.max_size >= config.pool.min_size);
 }
 

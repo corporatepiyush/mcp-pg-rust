@@ -44,7 +44,6 @@ const HOST: &str = "127.0.0.1";
 const PORT: u16 = 3000;
 
 #[test]
-#[ignore = "Requires running MCP server on 127.0.0.1:3000"]
 fn test_initialize() {
     let resp = send_request(HOST, PORT, r#"{"jsonrpc":"2.0","method":"initialize","id":1}"#);
     let json = parse_response(&resp);
@@ -54,7 +53,6 @@ fn test_initialize() {
 }
 
 #[test]
-#[ignore = "Requires running MCP server"]
 fn test_tools_list() {
     let resp = send_request(HOST, PORT, r#"{"jsonrpc":"2.0","method":"tools/list","id":2}"#);
     let json = parse_response(&resp);
@@ -69,7 +67,6 @@ fn test_tools_list() {
 }
 
 #[test]
-#[ignore = "Requires running MCP server"]
 fn test_list_tables() {
     let resp = send_request(
         HOST,
@@ -83,7 +80,6 @@ fn test_list_tables() {
 }
 
 #[test]
-#[ignore = "Requires running MCP server"]
 fn test_show_current_user() {
     let resp = send_request(
         HOST,
@@ -99,7 +95,6 @@ fn test_show_current_user() {
 }
 
 #[test]
-#[ignore = "Requires running MCP server"]
 fn test_execute_query() {
     let resp = send_request(
         HOST,
@@ -112,7 +107,6 @@ fn test_execute_query() {
 }
 
 #[test]
-#[ignore = "Requires running MCP server"]
 fn test_execute_query_invalid_sql() {
     let resp = send_request(
         HOST,
@@ -126,7 +120,6 @@ fn test_execute_query_invalid_sql() {
 }
 
 #[test]
-#[ignore = "Requires running MCP server"]
 fn test_method_not_found() {
     let resp = send_request(
         HOST,
@@ -140,7 +133,6 @@ fn test_method_not_found() {
 }
 
 #[test]
-#[ignore = "Requires running MCP server"]
 fn test_execute_insert() {
     // execute_insert requires an INSERT statement
     let resp = send_request(
@@ -166,7 +158,6 @@ fn test_execute_insert() {
 }
 
 #[test]
-#[ignore = "Requires running MCP server"]
 fn test_show_database_size() {
     let resp = send_request(
         HOST,
@@ -185,7 +176,6 @@ fn test_show_database_size() {
 }
 
 #[test]
-#[ignore = "Requires running MCP server"]
 fn test_list_indexes() {
     let resp = send_request(
         HOST,
@@ -198,7 +188,6 @@ fn test_list_indexes() {
 }
 
 #[test]
-#[ignore = "Requires running MCP server"]
 fn test_concurrent_requests() {
     use std::thread;
 
@@ -220,7 +209,6 @@ fn test_concurrent_requests() {
 }
 
 #[test]
-#[ignore = "Requires running MCP server"]
 fn test_batch_insert_empty() {
     let resp = send_request(
         HOST,
@@ -233,7 +221,6 @@ fn test_batch_insert_empty() {
 }
 
 #[test]
-#[ignore = "Requires running MCP server"]
 fn test_batch_insert_column_mismatch() {
     let resp = send_request(
         HOST,
@@ -246,7 +233,6 @@ fn test_batch_insert_column_mismatch() {
 }
 
 #[test]
-#[ignore = "Requires running MCP server"]
 fn test_missing_params() {
     let resp = send_request(
         HOST,
@@ -258,7 +244,6 @@ fn test_missing_params() {
 }
 
 #[test]
-#[ignore = "Requires running MCP server"]
 fn test_invalid_jsonrpc_version() {
     let resp = send_request(
         HOST,
@@ -271,7 +256,6 @@ fn test_invalid_jsonrpc_version() {
 }
 
 #[test]
-#[ignore = "Requires running MCP server"]
 fn test_large_string_handling() {
     let long_str = "a".repeat(1000);
     let request = format!(

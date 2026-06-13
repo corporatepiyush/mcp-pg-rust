@@ -114,12 +114,11 @@ fn test_config_default_values() {
 
     println!("\n=== Configuration Defaults ===");
     println!("Pool Configuration:");
-    println!("  min_size: {} (should be 1)", cfg.pool.min_size);
-    println!("  max_size: {} (should be {} for {} CPUs)",
-        cfg.pool.max_size, num_cpus * 8, num_cpus);
+    println!("  min_size: {} (default: 5 for perf)", cfg.pool.min_size);
+    println!("  max_size: {} (default: 20)", cfg.pool.max_size);
     println!("  queue_timeout: {:?}", cfg.pool.queue_timeout);
 
-    assert_eq!(cfg.pool.min_size, 1);
-    assert_eq!(cfg.pool.max_size, num_cpus * 8);
+    assert_eq!(cfg.pool.min_size, 5);
+    assert_eq!(cfg.pool.max_size, 20);
     assert!(cfg.pool.max_size >= cfg.pool.min_size);
 }

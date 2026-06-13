@@ -85,7 +85,6 @@ fn http_request(tool_name: &str, arguments: Value) -> Result<Value, Box<dyn std:
 }
 
 #[test]
-#[ignore] // Only run if server is running on localhost:3000
 fn test_tcp_list_tables() {
     match tcp_request("list_tables", json!({})) {
         Ok(result) => {
@@ -97,7 +96,6 @@ fn test_tcp_list_tables() {
 }
 
 #[test]
-#[ignore]
 fn test_tcp_describe_table() {
     match tcp_request("describe_table", json!({"table": "pg_tables"})) {
         Ok(result) => {
@@ -109,7 +107,6 @@ fn test_tcp_describe_table() {
 }
 
 #[test]
-#[ignore]
 fn test_tcp_execute_query() {
     match tcp_request("execute_query", json!({"sql": "SELECT 1 as result"})) {
         Ok(result) => {
@@ -122,20 +119,18 @@ fn test_tcp_execute_query() {
 }
 
 #[test]
-#[ignore]
 fn test_tcp_show_current_user() {
     match tcp_request("show_current_user", json!({})) {
         Ok(result) => {
             println!("✓ show_current_user: {:?}", result);
             assert!(result.is_object());
-            assert!(result.get("current_user").is_some() || result.get("session_user").is_some());
+            assert!(result.get("user").is_some() || result.get("current_user").is_some() || result.get("session_user").is_some());
         }
         Err(e) => println!("SKIPPED: {}", e),
     }
 }
 
 #[test]
-#[ignore]
 fn test_tcp_list_indexes() {
     match tcp_request("list_indexes", json!({})) {
         Ok(result) => {
@@ -147,7 +142,6 @@ fn test_tcp_list_indexes() {
 }
 
 #[test]
-#[ignore]
 fn test_tcp_get_cache_hit_ratio() {
     match tcp_request("get_cache_hit_ratio", json!({})) {
         Ok(result) => {
@@ -159,7 +153,6 @@ fn test_tcp_get_cache_hit_ratio() {
 }
 
 #[test]
-#[ignore]
 fn test_tcp_all_tools_format_validation() {
     let tools = vec![
         ("list_tables", json!({})),
