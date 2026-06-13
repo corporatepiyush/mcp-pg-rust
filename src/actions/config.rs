@@ -2,6 +2,8 @@ use serde_json::{json, Value};
 use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
 
+const MAX_SETTING_NAME_LEN: usize = 255;
+
 /// 31. Show all settings
 pub async fn show_all_settings(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
     let rows = client
@@ -35,6 +37,12 @@ pub async fn get_setting(client: &Client, params: Option<Value>) -> MCPResult<Va
     let setting_name = params
         .and_then(|p| p.get("setting").and_then(|v| v.as_str()).map(|s| s.to_string()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'setting' parameter".into()))?;
+
+    if setting_name.is_empty() || setting_name.len() > MAX_SETTING_NAME_LEN {
+        return Err(crate::errors::MCPError::InvalidParams(
+            format!("'setting' must be 1-{MAX_SETTING_NAME_LEN} characters")
+        ));
+    }
 
     let rows = client
         .query(

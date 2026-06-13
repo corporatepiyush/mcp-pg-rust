@@ -2,6 +2,8 @@ use serde_json::{json, Value};
 use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
 
+const MAX_PID: i64 = 4_000_000;
+
 /// 16. List connections
 pub async fn list_connections(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
     let rows = client
@@ -38,6 +40,12 @@ pub async fn kill_connection(client: &Client, params: Option<Value>) -> MCPResul
     let pid = params
         .and_then(|p| p.get("pid").and_then(|v| v.as_i64()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'pid' parameter".into()))?;
+
+    if pid <= 0 || pid > MAX_PID {
+        return Err(crate::errors::MCPError::InvalidParams(
+            format!("'pid' must be between 1 and {MAX_PID}")
+        ));
+    }
 
     let rows = client
         .query("SELECT pg_terminate_backend($1)", &[&(pid as i32)])

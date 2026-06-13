@@ -2,6 +2,8 @@ use serde_json::{json, Value};
 use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
 
+const MAX_IDENTIFIER_LEN: usize = 255;
+
 /// 26. List users
 pub async fn list_users(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
     // NOTE: usecanlogin was removed in PG 16+; PG now manages login
@@ -35,6 +37,12 @@ pub async fn list_user_privileges(client: &Client, params: Option<Value>) -> MCP
     let username = params
         .and_then(|p| p.get("username").and_then(|v| v.as_str()).map(|s| s.to_string()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'username' parameter".into()))?;
+
+    if username.is_empty() || username.len() > MAX_IDENTIFIER_LEN {
+        return Err(crate::errors::MCPError::InvalidParams(
+            format!("'username' must be 1-{MAX_IDENTIFIER_LEN} characters")
+        ));
+    }
 
     let rows = client
         .query(

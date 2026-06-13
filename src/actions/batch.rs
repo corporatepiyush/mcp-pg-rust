@@ -2,6 +2,9 @@ use serde_json::{json, Value};
 use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
 
+const MAX_BATCH_ROWS: usize = 1000;
+const MAX_IDENTIFIER_LEN: usize = 255;
+
 /// Format JSON value as SQL-safe string
 fn format_sql_value(val: &Value) -> String {
     match val {
@@ -25,6 +28,12 @@ pub async fn batch_insert(client: &Client, params: Option<Value>) -> MCPResult<V
         .and_then(|v| v.as_str())
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table'".into()))?;
 
+    if table.is_empty() || table.len() > MAX_IDENTIFIER_LEN {
+        return Err(crate::errors::MCPError::InvalidParams(
+            format!("'table' must be 1-{MAX_IDENTIFIER_LEN} characters")
+        ));
+    }
+
     let columns = params
         .get("columns")
         .and_then(|v| v.as_array())
@@ -37,6 +46,12 @@ pub async fn batch_insert(client: &Client, params: Option<Value>) -> MCPResult<V
 
     if rows.is_empty() {
         return Ok(json!({ "rows_affected": 0 }));
+    }
+
+    if rows.len() > MAX_BATCH_ROWS {
+        return Err(crate::errors::MCPError::InvalidParams(
+            format!("Batch size exceeds maximum of {MAX_BATCH_ROWS} rows (got {})", rows.len())
+        ));
     }
 
     let returning = params.get("returning").and_then(|v| v.as_str());
@@ -173,6 +188,12 @@ pub async fn batch_update(client: &Client, params: Option<Value>) -> MCPResult<V
         .and_then(|v| v.as_str())
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table'".into()))?;
 
+    if table.is_empty() || table.len() > MAX_IDENTIFIER_LEN {
+        return Err(crate::errors::MCPError::InvalidParams(
+            format!("'table' must be 1-{MAX_IDENTIFIER_LEN} characters")
+        ));
+    }
+
     let updates = params
         .get("updates")
         .and_then(|v| v.as_object())
@@ -226,6 +247,12 @@ pub async fn batch_delete(client: &Client, params: Option<Value>) -> MCPResult<V
         .get("table")
         .and_then(|v| v.as_str())
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table'".into()))?;
+
+    if table.is_empty() || table.len() > MAX_IDENTIFIER_LEN {
+        return Err(crate::errors::MCPError::InvalidParams(
+            format!("'table' must be 1-{MAX_IDENTIFIER_LEN} characters")
+        ));
+    }
 
     let where_clauses = params
         .get("where_clauses")
@@ -284,6 +311,12 @@ pub async fn batch_insert_copy(client: &Client, params: Option<Value>) -> MCPRes
         .and_then(|v| v.as_str())
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table'".into()))?;
 
+    if table.is_empty() || table.len() > MAX_IDENTIFIER_LEN {
+        return Err(crate::errors::MCPError::InvalidParams(
+            format!("'table' must be 1-{MAX_IDENTIFIER_LEN} characters")
+        ));
+    }
+
     let columns = params
         .get("columns")
         .and_then(|v| v.as_array())
@@ -301,6 +334,12 @@ pub async fn batch_insert_copy(client: &Client, params: Option<Value>) -> MCPRes
 
     if rows.is_empty() {
         return Ok(json!({"rows_affected": 0}));
+    }
+
+    if rows.len() > MAX_BATCH_ROWS {
+        return Err(crate::errors::MCPError::InvalidParams(
+            format!("Batch size exceeds maximum of {MAX_BATCH_ROWS} rows (got {})", rows.len())
+        ));
     }
 
     let column_names: Vec<&str> = columns

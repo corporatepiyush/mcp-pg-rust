@@ -2,6 +2,20 @@ use serde_json::{json, Value};
 use tokio_postgres::Client;
 use crate::errors::{MCPError, Result as MCPResult};
 
+const MAX_IDENTIFIER_LEN: usize = 255;
+
+fn validate_identifier(name: &str, label: &str) -> std::result::Result<(), MCPError> {
+    if name.is_empty() {
+        return Err(MCPError::InvalidParams(format!("'{label}' must not be empty")));
+    }
+    if name.len() > MAX_IDENTIFIER_LEN {
+        return Err(MCPError::InvalidParams(
+            format!("'{label}' exceeds maximum length of {MAX_IDENTIFIER_LEN} characters (got {})", name.len())
+        ));
+    }
+    Ok(())
+}
+
 /// 1. List all tables
 pub async fn list_tables(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
     let rows = client
@@ -35,6 +49,8 @@ pub async fn describe_table(client: &Client, params: Option<Value>) -> MCPResult
         .and_then(|p| p.get("table"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table' parameter".into()))?;
+
+    validate_identifier(table_name, "table")?;
 
     let rows = client
         .query(
@@ -149,11 +165,19 @@ pub async fn get_object_details(client: &Client, params: Option<Value>) -> MCPRe
         .and_then(|v| v.as_str())
         .unwrap_or("public");
 
+    if schema_name.len() > MAX_IDENTIFIER_LEN {
+        return Err(MCPError::InvalidParams(
+            format!("'schema' exceeds maximum length of {MAX_IDENTIFIER_LEN} characters (got {})", schema_name.len())
+        ));
+    }
+
     let table_name = params
         .as_ref()
         .and_then(|p| p.get("table"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| MCPError::InvalidParams("Missing 'table' parameter".into()))?;
+
+    validate_identifier(table_name, "table")?;
 
     let columns = client
         .query(

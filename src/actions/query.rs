@@ -2,6 +2,27 @@ use serde_json::{json, Value};
 use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
 
+const MAX_SQL_LEN: usize = 10_000;
+const MAX_IDENTIFIER_LEN: usize = 255;
+
+fn validate_sql(sql: &str, allowed_prefix: &str, label: &str) -> std::result::Result<(), crate::errors::MCPError> {
+    if sql.is_empty() {
+        return Err(crate::errors::MCPError::InvalidParams("'sql' parameter must not be empty".into()));
+    }
+    if sql.len() > MAX_SQL_LEN {
+        return Err(crate::errors::MCPError::InvalidParams(
+            format!("SQL exceeds maximum length of {MAX_SQL_LEN} characters (got {})", sql.len())
+        ));
+    }
+    let first_word = sql.trim_start().split_whitespace().next().unwrap_or("").to_uppercase();
+    if first_word != allowed_prefix {
+        return Err(crate::errors::MCPError::InvalidParams(
+            format!("Invalid {label} query: expected '{allowed_prefix}'")
+        ));
+    }
+    Ok(())
+}
+
 /// 6. Execute query
 pub async fn execute_query(client: &Client, params: Option<Value>) -> MCPResult<Value> {
     let sql = params
@@ -10,11 +31,7 @@ pub async fn execute_query(client: &Client, params: Option<Value>) -> MCPResult<
         .and_then(|v| v.as_str())
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'sql' parameter".into()))?;
 
-    // Only allow SELECT queries
-    let first_word = sql.trim_start().split_whitespace().next().unwrap_or("").to_uppercase();
-    if first_word != "SELECT" {
-        return Err(crate::errors::MCPError::InvalidParams("Only SELECT queries allowed".into()));
-    }
+    validate_sql(sql, "SELECT", "SELECT")?;
 
     let rows = client.query(sql, &[]).await?;
 
@@ -58,10 +75,7 @@ pub async fn execute_insert(client: &Client, params: Option<Value>) -> MCPResult
         .and_then(|v| v.as_str())
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'sql' parameter".into()))?;
 
-    let first_word = sql.trim_start().split_whitespace().next().unwrap_or("").to_uppercase();
-    if first_word != "INSERT" {
-        return Err(crate::errors::MCPError::InvalidParams("Invalid INSERT query".into()));
-    }
+    validate_sql(sql, "INSERT", "INSERT")?;
 
     let rows_affected = client.execute(sql, &[]).await?;
 
@@ -76,10 +90,7 @@ pub async fn execute_update(client: &Client, params: Option<Value>) -> MCPResult
         .and_then(|v| v.as_str())
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'sql' parameter".into()))?;
 
-    let first_word = sql.trim_start().split_whitespace().next().unwrap_or("").to_uppercase();
-    if first_word != "UPDATE" {
-        return Err(crate::errors::MCPError::InvalidParams("Invalid UPDATE query".into()));
-    }
+    validate_sql(sql, "UPDATE", "UPDATE")?;
 
     let rows_affected = client.execute(sql, &[]).await?;
 
@@ -94,10 +105,7 @@ pub async fn execute_delete(client: &Client, params: Option<Value>) -> MCPResult
         .and_then(|v| v.as_str())
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'sql' parameter".into()))?;
 
-    let first_word = sql.trim_start().split_whitespace().next().unwrap_or("").to_uppercase();
-    if first_word != "DELETE" {
-        return Err(crate::errors::MCPError::InvalidParams("Invalid DELETE query".into()));
-    }
+    validate_sql(sql, "DELETE", "DELETE")?;
 
     let rows_affected = client.execute(sql, &[]).await?;
 
@@ -115,10 +123,7 @@ pub async fn explain_query(client: &Client, params: Option<Value>) -> MCPResult<
         .and_then(|v| v.as_str())
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'sql' parameter".into()))?;
 
-    let first_word = sql.trim_start().split_whitespace().next().unwrap_or("").to_uppercase();
-    if first_word != "SELECT" {
-        return Err(crate::errors::MCPError::InvalidParams("Only SELECT queries can be explained".into()));
-    }
+    validate_sql(sql, "SELECT", "SELECT")?;
 
     let analyze = params
         .as_ref()

@@ -2,10 +2,28 @@ use serde_json::{json, Value};
 use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
 
+const MAX_IDENTIFIER_LEN: usize = 255;
+
+fn validate_table_name(name: &str) -> std::result::Result<(), crate::errors::MCPError> {
+    if name.is_empty() {
+        return Err(crate::errors::MCPError::InvalidParams("'table' must not be empty".into()));
+    }
+    if name.len() > MAX_IDENTIFIER_LEN {
+        return Err(crate::errors::MCPError::InvalidParams(
+            format!("'table' exceeds maximum length of {MAX_IDENTIFIER_LEN} characters (got {})", name.len())
+        ));
+    }
+    Ok(())
+}
+
 /// 21. Vacuum analyze
 pub async fn vacuum_analyze(client: &Client, params: Option<Value>) -> MCPResult<Value> {
     let table_name = params
         .and_then(|p| p.get("table").and_then(|v| v.as_str()).map(|s| s.to_string()));
+
+    if let Some(ref table) = table_name {
+        validate_table_name(table)?;
+    }
 
     let sql = if let Some(ref table) = table_name {
         format!("VACUUM ANALYZE {}", table)
@@ -28,6 +46,8 @@ pub async fn analyze_table(client: &Client, params: Option<Value>) -> MCPResult<
         .and_then(|p| p.get("table").and_then(|v| v.as_str()).map(|s| s.to_string()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table' parameter".into()))?;
 
+    validate_table_name(&table_name)?;
+
     client.execute(&format!("ANALYZE {}", table_name), &[]).await?;
 
     Ok(json!({
@@ -42,6 +62,8 @@ pub async fn reindex_table(client: &Client, params: Option<Value>) -> MCPResult<
     let table_name = params
         .and_then(|p| p.get("table").and_then(|v| v.as_str()).map(|s| s.to_string()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table' parameter".into()))?;
+
+    validate_table_name(&table_name)?;
 
     client.execute(&format!("REINDEX TABLE {}", table_name), &[]).await?;
 
