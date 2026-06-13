@@ -6,6 +6,7 @@ pub mod actions;
 pub mod errors;
 pub mod metrics;
 pub mod http;
+pub mod validation;
 
 use clap::Parser;
 
