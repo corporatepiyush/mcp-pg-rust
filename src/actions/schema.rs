@@ -329,3 +329,44 @@ pub async fn get_object_details(client: &Client, params: &Option<&Value>) -> MCP
         "total_size": table_size,
     }))
 }
+
+/// 6. Show triggers for table
+pub async fn show_triggers_for_table(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'table' parameter".into()))?;
+
+    validate_identifier(table, "table")?;
+
+    let rows = client
+        .query(
+            "SELECT trigger_name, event_object_table, event_manipulation,
+                    action_timing, action_statement, trigger_schema
+             FROM information_schema.triggers
+             WHERE event_object_table = $1
+             ORDER BY trigger_name",
+            &[&table],
+        )
+        .await?;
+
+    let triggers: Vec<Value> = rows
+        .iter()
+        .map(|row| {
+            json!({
+                "name": row.get::<_, String>(0),
+                "table": row.get::<_, String>(1),
+                "event": row.get::<_, String>(2),
+                "timing": row.get::<_, String>(3),
+                "statement": row.get::<_, String>(4),
+                "schema": row.get::<_, String>(5),
+            })
+        })
+        .collect();
+
+    Ok(json!({
+        "table": table,
+        "trigger_count": triggers.len(),
+        "triggers": triggers
+    }))
+}

@@ -253,7 +253,7 @@ async fn handle_tools_call(
     if !no_db_tools.contains(&tool_name) {
         // Verify tool exists before acquiring a connection
         let tool_exists = matches!(tool_name,
-            "describe_table" | "list_indexes" | "execute_query" | "execute_insert"
+            "describe_table" | "show_triggers_for_table" | "list_indexes" | "execute_query" | "execute_insert"
             | "execute_update" | "execute_delete" | "explain_query"
             | "async_execute_insert" | "async_execute_update" | "async_execute_delete"
             | "async_batch_insert" | "async_batch_update" | "async_batch_delete" | "async_batch_insert_copy"
@@ -290,6 +290,7 @@ async fn handle_tools_call(
         "list_indexes" => actions::schema::list_indexes(&client, &tool_args).await,
         "list_schemas" => actions::schema::list_schemas(&client, &tool_args).await,
         "show_constraints" => actions::schema::show_constraints(&client, &tool_args).await,
+        "show_triggers_for_table" => actions::schema::show_triggers_for_table(&client, &tool_args).await,
         // Query actions
         "execute_query" => actions::query::execute_query(&client, &tool_args).await,
         "execute_insert" => actions::query::execute_insert(&client, &tool_args).await,

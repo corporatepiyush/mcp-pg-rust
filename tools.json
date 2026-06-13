@@ -243,6 +243,20 @@
     }
   },
   {
+    "name": "show_triggers_for_table",
+    "description": "List all triggers defined on a specific table with their trigger names, event types, timing (BEFORE/AFTER), and action statements. Shows what automated actions occur when table data changes. Use to understand table behavior, debug unexpected changes, identify side effects of DML operations, and understand cascade rules. Essential for understanding table automation and data integrity logic.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {
+          "type": "string",
+          "description": "Table name to show triggers for (required). Example: 'users', 'orders', 'audit_log'. Case-insensitive. Returns trigger names, event types (INSERT, UPDATE, DELETE), timing (BEFORE, AFTER), and the SQL statements triggered."
+        }
+      },
+      "required": ["table"]
+    }
+  },
+  {
     "name": "list_database_privileges",
     "description": "List database-level access control lists (ACLs) and permissions for all non-template databases. Shows which users/roles have which privileges on each database (CONNECT, CREATE, TEMPORARY, etc.). Use for auditing access control, understanding permission structure, and verifying security policies.",
     "inputSchema": {
