@@ -234,6 +234,7 @@ async fn handle_tools_call(
     // Restricted mode check + unknown tool check BEFORE pool acquire
     let write_tools: &[&str] = &[
         "execute_insert", "execute_update", "execute_delete",
+        "async_execute_insert", "async_execute_update", "async_execute_delete",
         "batch_insert", "batch_update", "batch_delete", "batch_insert_copy",
         "vacuum_analyze", "analyze_table", "reindex_table",
         "reset_statistics", "kill_connection",
@@ -255,6 +256,7 @@ async fn handle_tools_call(
         let tool_exists = matches!(tool_name,
             "describe_table" | "list_indexes" | "execute_query" | "execute_insert"
             | "execute_update" | "execute_delete" | "explain_query"
+            | "async_execute_insert" | "async_execute_update" | "async_execute_delete"
             | "batch_insert" | "batch_update" | "batch_delete" | "batch_insert_copy"
             | "get_table_stats" | "get_index_stats" | "show_database_size"
             | "show_table_size" | "get_cache_hit_ratio"
@@ -295,6 +297,9 @@ async fn handle_tools_call(
         "execute_insert" => actions::query::execute_insert(&client, &tool_args).await,
         "execute_update" => actions::query::execute_update(&client, &tool_args).await,
         "execute_delete" => actions::query::execute_delete(&client, &tool_args).await,
+        "async_execute_insert" => actions::query::async_execute_insert(&client, &tool_args).await,
+        "async_execute_update" => actions::query::async_execute_update(&client, &tool_args).await,
+        "async_execute_delete" => actions::query::async_execute_delete(&client, &tool_args).await,
         "explain_query" => actions::query::explain_query(&client, &tool_args).await,
         // Batch operations
         "batch_insert" => actions::batch::batch_insert(&client, &tool_args).await,
