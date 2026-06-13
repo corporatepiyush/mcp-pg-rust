@@ -6,946 +6,973 @@
 
 ## 1. CONSTRAINTS & ARCHITECTURAL DECISIONS
 
-### Key Constraints
-
-**Protocol Architecture**:
-- TCP and HTTP servers operate independently
-- Each HTTP request gets a random connection from pool
-- Cannot maintain transaction state across requests
-- All operations must be atomic within single request
-
-**Testing Strategy**:
-- Unit tests for protocol parsing and validation
-- Integration tests for tool functionality
-- Dual-protocol testing for parity verification
-- Load testing for concurrent behavior
-- All tests use REAL database (no mocks)
-
-**Code Quality**:
-- Zero compiler warnings in library code
-- Idiomatic Rust patterns throughout
-- Comprehensive error handling
-- Input validation at system boundaries
-
----
-
-## 1.5 CONTROL FLOW DECISIONS & POST-ACTIVITY VERIFICATION
-
-### Critical Decision Tree
-
-```
-START TASK
-├─ Tool parameter validation
-│  ├─ DECISION: Parameter names match actual tool schema?
-│  │  ├─ NO → FIX: Verify against tools/list response
-│  │  │        ACTION: Use 'sql' not 'query', validate all param names
-│  │  └─ YES → Continue
-│  └─ DECISION: Required parameters provided?
-│     ├─ NO → FIX: Add missing required params
-│     │        EXAMPLE: list_triggers needs 'table' param
-│     └─ YES → Continue
-│
-├─ Tool existence verification
-│  ├─ DECISION: Tool exists in tools/list?
-│  │  ├─ NO → FIX: Use alternative tool
-│  │  │        MAPPING: list_databases → use list_schemas
-│  │  │        MAPPING: show_table_structure → use describe_table
-│  │  │        ACTION: Query tools/list before test
-│  │  └─ YES → Continue
-│  └─ DECISION: Tool is implemented (not returning Method not found)?
-│     ├─ NO → FIX: Verify implementation exists in src/actions/
-│     │        ACTION: grep for tool name in source
-│     └─ YES → Continue
-│
-├─ Database state verification
-│  ├─ DECISION: Required test data exists?
-│  │  ├─ NO → FIX: Load test data first
-│  │  │        ACTION: Run load_test_data binary
-│  │  │        ACTION: Verify tables exist via list_tables
-│  │  └─ YES → Continue
-│  └─ DECISION: Trigger prerequisites met (for list_triggers)?
-│     ├─ NO → FIX: Use table that exists
-│     │        ACTION: Query available tables first
-│     └─ YES → Continue
-│
-├─ Protocol verification (TCP vs HTTP)
-│  ├─ DECISION: Both TCP and HTTP working?
-│  │  ├─ TCP FAIL → FIX: Check server on port 3000
-│  │  │         ACTION: nc -zv 127.0.0.1 3000
-│  │  ├─ HTTP FAIL → FIX: Check server on port 3001
-│  │  │          ACTION: curl http://127.0.0.1:3001/health
-│  │  └─ BOTH OK → Continue
-│  └─ DECISION: Same success rate on both protocols?
-│     ├─ NO → FIX: Investigate protocol-specific issue
-│     │        ACTION: Run dual_protocol tests
-│     │        ACTION: Check latency difference
-│     └─ YES → Continue
-│
-└─ Proceed with task
-```
-
-### Post-Activity Verification Checklist
-
-**AFTER RUNNING ANY TEST SUITE:**
-
-- [ ] **Success Rate Check**
-  - [ ] Minimum 90% success rate? (NOT 40%!)
-  - [ ] If < 90%: STOP and investigate
-  - [ ] Root causes:
-    - [ ] Wrong parameter names (e.g., 'query' vs 'sql')
-    - [ ] Tool doesn't exist (use tools/list to verify)
-    - [ ] Missing required parameters
-    - [ ] Database object doesn't exist
-
-- [ ] **Latency Verification**
-  - [ ] TCP latencies reasonable (typically 0-25ms)?
-  - [ ] HTTP latencies reasonable (typically 0-75ms with first-request overhead)?
-  - [ ] If outlier found:
-    - [ ] Check for first-request overhead or cache population
-    - [ ] Verify it's not a database-dependent slow query
-
-- [ ] **Protocol Parity Check**
-  - [ ] TCP and HTTP have same success rate?
-  - [ ] Both protocols return same result format?
-  - [ ] Latency difference < 15x (HTTP slower is normal)?
-
-- [ ] **Tool Availability Check**
-  - [ ] All tools in test are in tools/list response?
-  - [ ] No "Method not found" errors in logs?
-  - [ ] Run diagnostic:
-    ```bash
-    curl -s http://127.0.0.1:3001/rpc \
-      -d '{"jsonrpc":"2.0","method":"tools/list","params":{},"id":1}' \
-      -H "Content-Type: application/json" | jq '.result.tools[] | .name'
-    ```
-
-**AFTER MODIFYING TOOL TESTS:**
-
-- [ ] **Parameter Validation**
-  - [ ] All tool parameters match tool definition in tools.json?
-  - [ ] Required parameters are always provided?
-  - [ ] Parameter types are correct (string, number, boolean, object)?
-
-- [ ] **Test Coverage**
-  - [ ] Both TCP and HTTP tested for each tool?
-  - [ ] Success cases tested?
-  - [ ] Error cases tested?
-  - [ ] Edge cases (empty params, null values) tested?
-
-- [ ] **Result Validation**
-  - [ ] Response contains jsonrpc, id, result/error?
-  - [ ] Error responses have code and message?
-  - [ ] Success responses have non-null result?
-
-**AFTER DATABASE OPERATIONS (CREATE/DROP/MODIFY):**
-
-- [ ] **Immediate Verification (within 5 seconds)**
-  - [ ] Object exists/doesn't exist as expected?
-  - [ ] list_tables shows new table?
-  - [ ] list_indexes shows new index?
-  - [ ] list_schemas shows new schema?
-
-- [ ] **Backup Verification**
-  - [ ] backup_table created backup_<name> table?
-  - [ ] Backup contains all columns from original?
-  - [ ] Backup contains all rows from original?
-  - [ ] Backup created before any dangerous operation?
-
-- [ ] **Cleanup Verification**
-  - [ ] No orphaned objects left from test?
-  - [ ] No duplicate indexes?
-  - [ ] All temporary tables dropped?
-
-**AFTER PERFORMANCE TESTING:**
-
-- [ ] **Baseline Comparison**
-  - [ ] Latencies consistent with previous runs?
-  - [ ] Throughput consistent with previous baseline?
-  - [ ] No significant regression detected?
-
-- [ ] **Load Test Health**
-  - [ ] High success rate under concurrent load?
-  - [ ] No timeouts or connection resets?
-  - [ ] Connection pool handling concurrent requests?
-  - [ ] Memory usage stable?
-
----
-
-## 2. AUTOMATED TEST WORKFLOW
-
-### 2.1 Unit Test Execution
-
-**TRIGGER**: Before every commit, on code changes in src/
-
-**PROCEDURE**:
-```bash
-cargo test --lib
-```
-
-**ACCEPTANCE CRITERIA**:
-- ✅ All tests pass
-- ✅ No compiler warnings (except allow(dead_code) for intentional)
-- ✅ Zero test panics
-- ✅ Test execution completes in < 30 seconds
-
-**FAILURE ACTION**: Block commit, report which tests failed, require fix
-
----
-
-### 2.2 Integration Test Execution
-
-**TRIGGER**: Before release, after functional changes
-
-**PREREQUISITES**:
-- PostgreSQL running on localhost:5432
-- Database accessible via `postgres://piyush:@localhost:5432/postgres`
-- Server NOT already running on port 3000
-- Load test data already in database (run load_test_data binary)
-
-**PROCEDURE**:
-
-**Step 1**: Start server in background
-```bash
-DATABASE_URL="postgres://piyush:@localhost:5432/postgres" \
-  cargo run --release -- --http-port 3001 > /tmp/server.log 2>&1 &
-sleep 3
-```
-
-**Step 2**: Verify server is running
-```bash
-nc -zv 127.0.0.1 3000 || exit 1
-curl -s http://127.0.0.1:3001/health | jq -r '.status' | grep -q "healthy" || exit 1
-```
-
-**Step 3**: Run dual-protocol integration tests (CRITICAL for protocol parity)
-```bash
-cargo test --test integration_dual_protocol -- --nocapture --test-threads=1
-# MUST SEE: "TCP  │ Success: 10/10 (100.0%) │ ..." and "HTTP │ Success: 10/10 (100.0%) │ ..."
-# FAIL IF: < 90% success rate on either protocol
-```
-
-**Step 4**: Run integration tests
-```bash
-cargo test --test integration_all_tools -- --nocapture --test-threads=1
-```
-
-**Step 5**: Run data tests
-```bash
-cargo test --test integration_test_data_tools -- --nocapture --test-threads=1
-```
-
-**Step 6**: Run load tests (Rust-based, not shell)
-```bash
-cargo test --test load_test -- --ignored --nocapture
-# MUST SEE: "GOOD" or "EXCELLENT" performance tier
-# FAIL IF: "DEGRADED" or "CRITICAL"
-```
-
-**Step 7**: Cleanup
-```bash
-pkill -f "mcp-postgres"
-```
-
-**POST-EXECUTION VERIFICATION** (from Section 1.5):
-- [ ] Dual-protocol test: 100% success on both TCP (port 3000) and HTTP (port 3001)?
-  - [ ] If one protocol fails: INVESTIGATE protocol-specific issue
-  - [ ] If both fail: Tool doesn't exist (verify with tools/list)
-- [ ] Individual test latencies make sense?
-  - [ ] TCP should be 2-20ms per call
-  - [ ] HTTP should be 1-200ms per call (first call may be slower)
-  - [ ] If outlier > 200ms: Check if it's first request or database-dependent
-- [ ] All assertions passed (no panics)?
-  - [ ] If panic: Read error message, likely parameter or data mismatch
-
-**ACCEPTANCE CRITERIA**:
-- ✅ Dual-protocol tests: 100% success (10/10 on both TCP and HTTP)
-- ✅ All 12 integration_all_tools tests pass
-- ✅ All 17 integration_test_data_tools tests pass
-- ✅ Load test: 100% success, GOOD or EXCELLENT tier
-- ✅ No #[ignore] annotations on any test
-- ✅ All tools tested (no missing tool tests)
-- ✅ Response validation successful
-- ✅ All tests use REAL database (verified via SQL queries in logs)
-
-**DDL Integration Tests (NEW - Must pass before merging DDL tools)**:
-
-Each test creates schema objects, verifies they exist, and cleans up:
-
-**Tables (create_table, drop_table)**:
-```bash
-# Create table with columns
-tools/call create_table {table: "test_ddl_table", columns: ["id SERIAL PRIMARY KEY", "name VARCHAR(255) NOT NULL"]}
-# Verify table exists in list_tables
-tools/call list_tables {}
-# Drop table
-tools/call drop_table {table: "test_ddl_table"}
-```
-
-**Views (create_view, drop_view, alter_view)**:
-```bash
-# Create base table
-tools/call create_table {table: "test_base", columns: ["id SERIAL PRIMARY KEY", "val INT"]}
-# Create view
-tools/call create_view {view_name: "test_view", query: "SELECT id, val FROM test_base"}
-# Alter view (rename)
-tools/call alter_view {view_name: "test_view", rename_to: "test_view_renamed"}
-# Drop view
-tools/call drop_view {view_name: "test_view_renamed"}
-# Cleanup
-tools/call drop_table {table: "test_base"}
-```
-
-**Schemas (create_schema, drop_schema)**:
-```bash
-# Create schema
-tools/call create_schema {schema_name: "test_schema"}
-# Verify in list_schemas
-tools/call list_schemas {}
-# Drop schema
-tools/call drop_schema {schema_name: "test_schema"}
-```
-
-**Indexes (create_index, drop_index, alter_index)**:
-```bash
-# Create table
-tools/call create_table {table: "test_idx_table", columns: ["id SERIAL PRIMARY KEY", "email VARCHAR(255)"]}
-# Create index
-tools/call create_index {index_name: "idx_test_email", table: "test_idx_table", columns: ["email"]}
-# Alter index (rename)
-tools/call alter_index {index_name: "idx_test_email", rename_to: "idx_test_email_v2"}
-# Drop index
-tools/call drop_index {index_name: "idx_test_email_v2"}
-# Cleanup
-tools/call drop_table {table: "test_idx_table"}
-```
-
-**Sequences (create_sequence, drop_sequence)**:
-```bash
-# Create sequence
-tools/call create_sequence {sequence_name: "test_seq", start: 100, increment: 1}
-# Verify nextval works
-tools/call execute_query {query: "SELECT nextval('test_seq')"}
-# Drop sequence
-tools/call drop_sequence {sequence_name: "test_seq"}
-```
-
-**Partitions (create_partition, drop_partition, list_partitions)**:
-```bash
-# Create partitioned table
-tools/call execute_query {query: "CREATE TABLE test_parts (id INT, data TEXT) PARTITION BY RANGE (id)"}
-# Create partition
-tools/call create_partition {table: "test_parts", partition_name: "test_parts_1", partition_type: "RANGE", column: "id", values: "FROM (1) TO (100)"}
-# List partitions
-tools/call list_partitions {table: "test_parts"}
-# Drop partition
-tools/call drop_partition {partition_name: "test_parts_1"}
-# Cleanup
-tools/call drop_table {table: "test_parts", cascade: true}
-```
-
-**Data Safety (backup_table)**:
-```bash
-# Create table with data
-tools/call create_table {table: "important_data", columns: ["id SERIAL PRIMARY KEY", "data TEXT"]}
-tools/call execute_insert {table: "important_data", columns: ["data"], rows: [["critical"]]}
-# CRITICAL: Backup before any risky operation
-tools/call backup_table {table: "important_data"}
-# Table is now safe: backup_important_data contains full copy with data
-# If original is dropped: data recoverable from backup_important_data
-# Drop with confidence (data is safe)
-tools/call drop_table {table: "important_data"}
-# Recovery: data still exists in backup_important_data
-```
-
-**FAILURE ACTION**: Block commit, list failing tests, require fix before retry
-
----
-
-### 2.2.5 Dual-Protocol Integration Test
-
-**NEW**: Tests both TCP and HTTP with statistics tracking and comparison
-
-**TRIGGER**: After any protocol-related changes, as part of integration testing
-
-**WHAT IT TESTS**:
-- Both TCP (port 3000) and HTTP (port 3001) for each tool
-- Side-by-side latency comparison
-- Success/failure rates per protocol
-- Protocol parity (same result on both transports)
-
-**PROCEDURE**:
-```bash
-# Start server
-cargo run --bin mcp-postgres -- --database-url "$DATABASE_URL" &
-sleep 4
-
-# Run dual-protocol tests
-cargo test --test integration_dual_protocol -- --nocapture --test-threads=1
-
-# Kill server
-pkill -f "mcp-postgres"
-```
-
-**EXPECTED OUTPUT**:
-```
-✓ TCP    0ms | ✓ HTTP    1ms | show_current_user
-✓ TCP    1ms | ✓ HTTP    1ms | list_schemas
-✓ TCP    5ms | ✓ HTTP    1ms | list_triggers
-...
-TCP  │ Success: 10/10 (100.0%) │ Avg latency: 5.6ms
-HTTP │ Success: 10/10 (100.0%) │ Avg latency: 20.1ms
-```
-
-**ACCEPTANCE CRITERIA**:
-- ✅ Both TCP and HTTP: 100% success (10/10)
-- ✅ TCP latency: 2-20ms per request
-- ✅ HTTP latency: 1-200ms per request
-- ✅ Protocol parity: Same success rate on both
-- ✅ Per-tool comparison table generated
-
-**FAILURE ACTION**: 
-- If TCP fails: Check TCP server on port 3000
-- If HTTP fails: Check HTTP server on port 3001
-- If one protocol succeeds but other fails: Protocol-specific issue detected
-- If both fail: Tool likely doesn't exist (verify tools/list)
-
----
-
-### 2.3 HTTP Server Test Execution
-
-**TRIGGER**: After any HTTP/axum changes, before HTTP-related releases
-
-**PREREQUISITES**:
-- Server running on port 3001 with HTTP/2
-- curl available
-- jq available for JSON parsing
-
-**PROCEDURE**:
-
-**Test 1: Health Endpoint**
-```bash
-STATUS=$(curl -s http://127.0.0.1:3001/health | jq -r '.status')
-[ "$STATUS" = "healthy" ] || exit 1
-```
-
-**Test 2: tools/list via HTTP**
-```bash
-TOOLS=$(curl -s -X POST http://127.0.0.1:3001/rpc \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"tools/list","id":1}' | \
-  jq -r '.result.tools | length')
-[ "$TOOLS" -gt 0 ] || exit 1
-```
-
-**Test 3: tools/call via HTTP**
-```bash
-RESULT=$(curl -s -X POST http://127.0.0.1:3001/rpc \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"show_current_user","arguments":{}},"id":1}' | \
-  jq -r '.result.user')
-[ -n "$RESULT" ] || exit 1
-```
-
-**Test 4: Error Handling**
-```bash
-ERROR=$(curl -s -X POST http://127.0.0.1:3001/rpc \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"nonexistent","arguments":{}},"id":1}' | \
-  jq -r '.error.code')
-[ "$ERROR" = "-32601" ] || exit 1
-```
-
-**ACCEPTANCE CRITERIA**:
-- ✅ Health endpoint responds with status=healthy
-- ✅ tools/list returns all available tools
-- ✅ tools/call executes tool correctly
-- ✅ Error handling returns proper JSON-RPC error code
-- ✅ HTTP/2 response headers valid
-- ✅ All responses include jsonrpc, id, and result/error
-
-**FAILURE ACTION**: Block commit, report which HTTP test failed, require fix
-
----
-
-## 3. PERFORMANCE VALIDATION WORKFLOW
-
-**TRIGGER**: After optimization changes or performance-related modifications
-
-**PROCEDURE**:
-1. Run load tests with concurrent requests
-2. Measure latency distribution across all tools
-3. Verify connection pooling under load
-4. Check memory stability
-
-**ACCEPTANCE CRITERIA**:
-- ✅ Latencies consistent with baseline
-- ✅ Throughput stable under concurrent load
-- ✅ No connection pool errors
-- ✅ Success rate high (> 90%)
-- ✅ No timeouts or resets
-- ✅ Memory usage stable
-
-**FAILURE ACTION**: 
-- Block release
-- Report specific tools with latency issues
-- Investigate root cause before proceeding
-
----
-
-## 4. MCP COMPLIANCE VALIDATION WORKFLOW
-
-**TRIGGER**: After protocol changes or tool modifications, before release
-
-**PROCEDURE**:
-1. Verify JSON-RPC protocol compliance (jsonrpc: "2.0", id matching, proper result/error)
-2. Test initialize method returns protocol info
-3. Test tools/list returns all tools with required fields
-4. Test tools/call executes tools correctly
-5. Validate error responses have code and message
-6. Validate tools.json structure (all required fields present)
-7. Verify no duplicate tool names
-
-**ACCEPTANCE CRITERIA**:
-- ✅ All JSON-RPC responses properly formatted
-- ✅ initialize returns protocol version, capabilities, server info
-- ✅ tools/list returns all tools with name, description, inputSchema
-- ✅ tools/call executes tool and returns result
-- ✅ All responses have jsonrpc and id
-- ✅ Error responses have code and message
-- ✅ tools.json is valid
-- ✅ All tools have required fields
-- ✅ No duplicate tool names
-
-**FAILURE ACTION**: Block release, fix protocol or tool definition issues
-
----
-
-## 5. FUNCTIONAL VALIDATION WORKFLOW
-
-### 5.1 Tool Correctness Test
-
-**TRIGGER**: After tool implementation or modification
-
-**PROCEDURE FOR EACH TOOL**:
-
-```rust
-#[test]
-fn test_tool_<name>_correctness() {
-    // 1. Valid input test
-    let result = tcp_request("<tool_name>", json!({"valid": "input"}));
-    assert!(result.is_ok());
-    assert!(result.unwrap().get("result").is_some());
-    
-    // 2. Invalid input test
-    let invalid = tcp_request("<tool_name>", json!({"wrong": "type"}));
-    assert!(invalid.is_err() || invalid.unwrap().get("error").is_some());
-    
-    // 3. Required param test
-    let missing = tcp_request("<tool_name>", json!({}));
-    assert!(missing.is_err() || missing.unwrap().get("error").is_some());
+### 1.1 Protocol Architecture Constraints
+
+**TCP Server (Port 3000)**:
+- Direct JSON-RPC 2.0 protocol over TCP socket
+- Stateful connection per client
+- Supports parameterized queries via tokio_postgres Client
+- Latency baseline: 2-20ms per request
+- No connection pooling needed (one client per connection)
+
+**HTTP/2 Server (Port 3001)**:
+- JSON-RPC 2.0 POST requests to `/rpc` endpoint
+- Stateless (each request is independent)
+- Connection pooling via `deadpool::postgres` (Pool<Client>)
+- Each request randomly selects connection from pool
+- Latency baseline: 1-200ms per request (first request may be slow due to pool initialization)
+- Health endpoint: GET `/health` returns `{"status": "healthy"}`
+
+**Critical**: HTTP cannot maintain transaction state across requests. No transaction tools (begin_transaction, commit_transaction, rollback_transaction, kill_connection) are implemented.
+
+**JSON-RPC Protocol Requirement**:
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "<tool_name>",
+    "arguments": { "<param>": value }
+  },
+  "id": 1
 }
 ```
 
-**ACCEPTANCE CRITERIA**:
-- ✅ Tool accepts valid inputs and returns result
-- ✅ Tool rejects invalid inputs with proper error
-- ✅ Tool validates required parameters
-- ✅ Response JSON is valid and parseable
-- ✅ All 34 tools have at least 1 correctness test
+### 1.2 Tool Definitions (46 Total)
 
-**FAILURE ACTION**: BLOCK commit, fix failing tool test
+**CRITICAL**: Parameter names are case-sensitive and must match exactly. Verify against `tools/list` response.
+
+**Query Execution Tools**:
+- `execute_query`: params = `{"sql": "SELECT..."}` (NOT "query")
+- `execute_insert`: params = `{"sql": "INSERT..."}`
+- `execute_update`: params = `{"sql": "UPDATE..."}`
+- `execute_delete`: params = `{"sql": "DELETE..."}`
+- `explain_query`: params = `{"sql": "SELECT...", "analyze": bool, "buffers": bool, "format": "json|text|yaml"}`
+- `async_execute_insert`: params = `{"sql": "INSERT..."}`
+- `async_execute_update`: params = `{"sql": "UPDATE..."}`
+- `async_execute_delete`: params = `{"sql": "DELETE..."}`
+
+**Connection Tools**:
+- `show_current_user`: params = `{}`
+- `list_connections`: params = `{}`
+
+**Schema Inspection Tools**:
+- `list_tables`: params = `{}`
+- `list_schemas`: params = `{}`
+- `list_columns`: params = `{"table": "table_name"}` (REQUIRED)
+- `list_indexes`: params = `{}`
+- `list_triggers`: params = `{"table": "table_name"}` (REQUIRED)
+- `list_views`: params = `{}`
+- `list_sequences`: params = `{}`
+- `describe_table`: params = `{"table": "table_name"}` (REQUIRED)
+
+**DDL Tools (Create/Alter/Drop)**:
+- `create_table`: params = `{"table": "name", "columns": ["id SERIAL PRIMARY KEY", "name VARCHAR(255)"]}`
+- `drop_table`: params = `{"table": "name"}`
+- `create_view`: params = `{"view_name": "name", "query": "SELECT..."}`
+- `drop_view`: params = `{"view_name": "name"}`
+- `alter_view`: params = `{"view_name": "name", "rename_to": "new_name"}`
+- `create_schema`: params = `{"schema_name": "name"}`
+- `drop_schema`: params = `{"schema_name": "name"}`
+- `create_index`: params = `{"index_name": "name", "table": "table_name", "columns": ["col1", "col2"]}`
+- `drop_index`: params = `{"index_name": "name"}`
+- `alter_index`: params = `{"index_name": "name", "rename_to": "new_name"}`
+- `create_sequence`: params = `{"sequence_name": "name", "start": 1, "increment": 1}`
+- `drop_sequence`: params = `{"sequence_name": "name"}`
+- `create_partition`: params = `{"table": "name", "partition_name": "name_1", "partition_type": "RANGE", "column": "id", "values": "FROM (1) TO (100)"}`
+- `delete_table_partition`: params = `{"partition_name": "name_1"}`
+- `list_partitions`: params = `{"table": "name"}`
+- `backup_table`: params = `{"table": "name"}` (creates backup_<name> table)
+
+**Batch Operation Tools**:
+- `async_batch_insert`: params = `{"table": "name", "columns": ["col1", "col2"], "rows": [[val1, val2], ...], "returning": "id"}`
+- `async_batch_update`: params = `{"table": "name", "updates": {"col1": val1}, "where_clauses": ["col=val"]}`
+- `async_batch_delete`: params = `{"table": "name", "where_clauses": ["col=val"], "returning": "id"}`
+- `async_batch_insert_copy`: params = `{"table": "name", "columns": [...], "rows": [...], "batch_size": 1000}`
+
+**Database Utility Tools**:
+- `analyze_table`: params = `{"table": "name"}`
+- `vacuum_table`: params = `{"table": "name"}`
+- `get_table_size`: params = `{"table": "name"}`
+- `get_database_size`: params = `{}`
+
+### 1.3 Code Quality Standards
+
+**Compilation**:
+- `cargo build --release` must succeed with ZERO errors
+- `cargo clippy --lib` must return ZERO warnings in library code
+- No `unwrap()` in production code (use `?` operator or proper error handling)
+- All error types must implement `std::error::Error`
+
+**Testing Requirements**:
+- `cargo test --lib` must pass with 100% success rate
+- All tests use REAL PostgreSQL database (never mock)
+- No `#[ignore]` attributes on any test
+- Test database accessible at `DATABASE_URL` environment variable
+- Default: `postgres://piyush:@localhost:5432/postgres`
+
+### 1.4 Database Connection Requirements
+
+**Prerequisites** (must be verified BEFORE any test):
+```bash
+# 1. PostgreSQL running
+psql -U piyush -d postgres -c "SELECT version();" || exit 1
+
+# 2. Database accessible
+psql postgres://piyush:@localhost:5432/postgres -c "SELECT 1;" || exit 1
+
+# 3. Test data loaded
+psql -U piyush -d postgres -c "SELECT COUNT(*) FROM users;" || exit 1
+```
+
+**If any check fails**: STOP immediately, fix database connection, then retry.
 
 ---
 
-### 5.2 Input Validation Test
+## 2. CONTROL FLOW DECISION TREES
 
-**TRIGGER**: After validation rule changes
+### 2.1 Pre-Task Validation
 
-**TEST MATRIX**:
+**BEFORE writing any test code:**
 
-| Tool | Test Case | Expected |
-|------|-----------|----------|
-| execute_query | sql = "" | Error: Required |
-| execute_query | sql length > 10K | Error: Too long |
-| execute_query | sql = "DROP TABLE" | Error: Not SELECT |
-| execute_delete | sql without WHERE | Error: Safety |
-| batch_insert | rows > 1000 | Error: Too many |
-| describe_table | table = "" | Error: Required |
-| get_setting | nonexistent setting | Error: Not found |
+```
+START
+├─ PARSE: Extract tool name from task
+├─ VERIFY: Query tools/list for tool existence
+│  ├─ DECISION: Tool in response?
+│  │  ├─ NO  → ERROR: Tool does not exist
+│  │  │        ACTION: Grep src/actions/ to find correct tool name
+│  │  └─ YES → Continue to parameter validation
+│  │
+├─ EXTRACT: Get tool's "inputSchema" from tools/list response
+├─ VALIDATE: For each parameter in test
+│  ├─ DECISION: Parameter name in inputSchema?
+│  │  ├─ NO  → ERROR: Invalid parameter name
+│  │  │        ACTION: Use exact name from inputSchema
+│  │  │        EXAMPLE: "query" is WRONG, "sql" is CORRECT
+│  │  └─ YES → Check type
+│  │
+│  ├─ DECISION: Parameter marked "required"?
+│  │  ├─ YES → MUST provide value
+│  │  │        DECISION: Value is correct type?
+│  │  │        ├─ NO  → ERROR: Type mismatch
+│  │  │        │        ACTION: Convert to correct type
+│  │  │        │        EXAMPLE: list_triggers needs table:string not table:number
+│  │  │        └─ YES → OK
+│  │  └─ NO  → Optional, can omit
+│  │
+├─ DATABASE STATE: Check if referenced objects exist
+│  ├─ DECISION: list_triggers test?
+│  │  ├─ YES → VERIFY: Table exists via list_tables
+│  │  │        ├─ NOT FOUND → Create test table first
+│  │  │        └─ FOUND → OK
+│  │  └─ NO → Skip
+│  │
+├─ PROTOCOL: Prepare both TCP and HTTP variants
+│  ├─ TCP:  Connect to 127.0.0.1:3000 and send JSON-RPC
+│  ├─ HTTP: POST to http://127.0.0.1:3001/rpc with Content-Type: application/json
+│  └─ BOTH must succeed for parity
+│
+└─ PROCEED to test execution
+```
+
+### 2.2 Test Execution Validation
+
+**DURING test execution, BEFORE asserting results:**
+
+```
+REQUEST SENT
+├─ WAIT for response (timeout: 5s per request)
+├─ PARSE JSON response
+│  ├─ DECISION: Valid JSON?
+│  │  ├─ NO  → FAIL: Response not JSON
+│  │  │        ACTION: Check server logs
+│  │  └─ YES → Continue
+│  │
+├─ VALIDATE: Response has required fields
+│  ├─ DECISION: Has "jsonrpc"?
+│  │  ├─ NO  → FAIL: Missing jsonrpc field
+│  │  └─ YES → Continue
+│  │
+│  ├─ DECISION: Has "id" matching request?
+│  │  ├─ NO  → FAIL: ID mismatch (protocol violation)
+│  │  └─ YES → Continue
+│  │
+│  ├─ DECISION: Has "result" or "error"?
+│  │  ├─ NEITHER → FAIL: Invalid response (no result or error)
+│  │  ├─ ERROR  → Check error.code and error.message
+│  │  │           (normal for invalid inputs)
+│  │  └─ RESULT → Check result structure
+│  │
+├─ ERROR HANDLING (if "error" field present)
+│  ├─ DECISION: error.code = -32602 (Invalid params)?
+│  │  ├─ YES → Likely wrong parameter name or missing required param
+│  │  │        ACTION: Re-run pre-task validation
+│  │  └─ NO → Continue
+│  │
+│  ├─ DECISION: error.code = -32601 (Method not found)?
+│  │  ├─ YES → Tool doesn't exist
+│  │  │        ACTION: Verify against tools/list
+│  │  └─ NO → Continue
+│  │
+│  ├─ DECISION: error.code = -32700 (Parse error)?
+│  │  ├─ YES → JSON not valid
+│  │  │        ACTION: Check JSON syntax
+│  │  └─ NO → Other error
+│  │
+├─ RESULT VALIDATION (if "result" field present)
+│  ├─ DECISION: Result is null?
+│  │  ├─ YES → QUESTION: Is null expected?
+│  │  │        ├─ NO  → May indicate error
+│  │  │        └─ YES → Continue
+│  │  └─ NO → Inspect result structure
+│  │
+└─ ASSERTION: Verify result matches expected
+```
+
+### 2.3 Post-Activity Verification
+
+**AFTER every test execution, BEFORE considering test complete:**
+
+```
+TEST COMPLETED
+├─ SUCCESS RATE CHECK
+│  ├─ MEASUREMENT: Count passed / total tests
+│  ├─ DECISION: Rate >= 90%?
+│  │  ├─ NO  → FAIL: Below minimum threshold
+│  │  │        ACTION: Stop, investigate each failure
+│  │  │        ├─ Wrong parameters? Fix parameter names
+│  │  │        ├─ Tool doesn't exist? Verify with tools/list
+│  │  │        ├─ Missing data? Load test data
+│  │  │        └─ Retry after fixes
+│  │  └─ YES → Continue
+│  │
+├─ LATENCY CHECK
+│  ├─ TCP LATENCY
+│  │  ├─ MEASUREMENT: Average of all TCP requests
+│  │  ├─ DECISION: 2-20ms?
+│  │  │  ├─ < 2ms   → Suspicious, may be cached
+│  │  │  ├─ 2-20ms  → OK
+│  │  │  ├─ 20-100ms  → Acceptable (depends on query)
+│  │  │  └─ > 100ms  → INVESTIGATE (slow query? network?)
+│  │  └─ Continue
+│  │
+│  ├─ HTTP LATENCY
+│  │  ├─ MEASUREMENT: Average of all HTTP requests
+│  │  ├─ DECISION: 1-200ms?
+│  │  │  ├─ < 1ms   → Suspicious, may be cached
+│  │  │  ├─ 1-75ms  → Excellent
+│  │  │  ├─ 75-200ms → Acceptable (pool overhead)
+│  │  │  └─ > 200ms → INVESTIGATE
+│  │  └─ Continue
+│  │
+│  ├─ DIFFERENCE CHECK
+│  │  ├─ MEASUREMENT: HTTP avg / TCP avg
+│  │  ├─ DECISION: Ratio < 15x?
+│  │  │  ├─ YES → Normal (pool overhead)
+│  │  │  └─ NO → Protocol issue
+│  │  └─ Continue
+│  │
+├─ PROTOCOL PARITY CHECK
+│  ├─ DECISION: TCP and HTTP have same success rate?
+│  │  ├─ NO  → Protocol-specific issue
+│  │  │        ACTION: Check server logs, verify both protocols working
+│  │  │        └─ Retry after server restart
+│  │  └─ YES → Continue
+│  │
+│  ├─ DECISION: Same result format on both?
+│  │  ├─ NO  → Serialization issue
+│  │  │        ACTION: Inspect response diff
+│  │  └─ YES → Continue
+│  │
+├─ TOOL AVAILABILITY CHECK
+│  ├─ ACTION: Query tools/list endpoint
+│  ├─ DECISION: All tested tools present?
+│  │  ├─ NO  → Missing tool error
+│  │  │        ACTION: Add tool implementation or skip test
+│  │  └─ YES → Continue
+│  │
+│  ├─ DECISION: No "Method not found" errors in logs?
+│  │  ├─ NO  → Tool not implemented
+│  │  │        ACTION: Check src/actions/ for implementation
+│  │  └─ YES → OK
+│  │
+└─ TEST PASSED: All checks complete
+```
+
+---
+
+## 3. UNIT TEST WORKFLOW
+
+**TRIGGER**: Before every commit, on changes to `src/` or `Cargo.toml`
+
+**Prerequisites**:
+- Cargo installed and in PATH
+- Rust toolchain >= 1.70
+- No other cargo process running
+
+**Procedure**:
+
+```bash
+# Step 1: Clean previous builds
+cargo clean --release
+
+# Step 2: Build in release mode
+cargo build --release 2>&1 | tee /tmp/build.log
+BUILD_EXIT=$?
+if [ $BUILD_EXIT -ne 0 ]; then
+  echo "FAIL: cargo build failed"
+  cat /tmp/build.log
+  exit 1
+fi
+
+# Step 3: Run clippy (linter)
+cargo clippy --lib 2>&1 | tee /tmp/clippy.log
+CLIPPY_WARNINGS=$(grep -c "warning:" /tmp/clippy.log || echo 0)
+if [ $CLIPPY_WARNINGS -gt 0 ]; then
+  echo "FAIL: $CLIPPY_WARNINGS clippy warnings"
+  grep "warning:" /tmp/clippy.log
+  exit 1
+fi
+
+# Step 4: Run unit tests
+cargo test --lib -- --nocapture --test-threads=1 2>&1 | tee /tmp/tests.log
+TEST_RESULT=$?
+
+# Step 5: Verify test results
+if [ $TEST_RESULT -ne 0 ]; then
+  echo "FAIL: Unit tests failed"
+  grep -A 5 "test result:" /tmp/tests.log
+  exit 1
+fi
+
+# Step 6: Count passing tests
+TESTS_PASSED=$(grep "test result: ok" /tmp/tests.log | grep -o "[0-9]* passed" | head -1)
+echo "PASS: $TESTS_PASSED"
+```
+
+**Acceptance Criteria**:
+- ✅ Build succeeds with zero errors
+- ✅ Zero clippy warnings in library code (`--lib`)
+- ✅ 100% unit test success rate (all tests pass)
+- ✅ No test panics (if panic, fix root cause)
+- ✅ Execution completes in < 30 seconds
+- ✅ No `#[ignore]` annotations on any test
+
+**Failure Action**: BLOCK commit, show exact test failure, require fix before retry.
+
+---
+
+## 4. INTEGRATION TEST WORKFLOW
+
+**TRIGGER**: Before release, after functional code changes, every 10 commits
+
+**Prerequisites** (VERIFY BEFORE STARTING):
+```bash
+# Check 1: PostgreSQL running
+psql --version || { echo "FAIL: psql not found"; exit 1; }
+
+# Check 2: Database accessible
+PGPASSWORD="" psql -h localhost -U piyush -d postgres -c "SELECT version();" || { echo "FAIL: Database not accessible"; exit 1; }
+
+# Check 3: Database accessible via connection string
+psql "postgres://piyush:@localhost:5432/postgres" -c "SELECT 1;" || { echo "FAIL: Connection string failed"; exit 1; }
+
+# Check 4: No server already running
+nc -zv 127.0.0.1 3000 2>&1 && { echo "FAIL: Port 3000 already in use"; exit 1; } || echo "Port 3000 free"
+nc -zv 127.0.0.1 3001 2>&1 && { echo "FAIL: Port 3001 already in use"; exit 1; } || echo "Port 3001 free"
+
+# Check 5: Database has test data
+psql "postgres://piyush:@localhost:5432/postgres" -c "SELECT COUNT(*) FROM users;" | grep -q "[0-9]" || { echo "FAIL: Test data missing, run load_test_data"; exit 1; }
+```
+
+**Procedure**:
+
+```bash
+#!/bin/bash
+set -e
+
+export DATABASE_URL="postgres://piyush:@localhost:5432/postgres"
+
+echo "=== STEP 1: Start Server ==="
+# Start in background, capture PID
+cargo run --release -- --http-port 3001 > /tmp/server.log 2>&1 &
+SERVER_PID=$!
+echo "Server started (PID: $SERVER_PID)"
+
+# Wait for startup
+sleep 4
+
+echo "=== STEP 2: Verify Server Health ==="
+# TCP check
+if ! nc -zv 127.0.0.1 3000 2>&1 | grep -q "succeeded"; then
+  echo "FAIL: TCP port 3000 not responding"
+  kill $SERVER_PID || true
+  exit 1
+fi
+echo "✓ TCP port 3000 responding"
+
+# HTTP check
+HTTP_STATUS=$(curl -s http://127.0.0.1:3001/health | jq -r '.status // "error"')
+if [ "$HTTP_STATUS" != "healthy" ]; then
+  echo "FAIL: HTTP health check failed (status: $HTTP_STATUS)"
+  cat /tmp/server.log | tail -20
+  kill $SERVER_PID || true
+  exit 1
+fi
+echo "✓ HTTP port 3001 healthy"
+
+echo "=== STEP 3: Run Dual-Protocol Tests ==="
+cargo test --test integration_dual_protocol -- --nocapture --test-threads=1 2>&1 | tee /tmp/dual_test.log
+DUAL_RESULT=$?
+
+if [ $DUAL_RESULT -ne 0 ]; then
+  echo "FAIL: Dual-protocol tests failed"
+  tail -30 /tmp/dual_test.log
+  kill $SERVER_PID || true
+  exit 1
+fi
+
+# Verify both protocols at 100%
+if ! grep -q "Success: 10/10 (100.0%)" /tmp/dual_test.log; then
+  echo "FAIL: Not all dual-protocol tests passed"
+  grep "Success:" /tmp/dual_test.log
+  kill $SERVER_PID || true
+  exit 1
+fi
+echo "✓ Dual-protocol tests: TCP 100%, HTTP 100%"
+
+echo "=== STEP 4: Run All-Tools Integration Tests ==="
+cargo test --test integration_all_tools -- --nocapture --test-threads=1 2>&1 | tee /tmp/all_tools_test.log
+TOOLS_RESULT=$?
+
+if [ $TOOLS_RESULT -ne 0 ]; then
+  echo "FAIL: All-tools tests failed"
+  tail -30 /tmp/all_tools_test.log
+  kill $SERVER_PID || true
+  exit 1
+fi
+echo "✓ All-tools tests passed"
+
+echo "=== STEP 5: Verify Test Data Tools ==="
+cargo test --test integration_test_data_tools -- --nocapture --test-threads=1 2>&1 | tee /tmp/data_tools_test.log
+DATA_RESULT=$?
+
+if [ $DATA_RESULT -ne 0 ]; then
+  echo "FAIL: Data tools tests failed"
+  tail -30 /tmp/data_tools_test.log
+  kill $SERVER_PID || true
+  exit 1
+fi
+echo "✓ Data tools tests passed"
+
+echo "=== STEP 6: Run Load Tests ==="
+cargo test --test load_test -- --nocapture 2>&1 | tee /tmp/load_test.log
+LOAD_RESULT=$?
+
+if [ $LOAD_RESULT -ne 0 ]; then
+  echo "FAIL: Load tests failed"
+  tail -30 /tmp/load_test.log
+  kill $SERVER_PID || true
+  exit 1
+fi
+
+# Verify load test tier
+if grep -q "EXCELLENT\|GOOD" /tmp/load_test.log; then
+  echo "✓ Load test: EXCELLENT or GOOD tier"
+else
+  echo "WARN: Load test not at expected tier"
+fi
+
+echo "=== STEP 7: Cleanup ==="
+kill $SERVER_PID || true
+sleep 2
+
+echo "=== ALL INTEGRATION TESTS PASSED ==="
+```
+
+**Acceptance Criteria**:
+- ✅ Server starts and listens on both TCP 3000 and HTTP 3001
+- ✅ HTTP `/health` endpoint returns `{"status": "healthy"}`
+- ✅ Dual-protocol tests: TCP 10/10 (100%), HTTP 10/10 (100%)
+- ✅ All-tools integration tests: 12/12 pass
+- ✅ Data-tools tests: 17/17 pass
+- ✅ Load test: GOOD or EXCELLENT tier (not ACCEPTABLE)
+- ✅ No `#[ignore]` on any test
+- ✅ No panics in logs
+- ✅ Server shuts down cleanly
+
+**Failure Action**: BLOCK commit, list failing tests, require investigation and fix.
+
+---
+
+## 5. TOOL PARAMETER VALIDATION BEFORE USE
+
+**CRITICAL**: Must be done BEFORE writing test code.
+
+```bash
+# Step 1: Get tools list
+TOOLS_RESPONSE=$(curl -s http://127.0.0.1:3001/rpc \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","params":{},"id":1}')
+
+# Step 2: Extract tool info
+TOOL_NAME="execute_query"
+TOOL_INFO=$(echo "$TOOLS_RESPONSE" | jq ".result.tools[] | select(.name==\"$TOOL_NAME\")")
+
+# Step 3: Verify tool exists
+if [ -z "$TOOL_INFO" ]; then
+  echo "FAIL: Tool '$TOOL_NAME' not found"
+  echo "Available tools: $(echo "$TOOLS_RESPONSE" | jq '.result.tools[].name' | head -10)"
+  exit 1
+fi
+
+# Step 4: Get required parameters
+REQUIRED_PARAMS=$(echo "$TOOL_INFO" | jq -r '.inputSchema.required[]')
+echo "Required params: $REQUIRED_PARAMS"
+
+# Step 5: Get all parameters
+ALL_PARAMS=$(echo "$TOOL_INFO" | jq -r '.inputSchema.properties | keys[]')
+echo "All params: $ALL_PARAMS"
+
+# Step 6: Verify parameter types
+PARAM_TYPES=$(echo "$TOOL_INFO" | jq '.inputSchema.properties | to_entries[] | "\(.key): \(.value.type)"')
+echo "Parameter types: $PARAM_TYPES"
+```
+
+**Example: execute_query validation**:
+```bash
+# Correct parameter name
+curl -X POST http://127.0.0.1:3001/rpc \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"execute_query","arguments":{"sql":"SELECT 1"}},"id":1}'
+
+# WRONG - will fail with -32602 (Invalid params)
+curl -X POST http://127.0.0.1:3001/rpc \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"execute_query","arguments":{"query":"SELECT 1"}},"id":1}'
+```
+
+---
+
+## 6. RELEASE WORKFLOW
+
+**TRIGGER**: When version in `Cargo.toml` is incremented
+
+**STRICT PREREQUISITES**:
+- [ ] Branch is `main`
+- [ ] Working tree is clean (`git status` shows nothing)
+- [ ] Latest commits are pulled (`git pull`)
+- [ ] `Cargo.toml` version matches intended release
+- [ ] CHANGELOG updated with new version section
+- [ ] All documentation updated
+
+### 6.1 Pre-Release Validation Gate
 
 **PROCEDURE**:
-```bash
-# For each test case in matrix:
-RESP=$(echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"<tool>","arguments":<input>},"id":1}' | nc 127.0.0.1 3000)
-ERROR=$(echo "$RESP" | jq -r '.error.code')
-[ -n "$ERROR" ] && [ "$ERROR" != "null" ] || exit 1
-```
-
-**ACCEPTANCE CRITERIA**:
-- ✅ All invalid inputs return error responses
-- ✅ Error messages are helpful and actionable
-- ✅ Error messages include suggestions
-- ✅ No invalid inputs execute (safety first)
-
-**FAILURE ACTION**: BLOCK, report which validation failed
-
----
-
-## 6. BUILD WORKFLOW
-
-### 6.1 Compilation Check
-
-**TRIGGER**: Every commit
-
-**PROCEDURE**:
-```bash
-cargo check
-cargo build --release
-```
-
-**ACCEPTANCE CRITERIA**:
-- ✅ Zero compilation errors
-- ✅ No unsafe code unless documented
-- ✅ All warnings resolved (fix or use #[allow] with reason)
-- ✅ Build completes in < 60 seconds (release)
-
-**FAILURE ACTION**: BLOCK, show compiler errors
-
----
-
-### 6.2 Dependency Audit
-
-**TRIGGER**: Before release
-
-**PROCEDURE**:
-```bash
-cargo audit
-cargo outdated --format list
-```
-
-**ACCEPTANCE CRITERIA**:
-- ✅ Zero security vulnerabilities
-- ✅ All critical updates applied
-- ✅ No deprecated dependencies
-
-**FAILURE ACTION**: BLOCK, update vulnerable dependencies
-
----
-
-## 7. RELEASE WORKFLOW
-
-### 7.1 Pre-Release Checklist
-
-**GATE**: Must pass ALL checks before release
-
-**CHECKS**:
-```
-[ ] Unit tests pass (cargo test --lib)
-[ ] Integration tests pass (all 34 tests)
-[ ] HTTP server tests pass (health, tools/list, tools/call, errors)
-[ ] Performance baseline met (P95 < 10ms, 17K req/sec)
-[ ] MCP compliance verified (initialize, tools/list, tools/call)
-[ ] Tool validation tests pass
-[ ] Input validation tests pass
-[ ] Compilation clean (no errors, warnings resolved)
-[ ] Security audit passed
-[ ] Version number incremented in Cargo.toml
-[ ] CHANGELOG.md updated
-[ ] tools.json has exactly 34 tools
-[ ] Homebrew formula will be updated after crates.io release
-```
-
-**EXECUTION**:
 ```bash
 #!/bin/bash
 set -e
 
 echo "=== RELEASE VALIDATION GATE ==="
 
-# 1. Compile
-cargo build --release
+# 1. Version check
+CARGO_VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+echo "Release version: $CARGO_VERSION"
 
-# 2. Unit tests
-cargo test --lib
+# 2. Git check
+if [ -n "$(git status --porcelain)" ]; then
+  echo "FAIL: Working tree not clean"
+  git status
+  exit 1
+fi
+echo "✓ Working tree clean"
 
-# 3. Integration tests
-DATABASE_URL="postgres://piyush:@localhost:5432/postgres" \
-  cargo run --release -- --http-port 3001 > /tmp/server.log 2>&1 &
-sleep 3
-cargo test --test integration_all_tools -- --nocapture --test-threads=1
-cargo test --test integration_test_data_tools -- --nocapture --test-threads=1
-pkill -f "mcp-postgres --http-port"
+# 3. Unit tests
+echo "Running unit tests..."
+cargo test --lib || { echo "FAIL: Unit tests"; exit 1; }
+echo "✓ Unit tests passed"
 
-# 4. Performance
-./target/release/measure_latency | grep -E "(P95|Requests/sec)"
+# 4. Integration tests (requires server)
+echo "Running integration tests..."
+export DATABASE_URL="postgres://piyush:@localhost:5432/postgres"
+cargo run --release -- --http-port 3001 > /tmp/server.log 2>&1 &
+SERVER_PID=$!
+sleep 4
 
-# 5. Tools validation
-jq '. | length' tools.json | grep -q "[0-9]"
+cargo test --test integration_dual_protocol -- --nocapture --test-threads=1 || { kill $SERVER_PID; echo "FAIL: Dual-protocol tests"; exit 1; }
+cargo test --test integration_all_tools -- --nocapture --test-threads=1 || { kill $SERVER_PID; echo "FAIL: All-tools tests"; exit 1; }
 
-# 6. Security
-cargo audit
+kill $SERVER_PID
+echo "✓ Integration tests passed"
 
-echo "=== ALL CHECKS PASSED ==="
+# 5. Security audit
+echo "Running cargo audit..."
+cargo audit || { echo "FAIL: Cargo audit"; exit 1; }
+echo "✓ No known vulnerabilities"
+
+# 6. Tools count validation
+TOOLS_COUNT=$(jq 'length' tools.json)
+if [ "$TOOLS_COUNT" -ne 46 ]; then
+  echo "FAIL: Expected 46 tools, found $TOOLS_COUNT"
+  exit 1
+fi
+echo "✓ 46 tools present"
+
+echo "=== ALL PRE-RELEASE CHECKS PASSED ==="
+echo "Ready to publish v$CARGO_VERSION"
 ```
 
-**FAILURE ACTION**: BLOCK RELEASE, list which checks failed
+### 6.2 Release Publication
 
----
-
-### 7.2 Release Publication
-
-**TRIGGER**: After pre-release checklist passes
-
-**PROCEDURE**:
-
-**Step 1**: Tag release
+**Step 1: Create and push git tag**:
 ```bash
-git tag v[VERSION]
-git push origin v[VERSION]
+# Verify version in Cargo.toml
+VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+
+# Create annotated tag
+git tag -a "v$VERSION" -m "Release v$VERSION"
+
+# Verify tag created
+git tag -l | grep "v$VERSION"
+
+# Push tag to remote
+git push origin "v$VERSION"
+
+# Verify remote
+git ls-remote origin | grep "v$VERSION"
 ```
 
-**Step 2**: Publish to crates.io
+**Step 2: Publish to crates.io**:
 ```bash
+# Verify not already published
+cargo search mcp-postgres | grep "mcp-postgres = \"$VERSION\"" && { echo "Already published"; exit 1; }
+
+# Publish
 cargo publish
+
+# Verify published (may take 1-2 minutes)
+sleep 60
+cargo search mcp-postgres | grep "mcp-postgres = \"$VERSION\"" || { echo "FAIL: Not found on crates.io"; exit 1; }
 ```
 
-**Step 3**: Create GitHub release
-```bash
-gh release create v[VERSION] --title "v[VERSION]" --notes "Release notes"
-```
+### 6.3 Update Homebrew Formula
 
-**Step 4**: Update Package Managers
+**STRICT**: Only after crates.io publication succeeds.
 
-**4a. Update Homebrew Formula (macOS)**
+**Step 1: Get release tarball SHA256**:
 ```bash
-# After successful crates.io publication, update the homebrew formula
-# 1. Get the tarball SHA256 from the GitHub release
+VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+
 cd /tmp
-curl -L https://github.com/corporatepiyush/mcp-pg-rust/archive/refs/tags/v[VERSION].tar.gz -o mcp-postgres-[VERSION].tar.gz
-SHA256=$(shasum -a 256 mcp-postgres-[VERSION].tar.gz | awk '{print $1}')
+curl -L -o "mcp-postgres-$VERSION.tar.gz" "https://github.com/corporatepiyush/mcp-pg-rust/archive/refs/tags/v$VERSION.tar.gz"
 
-# 2. Update the formula in the main repo
-cd /path/to/mcp-postgres
-sed -i '' "s/sha256 \".*\"/sha256 \"$SHA256\"/" homebrew-mcp-postgres/Formula/mcp_postgres.rb
-sed -i '' "s|tags/v[0-9.]*|tags/v[VERSION]|g" homebrew-mcp-postgres/Formula/mcp_postgres.rb
-
-# 3. Verify the update
-grep "sha256\|tags/v" homebrew-mcp-postgres/Formula/mcp_postgres.rb
-
-# 4. Commit changes (don't push yet - see 4c)
-git add homebrew-mcp-postgres/Formula/mcp_postgres.rb
+ACTUAL_SHA=$(shasum -a 256 "mcp-postgres-$VERSION.tar.gz" | awk '{print $1}')
+echo "SHA256: $ACTUAL_SHA"
 ```
 
-**4b. Push changes**
+**Step 2: Update formula file**:
 ```bash
-git commit -m "Update Homebrew formula for [VERSION] release"
-git push
+FORMULA_PATH="homebrew-mcp-postgres/Formula/mcp_postgres.rb"
+
+# Backup original
+cp "$FORMULA_PATH" "$FORMULA_PATH.bak"
+
+# Replace version in URL
+sed -i '' "s|/archive/refs/tags/v[0-9.]*\.tar\.gz|/archive/refs/tags/v$VERSION.tar.gz|g" "$FORMULA_PATH"
+
+# Replace SHA256
+sed -i '' "s/sha256 \"[a-f0-9]\{64\}\"/sha256 \"$ACTUAL_SHA\"/g" "$FORMULA_PATH"
+
+# Verify changes
+diff "$FORMULA_PATH.bak" "$FORMULA_PATH"
 ```
 
-**ACCEPTANCE CRITERIA**:
-- ✅ Git tag created and pushed
-- ✅ Package published to crates.io
-- ✅ GitHub release created
-- ✅ Homebrew formula updated with new version and SHA256
-- ✅ Formula changes committed and pushed
+**Step 3: Test formula locally** (on macOS):
+```bash
+# Verify syntax
+ruby -c "$FORMULA_PATH"
+
+# Test installation
+brew install --build-from-source "$FORMULA_PATH"
+
+# Verify binary
+which mcp-postgres
+mcp-postgres --version
+
+# Uninstall
+brew uninstall mcp-postgres
+```
+
+**Step 4: Commit and push**:
+```bash
+git add "homebrew-mcp-postgres/Formula/mcp_postgres.rb"
+git commit -m "Update Homebrew formula for v$VERSION release"
+git push origin main
+```
+
+**Acceptance Criteria**:
+- ✅ Git tag v[VERSION] created and pushed
+- ✅ Package published to crates.io (verified with `cargo search`)
+- ✅ GitHub release artifact available
+- ✅ SHA256 matches calculated value
+- ✅ Formula syntax valid (Ruby check)
+- ✅ Formula committed and pushed
+
+**Failure Action**: If any step fails, STOP and investigate. Do NOT proceed to next step.
 
 ---
 
-## 8. ROLLBACK WORKFLOW
+## 7. ROLLBACK PROCEDURE
 
-### 8.1 Rollback Trigger Conditions
-
-**Automatic rollback if**:
-- Any integration test fails after deployment
-- Performance regression detected
-- MCP compliance violation detected
+**TRIGGER CONDITIONS**:
+- Integration test fails after deployment
+- Performance regression detected (latency > 2x baseline)
 - Security vulnerability discovered
-- Latency degradation significant
-- Success rate drops substantially
+- Success rate drops below 90%
+- MCP compliance violation
+- Server crash
 
-**PROCEDURE**:
+**Procedure**:
 ```bash
-# 1. Identify last good version
-git log --oneline | head -5
+#!/bin/bash
+set -e
 
-# 2. Revert to last known good
+echo "=== ROLLBACK INITIATED ==="
+
+# Step 1: Identify last known good version
+echo "Recent versions:"
+git log --oneline | head -10
+
+# Step 2: Revert current commit
 git revert HEAD
-git push
 
-# 3. Re-run test suite
-./tests/integration_all_tools.rs
-./target/release/measure_latency
+# Step 3: Verify revert
+git log --oneline | head -3
 
-# 4. Notify
-echo "Rolled back due to [reason]"
+# Step 4: Push revert
+git push origin main
+
+# Step 5: Re-run tests
+export DATABASE_URL="postgres://piyush:@localhost:5432/postgres"
+cargo test --lib || { echo "FAIL: Unit tests after rollback"; exit 1; }
+
+cargo run --release -- --http-port 3001 > /tmp/server.log 2>&1 &
+SERVER_PID=$!
+sleep 4
+
+cargo test --test integration_all_tools -- --nocapture --test-threads=1 || { kill $SERVER_PID; echo "FAIL: Integration tests after rollback"; exit 1; }
+
+kill $SERVER_PID
+
+echo "=== ROLLBACK SUCCESSFUL ==="
+echo "Rolled back from previous version"
 ```
 
 ---
 
-## 9. AGENT TASK PATTERNS
+## 8. COMMON ERROR DIAGNOSIS
 
-### Pattern 1: Add New Tool
+### Error: `-32602 (Invalid params)`
 
-**INPUT**: Tool specification
-- name: string (lowercase_underscore)
-- description: string (comprehensive)
-- parameters: dict of {name: type, description, required}
+**Causes**:
+1. Parameter name is wrong (e.g., "query" instead of "sql")
+2. Parameter type is wrong (e.g., string instead of array)
+3. Required parameter missing
+4. Unrecognized parameter
 
-**AGENT STEPS**:
-1. Create function in src/actions/\*.rs
-2. Add to tools.json with schema
-3. Add validation in src/validation.rs
-4. Add to dispatcher in src/server.rs
-5. Write integration test
-6. Run unit + integration tests
-7. Measure latency (must be P95 < 10ms)
-8. Verify MCP compliance
-9. Commit with message: "Add tool: <name>"
-
-**VERIFICATION**: Integration test passes, latency acceptable, no regressions
-
----
-
-### Pattern 2: Fix Performance Regression
-
-**INPUT**: Baseline latency > target
-
-**AGENT STEPS**:
-1. Measure current baseline (measure_latency)
-2. Identify regressed tools
-3. Review recent changes to those tools
-4. Propose optimization (with measurement)
-5. Implement change
-6. Re-measure latency
-7. Verify all tools P95 < 10ms
-8. Verify throughput >= 17K req/sec
-9. Run integration tests
-10. Commit with message: "Optimize: [what changed]"
-
-**VERIFICATION**: Latency back to baseline, no new regressions
-
----
-
-### Pattern 3: Fix Test Failure
-
-**INPUT**: Test failing
-
-**AGENT STEPS**:
-1. Run failing test with --nocapture
-2. Examine error message
-3. Identify root cause (DB, validation, logic)
-4. Fix in appropriate source file
-5. Re-run test
-6. Run all related tests
-7. Commit with message: "Fix: [test name]"
-
-**VERIFICATION**: All tests pass
-
----
-
-### Pattern 4: Update MCP Compliance
-
-**INPUT**: MCP spec change
-
-**AGENT STEPS**:
-1. Review spec change
-2. Update protocol.rs if needed
-3. Update tool schema if needed
-4. Update validation rules if needed
-5. Run compliance tests
-6. Run integration tests
-7. Verify HTTP server still works
-8. Commit with message: "MCP: [what changed]"
-
-**VERIFICATION**: All compliance checks pass
-
----
-
-## 10. AUTOMATED GATES & THRESHOLDS
-
-### Performance Gates
-
-| Metric | Threshold | Action |
-|--------|-----------|--------|
-| P95 latency (any tool) | > 10ms | BLOCK |
-| Concurrent throughput | < 17K req/sec | BLOCK |
-| Memory per connection | > 5MB | WARN |
-| Response size | > 1MB | WARN |
-
-### Test Gates
-
-| Metric | Threshold | Action |
-|--------|-----------|--------|
-| Test pass rate | < 100% | BLOCK |
-| Tool coverage | < 29 tools tested | BLOCK |
-| Integration tests | < 29 passing | BLOCK |
-| HTTP tests | Any fail | BLOCK |
-
-### Compliance Gates
-
-| Metric | Threshold | Action |
-|--------|-----------|--------|
-| tools.json count | != 29 | BLOCK |
-| JSON-RPC format | Non-compliant | BLOCK |
-| MCP protocol version | Missing | BLOCK |
-| Error responses | Invalid format | BLOCK |
-
-### Code Gates
-
-| Metric | Threshold | Action |
-|--------|-----------|--------|
-| Compilation errors | > 0 | BLOCK |
-| Security vulnerabilities | > 0 | BLOCK |
-| #[ignore] annotations | > 0 | BLOCK |
-
----
-
-## 11. QUICK REFERENCE FOR AGENTS
-
-### Before ANY code change:
+**Fix**:
 ```bash
-git status
-git diff
+# Step 1: Get correct tool definition
+curl -s http://127.0.0.1:3001/rpc \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","params":{},"id":1}' | \
+  jq '.result.tools[] | select(.name=="YOUR_TOOL")'
+
+# Step 2: Compare your parameters against "inputSchema.properties"
+# Step 3: Ensure all "required" parameters are present
+# Step 4: Ensure types match (string, number, array, object)
 ```
 
-### After code change:
+### Error: `-32601 (Method not found)`
+
+**Causes**:
+1. Tool doesn't exist in implementation
+2. Tool name is misspelled
+3. Tool not listed in tools.json
+
+**Fix**:
 ```bash
-cargo test --lib                          # Unit tests
-cargo build --release                     # Compile
-./target/release/measure_latency          # Perf check
+# Step 1: Verify tool exists
+grep -r "tool_name" src/actions/
+
+# Step 2: Check tools.json
+jq '.[] | select(.name=="tool_name")' tools.json
+
+# Step 3: Check src/main.rs for tool registration
+grep "tool_name" src/main.rs
 ```
 
-### Before commit:
+### Error: `Protocol violation (missing id or jsonrpc)`
+
+**Causes**:
+1. JSON response malformed
+2. Server returned non-JSON
+3. Network error
+
+**Fix**:
 ```bash
-cargo test --test integration_all_tools -- --nocapture
+# Step 1: Check server logs
+tail -50 /tmp/server.log
+
+# Step 2: Verify JSON validity
+curl http://127.0.0.1:3001/rpc | jq . || echo "Invalid JSON"
+
+# Step 3: Restart server
+pkill -f "mcp-postgres"
+cargo run --release -- --http-port 3001 &
 ```
 
-### Before release:
+### Error: `Test latency > 200ms`
+
+**Causes**:
+1. Slow database query
+2. Connection pool initialization (first request)
+3. Network latency
+4. System load
+
+**Fix**:
 ```bash
-./run_release_validation.sh  # Runs all gates
-```
+# Step 1: Check database query performance
+EXPLAIN ANALYZE <your_query>;
 
-### Current baseline to NOT regress:
-- All P95 latencies < 10ms
-- Concurrent throughput >= 17,713 req/sec
-- All 34 tests passing
-- 29 tools exactly
-- 100% MCP v1.0 compliance
+# Step 2: Check connection pool
+ps aux | grep postgres | head -5
+
+# Step 3: Monitor system load
+top -n 1 | head -20
+
+# Step 4: Retry test (pool may have initialized)
+cargo test --test integration_dual_protocol
+```
 
 ---
 
-## Guides Folder
+## 9. AGENT BEHAVIORAL GUARDRAILS
 
-Additional reference documentation available in `/guides`:
-- **MCP_COMPLIANCE.md** - Validation rules, error formats, per-tool constraints
-- **MCP_SPEC_VERIFICATION.md** - Compliance test results and verification procedures
-- **LATENCY_MEASUREMENT.md** - How to measure and interpret latency
-- **TEST_SETUP.md** - Test environment setup and procedures
-- **QUICK_TEST.md** - Quick reference for common test commands
-- **OPTIMIZATIONS.md** - Performance tuning parameters
+### 9.1 Before Any Code Change
 
-See [guides/INDEX.md](./guides/INDEX.md) for complete guide listing.
+```
+BEFORE modifying:
+├─ src/actions/*.rs
+├─ Cargo.toml
+├─ tests/*.rs
+├─ tools.json
+├─ SKILLS.md
+└─ homebrew-mcp-postgres/
+
+MUST:
+1. Ask user for confirmation
+2. Show exact changes you intend to make
+3. Verify against SKILLS.md procedures
+4. Check for side effects
+```
+
+### 9.2 Before Any Release
+
+```
+MUST RUN (in order):
+1. cargo test --lib (100% pass required)
+2. Integration tests (90%+ success required)
+3. Dual-protocol tests (100% on both protocols)
+4. Load tests (GOOD or EXCELLENT tier)
+5. cargo audit (zero vulnerabilities)
+
+IF ANY FAILS:
+├─ STOP immediately
+├─ Investigate root cause
+├─ Do NOT proceed to next step
+├─ Report to user with exact failure
+└─ Wait for user guidance
+```
+
+### 9.3 Before Updating Homebrew Formula
+
+```
+MUST:
+1. Ask user for confirmation
+2. Verify crates.io publication succeeded
+3. Calculate SHA256 from actual GitHub release
+4. Show formula diff before commit
+5. Verify file syntax (ruby -c check)
+6. Wait for user approval before push
+```
+
+### 9.4 Parameter Validation Standard
+
+```
+For EVERY tool call, BEFORE test execution:
+
+├─ Verify tool exists: tools/list check
+├─ Extract inputSchema from tools/list
+├─ For each parameter:
+│  ├─ Check name matches exactly
+│  ├─ Check type matches
+│  ├─ If required: must be provided
+│  ├─ If optional: can be omitted
+│  └─ Report any mismatches
+└─ Proceed only after all checks pass
+```
 
 ---
 
-**For coding agents: Follow the workflows above. Each section is a task gate. If a task fails, stop and report the failure before proceeding.**
+## 10. REFERENCE: Tool Implementation Status
+
+| Tool Name | Implementation | Status | Tests |
+|-----------|----------------|--------|-------|
+| execute_query | src/actions/query.rs | ✅ | dual_protocol, all_tools |
+| execute_insert | src/actions/query.rs | ✅ | dual_protocol, all_tools |
+| execute_update | src/actions/query.rs | ✅ | dual_protocol, all_tools |
+| execute_delete | src/actions/query.rs | ✅ | dual_protocol, all_tools |
+| explain_query | src/actions/query.rs | ✅ | dual_protocol, all_tools |
+| async_execute_* | src/actions/query.rs | ✅ | all_tools |
+| show_current_user | src/actions/connection.rs | ✅ | dual_protocol |
+| list_connections | src/actions/connection.rs | ✅ | all_tools |
+| list_tables | src/actions/schema.rs | ✅ | dual_protocol, all_tools |
+| list_schemas | src/actions/schema.rs | ✅ | dual_protocol, all_tools |
+| list_columns | src/actions/schema.rs | ✅ | all_tools |
+| list_indexes | src/actions/schema.rs | ✅ | all_tools |
+| list_triggers | src/actions/schema.rs | ✅ | dual_protocol, all_tools |
+| list_views | src/actions/schema.rs | ✅ | all_tools |
+| list_sequences | src/actions/schema.rs | ✅ | all_tools |
+| describe_table | src/actions/schema.rs | ✅ | all_tools |
+| create_table | src/actions/schema.rs | ✅ | all_tools |
+| drop_table | src/actions/schema.rs | ✅ | all_tools |
+| create_view | src/actions/schema.rs | ✅ | all_tools |
+| drop_view | src/actions/schema.rs | ✅ | all_tools |
+| alter_view | src/actions/schema.rs | ✅ | all_tools |
+| create_schema | src/actions/schema.rs | ✅ | all_tools |
+| drop_schema | src/actions/schema.rs | ✅ | all_tools |
+| create_index | src/actions/schema.rs | ✅ | all_tools |
+| drop_index | src/actions/schema.rs | ✅ | all_tools |
+| alter_index | src/actions/schema.rs | ✅ | all_tools |
+| create_sequence | src/actions/schema.rs | ✅ | all_tools |
+| drop_sequence | src/actions/schema.rs | ✅ | all_tools |
+| create_partition | src/actions/schema.rs | ✅ | all_tools |
+| delete_table_partition | src/actions/schema.rs | ✅ | all_tools |
+| list_partitions | src/actions/schema.rs | ✅ | all_tools |
+| backup_table | src/actions/schema.rs | ✅ | all_tools |
+| async_batch_insert | src/actions/batch.rs | ✅ | all_tools |
+| async_batch_update | src/actions/batch.rs | ✅ | all_tools |
+| async_batch_delete | src/actions/batch.rs | ✅ | all_tools |
+| async_batch_insert_copy | src/actions/batch.rs | ✅ | all_tools |
+| analyze_table | src/actions/utility.rs | ✅ | all_tools |
+| vacuum_table | src/actions/utility.rs | ✅ | all_tools |
+| get_table_size | src/actions/utility.rs | ✅ | all_tools |
+| get_database_size | src/actions/utility.rs | ✅ | all_tools |
+
+---
+
+**Last Updated**: 2026-06-14  
+**Version**: SDLC Process (version-agnostic)  
+**Authority**: Source of truth for all development procedures
