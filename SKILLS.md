@@ -450,6 +450,7 @@ cargo outdated --format list
 [ ] Version number incremented in Cargo.toml
 [ ] CHANGELOG.md updated
 [ ] tools.json has exactly 25 tools
+[ ] Homebrew formula will be updated after crates.io release
 ```
 
 **EXECUTION**:
@@ -511,10 +512,34 @@ cargo publish
 gh release create v1.3.0 --title "v1.3.0" --notes "Release notes"
 ```
 
+**Step 4**: Update Homebrew Formula
+```bash
+# After successful crates.io publication, update the homebrew formula
+# 1. Get the tarball SHA256 from the GitHub release
+cd /tmp
+curl -L https://github.com/corporatepiyush/mcp-pg-rust/archive/refs/tags/v1.3.0.tar.gz -o mcp-postgres-1.3.0.tar.gz
+SHA256=$(shasum -a 256 mcp-postgres-1.3.0.tar.gz | awk '{print $1}')
+
+# 2. Update the formula in the main repo
+cd /path/to/mcp-postgres
+sed -i '' "s/sha256 \".*\"/sha256 \"$SHA256\"/" homebrew-mcp-postgres/Formula/mcp_postgres.rb
+sed -i '' "s|tags/v[0-9.]*|tags/v1.3.0|g" homebrew-mcp-postgres/Formula/mcp_postgres.rb
+
+# 3. Verify the update
+grep "sha256\|tags/v" homebrew-mcp-postgres/Formula/mcp_postgres.rb
+
+# 4. Commit and push
+git add homebrew-mcp-postgres/Formula/mcp_postgres.rb
+git commit -m "Update Homebrew formula to v1.3.0"
+git push
+```
+
 **ACCEPTANCE CRITERIA**:
 - ✅ Git tag created and pushed
 - ✅ Package published to crates.io
 - ✅ GitHub release created
+- ✅ Homebrew formula updated with new version and SHA256
+- ✅ Formula changes committed and pushed
 - ✅ Documentation updated
 
 ---
