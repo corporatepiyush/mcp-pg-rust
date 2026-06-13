@@ -1,8 +1,8 @@
 class McpPostgres < Formula
   desc "MCP server implementation for PostgreSQL"
   homepage "https://github.com/corporatepiyush/mcp-pg-rust"
-  url "https://github.com/corporatepiyush/mcp-pg-rust/archive/refs/tags/v1.3.1.tar.gz"
-  sha256 "79082f0145d16873b22dd9528a5fa156b9cd5b3a956cd6e7ea01241c4ea4fd1d"
+  url "https://github.com/corporatepiyush/mcp-pg-rust/archive/refs/tags/v2.0.0.tar.gz"
+  sha256 "6ba301ee9cbe64abef5980a25ed1c1381c4e8de942cf1e0c8069da72e2606af8"
   license "MIT"
 
   depends_on "rust" => :build
