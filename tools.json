@@ -1,0 +1,39 @@
+[
+  {
+    "name": "list_tables",
+    "description": "List all tables in the database",
+    "inputSchema": { "type": "object", "properties": {} }
+  },
+  {
+    "name": "batch_insert",
+    "description": "High-performance batch insert",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": { "type": "string" },
+        "columns": { "type": "array", "items": { "type": "string" } },
+        "rows": { "type": "array", "items": { "type": "array" } },
+        "returning": { "type": "string", "description": "Optional column to return (e.g. 'id')" }
+      },
+      "required": ["table", "columns", "rows"]
+    }
+  },
+  {
+    "name": "execute_query",
+    "description": "Execute SELECT query",
+    "inputSchema": {
+      "type": "object",
+      "properties": { "sql": { "type": "string" } },
+      "required": ["sql"]
+    }
+  },
+  {
+    "name": "execute_insert",
+    "description": "Execute INSERT query",
+    "inputSchema": {
+      "type": "object",
+      "properties": { "sql": { "type": "string" } },
+      "required": ["sql"]
+    }
+  }
+]
