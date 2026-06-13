@@ -4,6 +4,22 @@ use crate::errors::Result as MCPResult;
 
 /// 36. Show replication status
 pub async fn show_replication_status(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+    let (in_recovery,): (bool,) = client
+        .query_one("SELECT pg_is_in_recovery()", &[])
+        .await
+        .map(|r| (r.get(0),))?;
+
+    if !in_recovery {
+        return Ok(json!({
+            "is_wal_replay_paused": false,
+            "last_wal_receive_lsn": null,
+            "last_wal_replay_lsn": null,
+            "uptime": null,
+            "in_recovery": false,
+            "hint": "Server is a primary, not a replica"
+        }));
+    }
+
     let rows = client
         .query(
             "SELECT pg_is_wal_replay_paused(), pg_last_wal_receive_lsn(),
@@ -19,6 +35,7 @@ pub async fn show_replication_status(client: &Client, _params: Option<Value>) ->
         "last_wal_receive_lsn": row.get::<_, Option<String>>(1),
         "last_wal_replay_lsn": row.get::<_, Option<String>>(2),
         "uptime": row.get::<_, Option<String>>(3),
+        "in_recovery": true,
     }))
 }
 
@@ -26,7 +43,7 @@ pub async fn show_replication_status(client: &Client, _params: Option<Value>) ->
 pub async fn list_replication_slots(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
     let rows = client
         .query(
-            "SELECT slot_name, slot_type, datname, active, restart_lsn, confirmed_flush_lsn
+            "SELECT slot_name, slot_type, database::text, active, restart_lsn::text, confirmed_flush_lsn::text
              FROM pg_replication_slots
              ORDER BY slot_name",
             &[],
@@ -81,10 +98,22 @@ pub async fn list_standby_servers(client: &Client, _params: Option<Value>) -> MC
 
 /// 39. Show WAL info
 pub async fn show_wal_info(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+    let (in_recovery,): (bool,) = client
+        .query_one("SELECT pg_is_in_recovery()", &[])
+        .await
+        .map(|r| (r.get(0),))?;
+
+    let wal_replay_paused = if in_recovery {
+        let r = client.query_one("SELECT pg_is_wal_replay_paused()", &[]).await?;
+        Some(r.get::<_, bool>(0))
+    } else {
+        None
+    };
+
     let rows = client
         .query(
-            "SELECT pg_current_wal_lsn(), pg_current_wal_insert_lsn(),
-                    pg_is_wal_replay_paused(), pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0') as bytes",
+            "SELECT pg_current_wal_lsn()::text, pg_current_wal_insert_lsn()::text,
+                    pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0')::bigint as bytes",
             &[],
         )
         .await?;
@@ -94,20 +123,29 @@ pub async fn show_wal_info(client: &Client, _params: Option<Value>) -> MCPResult
     Ok(json!({
         "current_wal_lsn": row.get::<_, String>(0),
         "current_wal_insert_lsn": row.get::<_, String>(1),
-        "wal_replay_paused": row.get::<_, bool>(2),
-        "wal_size_bytes": row.get::<_, Option<f64>>(3),
+        "wal_replay_paused": wal_replay_paused,
+        "wal_size_bytes": row.get::<_, i64>(2),
+        "in_recovery": in_recovery,
     }))
 }
 
 /// 40. Show base backup progress
 pub async fn show_base_backup_progress(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
-    let rows = client
-        .query(
+    // PG 16-17: pg_stat_basebackup; PG 18+: pg_stat_progress_basebackup
+    let query = match client.query_one(
+        "SELECT count(*) FROM pg_class WHERE relname = 'pg_stat_progress_basebackup'", &[]
+    ).await {
+        Ok(r) if r.get::<_, i64>(0) > 0 => {
             "SELECT phase, backup_total, backup_streamed, tablespaces_total, tablespaces_streamed
-             FROM pg_stat_basebackup
-             WHERE phase IS NOT NULL",
-            &[],
-        )
+             FROM pg_stat_progress_basebackup WHERE phase IS NOT NULL"
+        }
+        _ => {
+            "SELECT phase, backup_total, backup_streamed, tablespaces_total, tablespaces_streamed
+             FROM pg_stat_basebackup WHERE phase IS NOT NULL"
+        }
+    };
+    let rows = client
+        .query(query, &[])
         .await;
 
     match rows {
@@ -125,8 +163,8 @@ pub async fn show_base_backup_progress(client: &Client, _params: Option<Value>) 
                 "phase": row.get::<_, String>(0),
                 "backup_total": row.get::<_, Option<i64>>(1),
                 "backup_streamed": row.get::<_, Option<i64>>(2),
-                "tablespaces_total": row.get::<_, i32>(3),
-                "tablespaces_streamed": row.get::<_, i32>(4),
+                "tablespaces_total": row.get::<_, i64>(3),
+                "tablespaces_streamed": row.get::<_, i64>(4),
             }))
         }
         Err(_) => {
