@@ -7,11 +7,11 @@
 ## 1. PROJECT STATE & BASELINE
 
 ### Current Production State
-- **Version**: 1.3.0
+- **Version**: 2.0.0
 - **Status**: Production Ready ✅
-- **34 Tools**: All implemented and MCP v1.0 compliant (removed non-functional transaction tools)
+- **45 Tools**: All implemented and MCP v1.0 compliant (comprehensive DDL + DML operations)
 - **Transports**: TCP (3000), HTTP/2 (3001), stdio
-- **Test Coverage**: 34 tests (12 integration, 17 data), 100% tool coverage
+- **Test Coverage**: 45 tools with full integration test cases, 100% tool coverage
 - **Performance**: P95 < 10ms all tools, 17K+ req/sec concurrent
 
 ### Baseline Metrics (DO NOT REGRESS)
@@ -106,9 +106,85 @@ pkill -f "mcp-postgres --http-port"
 - ✅ All 12 integration_all_tools tests pass
 - ✅ All 17 integration_test_data_tools tests pass
 - ✅ No #[ignore] annotations on any test
-- ✅ All 34 tools tested (no missing tool tests)
+- ✅ All 45 tools tested (no missing tool tests)
 - ✅ Response validation successful
 - ✅ All tests use REAL database (verified via SQL queries in logs)
+
+**DDL Integration Tests (NEW - Must pass before merging DDL tools)**:
+
+Each test creates schema objects, verifies they exist, and cleans up:
+
+**Tables (create_table, drop_table)**:
+```bash
+# Create table with columns
+tools/call create_table {table: "test_ddl_table", columns: ["id SERIAL PRIMARY KEY", "name VARCHAR(255) NOT NULL"]}
+# Verify table exists in list_tables
+tools/call list_tables {}
+# Drop table
+tools/call drop_table {table: "test_ddl_table"}
+```
+
+**Views (create_view, drop_view, alter_view)**:
+```bash
+# Create base table
+tools/call create_table {table: "test_base", columns: ["id SERIAL PRIMARY KEY", "val INT"]}
+# Create view
+tools/call create_view {view_name: "test_view", query: "SELECT id, val FROM test_base"}
+# Alter view (rename)
+tools/call alter_view {view_name: "test_view", rename_to: "test_view_renamed"}
+# Drop view
+tools/call drop_view {view_name: "test_view_renamed"}
+# Cleanup
+tools/call drop_table {table: "test_base"}
+```
+
+**Schemas (create_schema, drop_schema)**:
+```bash
+# Create schema
+tools/call create_schema {schema_name: "test_schema"}
+# Verify in list_schemas
+tools/call list_schemas {}
+# Drop schema
+tools/call drop_schema {schema_name: "test_schema"}
+```
+
+**Indexes (create_index, drop_index, alter_index)**:
+```bash
+# Create table
+tools/call create_table {table: "test_idx_table", columns: ["id SERIAL PRIMARY KEY", "email VARCHAR(255)"]}
+# Create index
+tools/call create_index {index_name: "idx_test_email", table: "test_idx_table", columns: ["email"]}
+# Alter index (rename)
+tools/call alter_index {index_name: "idx_test_email", rename_to: "idx_test_email_v2"}
+# Drop index
+tools/call drop_index {index_name: "idx_test_email_v2"}
+# Cleanup
+tools/call drop_table {table: "test_idx_table"}
+```
+
+**Sequences (create_sequence, drop_sequence)**:
+```bash
+# Create sequence
+tools/call create_sequence {sequence_name: "test_seq", start: 100, increment: 1}
+# Verify nextval works
+tools/call execute_query {query: "SELECT nextval('test_seq')"}
+# Drop sequence
+tools/call drop_sequence {sequence_name: "test_seq"}
+```
+
+**Partitions (create_partition, drop_partition, list_partitions)**:
+```bash
+# Create partitioned table
+tools/call execute_query {query: "CREATE TABLE test_parts (id INT, data TEXT) PARTITION BY RANGE (id)"}
+# Create partition
+tools/call create_partition {table: "test_parts", partition_name: "test_parts_1", partition_type: "RANGE", column: "id", values: "FROM (1) TO (100)"}
+# List partitions
+tools/call list_partitions {table: "test_parts"}
+# Drop partition
+tools/call drop_partition {partition_name: "test_parts_1"}
+# Cleanup
+tools/call drop_table {table: "test_parts", cascade: true}
+```
 
 **FAILURE ACTION**: Block commit, list failing tests, require fix before retry
 
@@ -137,7 +213,7 @@ TOOLS=$(curl -s -X POST http://127.0.0.1:3001/rpc \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"tools/list","id":1}' | \
   jq -r '.result.tools | length')
-[ "$TOOLS" = "34" ] || exit 1
+[ "$TOOLS" = "45" ] || exit 1
 ```
 
 **Test 3: tools/call via HTTP**
@@ -261,7 +337,7 @@ echo "$RESP" | jq -e '.result.serverInfo' >/dev/null || exit 1
 ```bash
 RESP=$(echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | nc 127.0.0.1 3000)
 COUNT=$(echo "$RESP" | jq '.result.tools | length')
-[ "$COUNT" = "34" ] || exit 1
+[ "$COUNT" = "45" ] || exit 1
 # Verify each tool has required fields
 echo "$RESP" | jq -e '.result.tools[] | select(.name and .description and .inputSchema)' >/dev/null || exit 1
 ```
