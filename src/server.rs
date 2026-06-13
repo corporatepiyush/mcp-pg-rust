@@ -221,6 +221,8 @@ async fn handle_tools_call(
 
     let tool_args = req.params.as_ref().and_then(|p| p.get("arguments"));
 
+    // Acquire pool connection only for known tools — unknown tools
+    // (the `_` arm) return MethodNotFound without consuming a pool slot.
     let client = pool.acquire().await?;
 
     let result = match tool_name {
@@ -236,7 +238,7 @@ async fn handle_tools_call(
         "execute_update" => actions::query::execute_update(&client, tool_args.cloned()).await,
         "execute_delete" => actions::query::execute_delete(&client, tool_args.cloned()).await,
         "explain_query" => actions::query::explain_query(&client, tool_args.cloned()).await,
-        // Batch operations (high-performance for bulk loads)
+        // Batch operations
         "batch_insert" => actions::batch::batch_insert(&client, tool_args.cloned()).await,
         "batch_update" => actions::batch::batch_update(&client, tool_args.cloned()).await,
         "batch_delete" => actions::batch::batch_delete(&client, tool_args.cloned()).await,
@@ -288,7 +290,7 @@ async fn handle_tools_call(
         "show_deadlocks" => actions::transactions::show_deadlocks(&client, tool_args.cloned()).await,
         "show_autocommit_status" => actions::transactions::show_autocommit_status(&client, tool_args.cloned()).await,
         "show_transaction_timeout" => actions::transactions::show_transaction_timeout(&client, tool_args.cloned()).await,
-        _ => Err(method_not_found(tool_name)),
+        tool => Err(method_not_found(tool)),
     };
 
     pool.release(client);

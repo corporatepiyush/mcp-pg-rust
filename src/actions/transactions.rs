@@ -181,16 +181,19 @@ pub async fn show_deadlocks(client: &Client, _params: Option<Value>) -> MCPResul
 }
 
 /// 49. Show auto commit status
+///
+/// Note: PostgreSQL 17+ removed the `autocommit` GUC.
+/// Autocommit is always-on in the wire protocol and cannot be disabled.
+/// For PG < 17, we query `SHOW autocommit`; for PG >= 17, we return `true`.
 pub async fn show_autocommit_status(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
-    let rows = client
-        .query("SHOW autocommit", &[])
-        .await?;
-
-    let autocommit = rows[0].get::<_, String>(0);
+    let autocommit = match client.query("SHOW autocommit", &[]).await {
+        Ok(rows) => rows[0].get::<_, String>(0) == "on",
+        Err(_) => true, // PG 17+ removed the setting; always-on
+    };
 
     Ok(json!({
-        "autocommit": autocommit == "on",
-        "value": autocommit
+        "autocommit": autocommit,
+        "value": if autocommit { "on" } else { "off" }
     }))
 }
 

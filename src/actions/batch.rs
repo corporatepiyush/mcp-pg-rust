@@ -53,11 +53,6 @@ pub async fn batch_insert(client: &Client, params: Option<Value>) -> MCPResult<V
         ));
     }
 
-    // Enable bulk insert mode: disable synchronous commit for faster writes
-    // This tells PostgreSQL not to wait for WAL (Write-Ahead Log) flush to disk
-    // 10-20× performance improvement during bulk loads, safe for reproducible data generation
-    client.execute("SET synchronous_commit = OFF", &[]).await?;
-
     // Build VALUES clause
     let cols = column_names.join(", ");
     let total_capacity = 64 + cols.len() + rows.len() * (column_count * 16 + 4);
@@ -122,9 +117,24 @@ pub async fn batch_insert(client: &Client, params: Option<Value>) -> MCPResult<V
         sql.push(')');
     }
 
-    if let Some(col) = returning {
-        sql.push_str(&format!(" RETURNING {}", col));
-        let rows = client.query(&sql, &[]).await?;
+    // Temporarily disable synchronous commit for bulk insert throughput,
+    // then restore the original setting to avoid session-level side effects.
+    let orig_sync = client
+        .query_one("SHOW synchronous_commit", &[])
+        .await
+        .map(|r| r.get::<_, String>(0))
+        .unwrap_or_else(|_| "on".to_string());
+    client.execute("SET synchronous_commit = OFF", &[]).await?;
+
+    let result = if let Some(col) = returning {
+        let r = format!(" RETURNING {}", col);
+        sql.push_str(&r);
+        let rows = client.query(&sql, &[]).await;
+        client
+            .execute(&format!("SET synchronous_commit = {}", orig_sync), &[])
+            .await
+            .ok();
+        let rows = rows?;
         let ids: Vec<Value> = rows.iter().map(|r| {
             if let Ok(id) = r.try_get::<_, i64>(0) {
                 json!(id)
@@ -134,16 +144,22 @@ pub async fn batch_insert(client: &Client, params: Option<Value>) -> MCPResult<V
                 json!(null)
             }
         }).collect();
-        Ok(json!({
+        json!({
             "rows_affected": ids.len(),
             "inserted_ids": ids
-        }))
+        })
     } else {
-        let rows_affected = client.execute(&sql, &[]).await?;
-        Ok(json!({
-            "rows_affected": rows_affected
-        }))
-    }
+        let rows_affected = client.execute(&sql, &[]).await;
+        client
+            .execute(&format!("SET synchronous_commit = {}", orig_sync), &[])
+            .await
+            .ok();
+        json!({
+            "rows_affected": rows_affected?
+        })
+    };
+
+    Ok(result)
 }
 
 /// Batch update - bulk updates with WHERE conditions

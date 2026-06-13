@@ -23,10 +23,23 @@ pub async fn execute_query(client: &Client, params: Option<Value>) -> MCPResult<
         .map(|row| {
             let values: Vec<Value> = (0..row.len())
                 .map(|i| {
-                    // Simplified - in production use proper type inference
-                    match row.try_get::<_, String>(i) {
-                        Ok(v) => Value::String(v),
-                        Err(_) => Value::Null,
+                    // Try type inference: prefer native JSON types over raw strings
+                    if let Ok(v) = row.try_get::<_, bool>(i) {
+                        json!(v)
+                    } else if let Ok(v) = row.try_get::<_, i32>(i) {
+                        json!(v)
+                    } else if let Ok(v) = row.try_get::<_, i64>(i) {
+                        json!(v)
+                    } else if let Ok(v) = row.try_get::<_, f32>(i) {
+                        json!(v)
+                    } else if let Ok(v) = row.try_get::<_, f64>(i) {
+                        json!(v)
+                    } else if let Ok(v) = row.try_get::<_, String>(i) {
+                        Value::String(v)
+                    } else if let Ok(v) = row.try_get::<_, Option<String>>(i) {
+                        v.map(Value::String).unwrap_or(Value::Null)
+                    } else {
+                        Value::Null
                     }
                 })
                 .collect();
@@ -92,12 +105,20 @@ pub async fn execute_delete(client: &Client, params: Option<Value>) -> MCPResult
 }
 
 /// 10. Explain query
+///
+/// Only SELECT queries can be explained. This guard prevents accidental
+/// execution of DDL/DML statements inside EXPLAIN wrappers.
 pub async fn explain_query(client: &Client, params: Option<Value>) -> MCPResult<Value> {
     let sql = params
         .as_ref()
         .and_then(|p| p.get("sql"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'sql' parameter".into()))?;
+
+    let first_word = sql.trim_start().split_whitespace().next().unwrap_or("").to_uppercase();
+    if first_word != "SELECT" {
+        return Err(crate::errors::MCPError::InvalidParams("Only SELECT queries can be explained".into()));
+    }
 
     let mut explain_sql = String::with_capacity(sql.len() + 24);
     explain_sql.push_str("EXPLAIN (FORMAT JSON) ");

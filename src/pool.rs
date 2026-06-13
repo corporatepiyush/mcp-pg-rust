@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, RwLock};
 use tokio_postgres::{connect, Client, NoTls, Statement};
 use tracing::{debug, error, warn};
@@ -62,18 +63,19 @@ impl Default for BufferPool {
 #[repr(C)]
 pub struct ConnectionPool {
     /// Config is cold — read once per acquire(), then immutable.
-    /// Wrapped in an aligned wrapper so it occupies a full cache line,
-    /// pushing the hot idle_connections field to the next cache line.
     cold: AlignedCold,
     /// idle_connections is hot — accessed on every acquire/release.
-    /// Stored inline (not behind an extra Arc) to eliminate one level of
-    /// pointer chasing on the hot path.
     idle_connections: SegQueue<Arc<Client>>,
+    /// Count of connections currently in use or idle (approximate).
+    active_connections: AtomicU32,
 }
 
 /// Ensures cold PoolConfig sits on its own cache line.
 #[repr(align(64))]
-struct AlignedCold(PoolConfig);
+struct AlignedCold {
+    config: PoolConfig,
+    connection_string: String,
+}
 
 impl ConnectionPool {
     /// Create a new connection pool
@@ -81,6 +83,7 @@ impl ConnectionPool {
         debug!("Creating connection pool with config: {:?}", config);
 
         let idle_queue = SegQueue::new();
+        let mut created = 0u32;
 
         // Create minimum number of connections
         for _ in 0..config.min_size {
@@ -93,6 +96,7 @@ impl ConnectionPool {
                     });
                     let arc_client = Arc::new(client);
                     idle_queue.push(arc_client);
+                    created += 1;
                 }
                 Err(e) => {
                     warn!("Failed to create initial connection: {}", e);
@@ -100,9 +104,19 @@ impl ConnectionPool {
             }
         }
 
+        if created == 0 {
+            return Err(anyhow::anyhow!(
+                "Failed to establish any database connection. Check DATABASE_URL and ensure PostgreSQL is running."
+            ));
+        }
+
         let pool = Self {
-            cold: AlignedCold(config),
+            cold: AlignedCold {
+                config,
+                connection_string: connection_string.to_string(),
+            },
             idle_connections: idle_queue,
+            active_connections: AtomicU32::new(created),
         };
 
         Ok(pool)
@@ -111,11 +125,45 @@ impl ConnectionPool {
     /// Acquire a connection from the pool
     pub async fn acquire(&self) -> MCPResult<Arc<Client>> {
         let start = std::time::Instant::now();
-        let timeout = self.cold.0.queue_timeout;
+        let timeout = self.cold.config.queue_timeout;
+        let max_size = self.cold.config.max_size;
 
         loop {
+            // Fast path: pop from idle queue
             if let Some(conn) = self.idle_connections.pop() {
                 return Ok(conn);
+            }
+
+            // Lazy creation: spawn new connection up to max_size
+            let active = self.active_connections.load(Ordering::Acquire);
+            if active < max_size {
+                if self
+                    .active_connections
+                    .compare_exchange(active, active + 1, Ordering::AcqRel, Ordering::Relaxed)
+                    .is_ok()
+                {
+                    // We won the race to create a new connection
+                    match connect(
+                        &self.cold.connection_string,
+                        NoTls,
+                    )
+                    .await
+                    {
+                        Ok((client, connection)) => {
+                            tokio::spawn(async move {
+                                if let Err(e) = connection.await {
+                                    error!("Lazy connection error: {}", e);
+                                }
+                            });
+                            return Ok(Arc::new(client));
+                        }
+                        Err(e) => {
+                            self.active_connections.fetch_sub(1, Ordering::Release);
+                            error!("Failed to create lazy connection: {}", e);
+                            // Fall through to spin/retry — maybe another connection is released soon
+                        }
+                    }
+                }
             }
 
             if start.elapsed() > timeout {

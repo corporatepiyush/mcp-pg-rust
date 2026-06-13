@@ -4,9 +4,11 @@ use crate::errors::Result as MCPResult;
 
 /// 26. List users
 pub async fn list_users(client: &Client, _params: Option<Value>) -> MCPResult<Value> {
+    // NOTE: usecanlogin was removed in PG 16+; PG now manages login
+    // privilege through LOGIN/NOLOGIN on roles (pg_authid.rolcanlogin).
     let rows = client
         .query(
-            "SELECT usename, usesuper, usecreatedb, usecanlogin, valuntil
+            "SELECT usename, usesuper, usecreatedb, valuntil::text
              FROM pg_user
              ORDER BY usename",
             &[],
@@ -20,8 +22,7 @@ pub async fn list_users(client: &Client, _params: Option<Value>) -> MCPResult<Va
                 "username": row.get::<_, String>(0),
                 "superuser": row.get::<_, bool>(1),
                 "createdb": row.get::<_, bool>(2),
-                "canlogin": row.get::<_, bool>(3),
-                "valid_until": row.get::<_, Option<String>>(4),
+                "valid_until": row.get::<_, Option<String>>(3),
             })
         })
         .collect();
