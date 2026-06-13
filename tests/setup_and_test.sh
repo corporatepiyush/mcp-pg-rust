@@ -132,93 +132,101 @@ for i in {1..3}; do
 done
 echo "    ✅ 3 DDL-related requests completed"
 
-# Test 6: Stress test with connection pooling (Apache Bench)
-echo "  Test 6: Load test with connection pooling (100 requests, 10 concurrent)..."
+# Test 6: Stress test with wrk (connection pooling load testing)
+echo "  Test 6: Load test with wrk (connection pooling)..."
 
-# Check if ab (Apache Bench) is available
-if command -v ab &> /dev/null; then
-    # Use Apache Bench for proper connection pooling test
-    # -n 100: 100 requests total
-    # -c 10: 10 concurrent connections (reused)
-    # -p /dev/null: POST with empty body
-
-    AB_OUTPUT=$(ab -n 100 -c 10 -p /dev/stdin -T "application/json" \
-        -H "Content-Type: application/json" \
-        http://$MCP_HOST:$MCP_PORT/rpc 2>&1 << 'JSON'
-{"jsonrpc":"2.0","method":"tools/call","params":{"name":"show_current_user","arguments":{}},"id":1}
-JSON
-)
-
-    # Extract metrics from Apache Bench output
-    THROUGHPUT=$(echo "$AB_OUTPUT" | grep "Requests per second" | awk '{print $4}' | cut -d. -f1)
-    MEAN_TIME=$(echo "$AB_OUTPUT" | grep "Time per request:" | head -1 | awk '{print $4}')
-
-    echo "    ✅ Load test results (with connection pooling):"
-    echo "       - Total requests: 100"
-    echo "       - Concurrent connections: 10 (reused)"
-    echo "       - Throughput: ${THROUGHPUT} req/sec"
-    echo "       - Mean latency: ${MEAN_TIME}ms"
-    echo "       - Baseline: 17,713 req/sec (20 concurrent clients)"
+# Check if wrk is available
+if command -v wrk &> /dev/null; then
+    echo "    Running wrk: 30s duration, 10 threads, 20 concurrent connections..."
     echo ""
 
-    if [ "$THROUGHPUT" -gt "10000" ]; then
-        echo "    ✅ Performance: EXCELLENT (>10K req/sec)"
-    elif [ "$THROUGHPUT" -gt "5000" ]; then
-        echo "    ✅ Performance: GOOD (5-10K req/sec)"
-    elif [ "$THROUGHPUT" -gt "1000" ]; then
-        echo "    ⚠️  Performance: ACCEPTABLE (1-5K req/sec)"
-    else
-        echo "    ❌ Performance: POOR (<1K req/sec) - investigation needed:"
-        echo "       - New DDL tools may have overhead"
-        echo "       - backup_table operation is heavy"
-        echo "       - Connection pool may need tuning"
-        echo "       - Memory usage may be elevated"
-    fi
-else
-    # Fallback: Use wrk if available (better for load testing)
-    if command -v wrk &> /dev/null; then
-        echo "    Using wrk for load test (30s, 10 threads, 10 connections)..."
-        WRK_OUTPUT=$(wrk -t10 -c10 -d30s \
-            -s - http://$MCP_HOST:$MCP_PORT/rpc 2>&1 << 'LUA'
+    # Create wrk Lua script for POST request
+    cat > /tmp/wrk_test.lua << 'EOF'
 request = function()
     wrk.method = "POST"
     wrk.headers["Content-Type"] = "application/json"
     wrk.body = '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"show_current_user","arguments":{}},"id":1}'
     return wrk.format(nil)
 end
-LUA
+
+response = function(status, headers, body)
+    if status ~= 200 then
+        io.stderr:write("HTTP " .. status .. "\n")
+    end
+end
+EOF
+
+    # Run wrk test: 30 seconds, 10 threads, 20 connections
+    WRK_OUTPUT=$(wrk -t10 -c20 -d30s -s /tmp/wrk_test.lua http://$MCP_HOST:$MCP_PORT/rpc 2>&1)
+
+    # Extract key metrics
+    REQUESTS=$(echo "$WRK_OUTPUT" | grep "Requests/sec" | awk '{print $2}' | cut -d'.' -f1)
+    AVG_LATENCY=$(echo "$WRK_OUTPUT" | grep "Avg" | grep latency | awk '{print $2}' | sed 's/ms//')
+    MAX_LATENCY=$(echo "$WRK_OUTPUT" | grep "Max" | grep latency | awk '{print $2}' | sed 's/ms//')
+    P99_LATENCY=$(echo "$WRK_OUTPUT" | grep "99.000%" | awk '{print $2}' | sed 's/ms//')
+
+    echo "    ✅ Load Test Results (wrk with connection pooling):"
+    echo ""
+    echo "       Throughput:"
+    echo "         - Current:  ${REQUESTS} req/sec"
+    echo "         - Baseline: 17,713 req/sec (20 concurrent)"
+    echo ""
+    echo "       Latency:"
+    echo "         - Average (Avg):     ${AVG_LATENCY}ms"
+    echo "         - 99th percentile:   ${P99_LATENCY}ms"
+    echo "         - Max:               ${MAX_LATENCY}ms"
+    echo ""
+
+    # Performance assessment
+    if [ "$REQUESTS" -gt "15000" ]; then
+        echo "    ✅ Performance: EXCELLENT (>15K req/sec)"
+    elif [ "$REQUESTS" -gt "10000" ]; then
+        echo "    ✅ Performance: GOOD (10-15K req/sec)"
+    elif [ "$REQUESTS" -gt "5000" ]; then
+        echo "    ✅ Performance: ACCEPTABLE (5-10K req/sec)"
+    elif [ "$REQUESTS" -gt "1000" ]; then
+        echo "    ⚠️  Performance: DEGRADED (1-5K req/sec)"
+        echo "       - Investigate: New DDL tools overhead"
+        echo "       - Check: backup_table latency"
+        echo "       - Review: Connection pool tuning"
+    else
+        echo "    ❌ Performance: CRITICAL (<1K req/sec)"
+        echo "       - Server performance severely impacted"
+        echo "       - Immediate investigation needed"
+    fi
+    echo ""
+
+    # Full wrk output for detailed analysis
+    echo "    Full wrk output:"
+    echo "$WRK_OUTPUT" | tail -20
+
+else
+    # Fallback: Use ab if wrk not available
+    if command -v ab &> /dev/null; then
+        echo "    ⚠️  wrk not found, falling back to Apache Bench..."
+
+        AB_OUTPUT=$(ab -n 500 -c 20 -p /dev/stdin -T "application/json" \
+            http://$MCP_HOST:$MCP_PORT/rpc 2>&1 << 'JSON'
+{"jsonrpc":"2.0","method":"tools/call","params":{"name":"show_current_user","arguments":{}},"id":1}
+JSON
 )
 
-        THROUGHPUT=$(echo "$WRK_OUTPUT" | grep "Requests/sec" | awk '{print $2}' | cut -d. -f1)
-        echo "    ✅ Load test results (wrk - 30s duration):"
+        THROUGHPUT=$(echo "$AB_OUTPUT" | grep "Requests per second" | awk '{print $4}' | cut -d'.' -f1)
+        MEAN_TIME=$(echo "$AB_OUTPUT" | grep "Time per request:" | head -1 | awk '{print $4}')
+
+        echo "    ✅ Load test results (Apache Bench - 500 requests, 20 concurrent):"
         echo "       - Throughput: ${THROUGHPUT} req/sec"
-        echo "       - Baseline: 17,713 req/sec"
+        echo "       - Mean latency: ${MEAN_TIME}ms"
     else
-        # Final fallback: Simple sequential test with timing
-        echo "    ⚠️  ab and wrk not found - running simple sequential timing test..."
-        echo "       (Install 'apache2-utils' for ab or 'wrk' for better load testing)"
-
-        START_TIME=$(date +%s%N | cut -b1-13)
-        SUCCESS=0
-
-        for i in {1..20}; do
-            RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://$MCP_HOST:$MCP_PORT/rpc \
-                -H "Content-Type: application/json" \
-                -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"show_current_user","arguments":{}},"id":'$i'}' 2>/dev/null)
-
-            HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-            if [ "$HTTP_CODE" = "200" ]; then
-                ((SUCCESS++))
-            fi
-        done
-
-        END_TIME=$(date +%s%N | cut -b1-13)
-        ELAPSED=$((END_TIME - START_TIME))
-
-        echo "    ✅ Basic timing test:"
-        echo "       - 20 sequential requests: ${ELAPSED}ms"
-        echo "       - Success: $SUCCESS/20"
-        echo "       - (Install 'apache2-utils' package for proper load testing with ab)"
+        echo "    ❌ ERROR: Neither wrk nor ab found!"
+        echo ""
+        echo "    Install wrk for load testing:"
+        echo "      macOS:  brew install wrk"
+        echo "      Ubuntu: sudo apt-get install wrk"
+        echo "      CentOS: sudo yum install wrk"
+        echo ""
+        echo "    Then run this script again to test performance."
+        exit 1
     fi
 fi
 
