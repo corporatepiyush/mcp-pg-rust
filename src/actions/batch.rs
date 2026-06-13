@@ -18,7 +18,7 @@ fn format_sql_value(val: &Value) -> String {
 
 /// Batch insert - high performance multi-row insertion
 /// Applies synchronous_commit = OFF at query level for maximum throughput during bulk loads
-pub async fn batch_insert(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
+pub async fn batch_insert(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
     let params = params.as_ref().ok_or_else(|| {
         crate::errors::MCPError::InvalidParams("Missing parameters".into())
     })?;
@@ -178,7 +178,7 @@ pub async fn batch_insert(client: &Client, params: &Option<Value>) -> MCPResult<
 }
 
 /// Batch update - bulk updates with WHERE conditions
-pub async fn batch_update(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
+pub async fn batch_update(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
     let params = params.as_ref().ok_or_else(|| {
         crate::errors::MCPError::InvalidParams("Missing parameters".into())
     })?;
@@ -238,7 +238,7 @@ pub async fn batch_update(client: &Client, params: &Option<Value>) -> MCPResult<
 }
 
 /// Batch delete - bulk deletion with combined WHERE clauses
-pub async fn batch_delete(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
+pub async fn batch_delete(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
     let params = params.as_ref().ok_or_else(|| {
         crate::errors::MCPError::InvalidParams("Missing parameters".into())
     })?;
@@ -301,7 +301,7 @@ pub async fn batch_delete(client: &Client, params: &Option<Value>) -> MCPResult<
 }
 
 /// Batch insert with auto-batching for massive loads
-pub async fn batch_insert_copy(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
+pub async fn batch_insert_copy(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
     let params = params.as_ref().ok_or_else(|| {
         crate::errors::MCPError::InvalidParams("Missing parameters".into())
     })?;

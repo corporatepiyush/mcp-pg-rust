@@ -5,7 +5,7 @@ use crate::errors::Result as MCPResult;
 const MAX_PID: i64 = 4_000_000;
 
 /// 16. List connections
-pub async fn list_connections(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
+pub async fn list_connections(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT pid, usename::text, application_name, state,
@@ -36,7 +36,7 @@ pub async fn list_connections(client: &Client, _params: &Option<Value>) -> MCPRe
 }
 
 /// 17. Kill connection
-pub async fn kill_connection(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
+pub async fn kill_connection(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
     let pid = params
         .as_ref()
         .and_then(|p| p.get("pid").and_then(|v| v.as_i64()))
@@ -61,7 +61,7 @@ pub async fn kill_connection(client: &Client, params: &Option<Value>) -> MCPResu
 }
 
 /// 18. Show current user
-pub async fn show_current_user(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
+pub async fn show_current_user(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     let rows = client
         .query("SELECT current_user, current_database(), version()", &[])
         .await?;
@@ -76,7 +76,7 @@ pub async fn show_current_user(client: &Client, _params: &Option<Value>) -> MCPR
 }
 
 /// 19. Show running queries
-pub async fn show_running_queries(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
+pub async fn show_running_queries(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT pid, usename, application_name, state, query, query_start
@@ -105,7 +105,7 @@ pub async fn show_running_queries(client: &Client, _params: &Option<Value>) -> M
 }
 
 /// 20. Show connection summary
-pub async fn show_connection_summary(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
+pub async fn show_connection_summary(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT state, count(*) as count

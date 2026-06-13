@@ -3,7 +3,7 @@ use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
 
 /// 41. Show active transactions
-pub async fn show_active_transactions(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
+pub async fn show_active_transactions(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT pid, usename, application_name, state, xact_start, query_start, query
@@ -33,7 +33,7 @@ pub async fn show_active_transactions(client: &Client, _params: &Option<Value>) 
 }
 
 /// 42. Show locks
-pub async fn show_locks(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
+pub async fn show_locks(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT l.pid, a.usename, a.application_name, l.mode, l.granted, l.fastpath,
@@ -66,7 +66,7 @@ pub async fn show_locks(client: &Client, _params: &Option<Value>) -> MCPResult<V
 }
 
 /// 43. Show waiting locks
-pub async fn show_waiting_locks(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
+pub async fn show_waiting_locks(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT l.pid, a.usename, l.mode, a.query_start, a.query
@@ -95,7 +95,7 @@ pub async fn show_waiting_locks(client: &Client, _params: &Option<Value>) -> MCP
 }
 
 /// 44. Begin transaction
-pub async fn begin_transaction(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
+pub async fn begin_transaction(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
     let isolation_level = params
         .as_ref()
         .and_then(|p| p.get("isolation_level").and_then(|v| v.as_str()).map(|s| s.to_string()))
@@ -119,7 +119,7 @@ pub async fn begin_transaction(client: &Client, params: &Option<Value>) -> MCPRe
 }
 
 /// 45. Commit transaction
-pub async fn commit_transaction(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
+pub async fn commit_transaction(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     client.execute("COMMIT", &[]).await?;
 
     Ok(json!({
@@ -129,7 +129,7 @@ pub async fn commit_transaction(client: &Client, _params: &Option<Value>) -> MCP
 }
 
 /// 46. Rollback transaction
-pub async fn rollback_transaction(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
+pub async fn rollback_transaction(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     client.execute("ROLLBACK", &[]).await?;
 
     Ok(json!({
@@ -139,7 +139,7 @@ pub async fn rollback_transaction(client: &Client, _params: &Option<Value>) -> M
 }
 
 /// 47. Show transaction isolation levels
-pub async fn show_transaction_isolation(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
+pub async fn show_transaction_isolation(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     let rows = client
         .query("SHOW transaction_isolation", &[])
         .await?;
@@ -153,7 +153,7 @@ pub async fn show_transaction_isolation(client: &Client, _params: &Option<Value>
 }
 
 /// 48. Show deadlocks
-pub async fn show_deadlocks(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
+pub async fn show_deadlocks(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT pid, usename, application_name, state, query_start, query
@@ -186,7 +186,7 @@ pub async fn show_deadlocks(client: &Client, _params: &Option<Value>) -> MCPResu
 /// Note: PostgreSQL 17+ removed the `autocommit` GUC.
 /// Autocommit is always-on in the wire protocol and cannot be disabled.
 /// For PG < 17, we query `SHOW autocommit`; for PG >= 17, we return `true`.
-pub async fn show_autocommit_status(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
+pub async fn show_autocommit_status(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     let autocommit = match client.query("SHOW autocommit", &[]).await {
         Ok(rows) => rows[0].get::<_, String>(0) == "on",
         Err(_) => true, // PG 17+ removed the setting; always-on
@@ -199,7 +199,7 @@ pub async fn show_autocommit_status(client: &Client, _params: &Option<Value>) ->
 }
 
 /// 50. Show transaction timeout
-pub async fn show_transaction_timeout(client: &Client, _params: &Option<Value>) -> MCPResult<Value> {
+pub async fn show_transaction_timeout(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     let rows = client
         .query("SHOW statement_timeout", &[])
         .await?;

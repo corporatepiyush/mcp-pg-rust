@@ -229,7 +229,7 @@ async fn handle_tools_call(
         .and_then(|p| p.get("name").and_then(|v| v.as_str()))
         .ok_or_else(|| MCPError::InvalidParams("Missing 'name' parameter".into()))?;
 
-    let tool_args = req.params.as_ref().and_then(|p| p.get("arguments").cloned());
+    let tool_args = req.params.as_ref().and_then(|p| p.get("arguments"));
 
     // Restricted mode check + unknown tool check BEFORE pool acquire
     let write_tools: &[&str] = &[
