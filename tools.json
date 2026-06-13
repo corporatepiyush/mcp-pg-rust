@@ -18,7 +18,9 @@
           "description": "Table name to describe (required). Example: 'users', 'orders', 'products'. Case-insensitive. Use schema.table for non-public schemas."
         }
       },
-      "required": ["table"]
+      "required": [
+        "table"
+      ]
     }
   },
   {
@@ -32,7 +34,9 @@
           "description": "SELECT SQL query to execute (required). Max 10,000 characters. Examples: 'SELECT * FROM users LIMIT 10', 'SELECT COUNT(*) as count FROM orders WHERE status = ''shipped''', 'SELECT u.name, COUNT(o.id) FROM users u LEFT JOIN orders o ON u.id = o.user_id GROUP BY u.id'. Must be a SELECT query only."
         }
       },
-      "required": ["sql"]
+      "required": [
+        "sql"
+      ]
     }
   },
   {
@@ -46,7 +50,9 @@
           "description": "INSERT SQL statement (required). Max 10,000 characters. Examples: 'INSERT INTO users (email, name) VALUES (''user@example.com'', ''John'')', 'INSERT INTO users (email, name) VALUES (''a@test.com'', ''A''), (''b@test.com'', ''B'') RETURNING id', 'INSERT INTO archive SELECT * FROM temp_table'. Use RETURNING clause to get inserted IDs or values."
         }
       },
-      "required": ["sql"]
+      "required": [
+        "sql"
+      ]
     }
   },
   {
@@ -60,7 +66,9 @@
           "description": "UPDATE SQL statement with WHERE clause for safety (required). Max 10,000 characters. Examples: 'UPDATE users SET status = ''active'' WHERE created_at > now() - interval ''7 days''', 'UPDATE products SET price = price * 1.1 WHERE category_id = 5 RETURNING id, price', 'UPDATE orders SET shipped_at = now() WHERE status = ''ready'''. ALWAYS include WHERE clause to prevent accidental updates."
         }
       },
-      "required": ["sql"]
+      "required": [
+        "sql"
+      ]
     }
   },
   {
@@ -74,7 +82,9 @@
           "description": "DELETE SQL statement with WHERE clause (required). Max 10,000 characters. Examples: 'DELETE FROM audit_logs WHERE created_at < now() - interval ''90 days''', 'DELETE FROM temp_uploads WHERE status = ''failed'' RETURNING id, filename'. ALWAYS include a WHERE clause - deleting without one removes all rows. Use RETURNING to verify what was deleted."
         }
       },
-      "required": ["sql"]
+      "required": [
+        "sql"
+      ]
     }
   },
   {
@@ -106,7 +116,11 @@
           "description": "Optional: Column to return after insert. Example: 'id' returns inserted IDs, 'id, email' returns multiple columns. Useful for getting auto-generated IDs. Omit if not needed."
         }
       },
-      "required": ["table", "columns", "rows"]
+      "required": [
+        "table",
+        "columns",
+        "rows"
+      ]
     }
   },
   {
@@ -138,7 +152,11 @@
           "description": "Rows per INSERT batch statement (optional, default: 1,000). Range: 100-5,000. Larger batches = faster but uses more memory. For 100K+ rows, use 1,000-2,000. For small inserts, can use larger values up to 5,000."
         }
       },
-      "required": ["table", "columns", "rows"]
+      "required": [
+        "table",
+        "columns",
+        "rows"
+      ]
     }
   },
   {
@@ -161,11 +179,18 @@
         },
         "format": {
           "type": "string",
-          "enum": ["json", "text", "xml", "yaml"],
+          "enum": [
+            "json",
+            "text",
+            "xml",
+            "yaml"
+          ],
           "description": "Output format (optional, default: 'json'). 'json' = machine-readable, structured; 'text' = human-readable plain text (best for reading); 'xml' = structured markup; 'yaml' = human-readable structured. Recommend 'json' for parsing, 'text' for visual inspection."
         }
       },
-      "required": ["sql"]
+      "required": [
+        "sql"
+      ]
     }
   },
   {
@@ -215,7 +240,9 @@
           "description": "Schema name containing the table (optional, default: 'public'). Example: 'public', 'staging', 'archive'. Use 'schema.table' format in table parameter to override. Specify if table exists in non-public schema."
         }
       },
-      "required": ["table"]
+      "required": [
+        "table"
+      ]
     }
   },
   {
@@ -250,10 +277,20 @@
       "properties": {
         "table": {
           "type": "string",
-          "description": "Table name to show triggers for (required). Example: 'users', 'orders', 'audit_log'. Case-insensitive. Returns trigger names, event types (INSERT, UPDATE, DELETE), timing (BEFORE, AFTER), and the SQL statements triggered."
+          "description": "Table name to show triggers for (required). Example: 'users', 'orders'. Case-insensitive. Triggers from this table in specified schema will be returned."
+        },
+        "schema": {
+          "type": "string",
+          "description": "Schema name to filter triggers (optional, default: 'public'). Example: 'public', 'myschema'. Filters triggers to only those defined in specified schema."
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Maximum triggers to return (optional, default: 1000). Range: 1-10000. Prevents memory exhaustion on tables with many triggers."
         }
       },
-      "required": ["table"]
+      "required": [
+        "table"
+      ]
     }
   },
   {
@@ -307,7 +344,9 @@
           "description": "PostgreSQL setting name (required). Examples: 'max_connections' (max concurrent connections), 'shared_buffers' (memory for caching), 'work_mem' (memory per operation), 'effective_cache_size' (total available cache), 'random_page_cost' (cost model), 'maintenance_work_mem' (VACUUM/CREATE INDEX memory). Case-insensitive. Returns value, unit, description, and context."
         }
       },
-      "required": ["setting_name"]
+      "required": [
+        "setting_name"
+      ]
     }
   },
   {
@@ -337,7 +376,9 @@
           "description": "INSERT SQL statement (required). Max 10,000 characters. Optimized when WHERE predicate affects more than 100 rows. Examples: 'INSERT INTO users SELECT * FROM staging WHERE active = true', 'INSERT INTO archive (id, data) VALUES (1, ''data1''), (2, ''data2''), ... (500, ''data500'')'. Use RETURNING clause to verify inserted rows. Best when WHERE predicate affects more than 100 rows for significant performance benefit."
         }
       },
-      "required": ["sql"]
+      "required": [
+        "sql"
+      ]
     }
   },
   {
@@ -351,7 +392,9 @@
           "description": "UPDATE SQL statement with WHERE clause (required). Max 10,000 characters. Optimized when WHERE predicate affects more than 100 rows. Examples: 'UPDATE users SET status = ''active'' WHERE updated_at < now() - interval ''7 days'' AND status = ''pending''', 'UPDATE products SET price = price * 1.1 WHERE category IN (1, 2, 3, 4, 5)', 'UPDATE orders SET shipped_at = now() WHERE status = ''ready'' AND created_at > now() - interval ''30 days'''. ALWAYS include WHERE clause. Use RETURNING to verify changes."
         }
       },
-      "required": ["sql"]
+      "required": [
+        "sql"
+      ]
     }
   },
   {
@@ -365,7 +408,9 @@
           "description": "DELETE SQL statement with WHERE clause (required). Max 10,000 characters. Optimized when WHERE predicate affects more than 100 rows. Examples: 'DELETE FROM audit_logs WHERE created_at < now() - interval ''365 days''', 'DELETE FROM temp_uploads WHERE status = ''failed'' AND created_at < now() - interval ''1 day''', 'DELETE FROM sessions WHERE expires_at < now() AND user_id NOT IN (SELECT id FROM users WHERE premium = true)'. CRITICAL: ALWAYS include WHERE clause - deleting without one removes ALL rows. Use RETURNING to verify what was deleted."
         }
       },
-      "required": ["sql"]
+      "required": [
+        "sql"
+      ]
     }
   }
 ]

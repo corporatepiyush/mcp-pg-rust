@@ -337,16 +337,34 @@ pub async fn show_triggers_for_table(client: &Client, params: &Option<&Value>) -
         .and_then(|p| p.get("table").and_then(|v| v.as_str()))
         .ok_or_else(|| MCPError::InvalidParams("Missing 'table' parameter".into()))?;
 
+    let schema = params
+        .as_ref()
+        .and_then(|p| p.get("schema").and_then(|v| v.as_str()))
+        .unwrap_or("public");
+
+    let limit = params
+        .as_ref()
+        .and_then(|p| p.get("limit").and_then(|v| v.as_i64()))
+        .unwrap_or(1000) as i64;
+
     validate_identifier(table, "table")?;
+    validate_identifier(schema, "schema")?;
+
+    if limit < 1 || limit > 10000 {
+        return Err(MCPError::InvalidParams(
+            format!("'limit' must be between 1 and 10000 (got {})", limit)
+        ));
+    }
 
     let rows = client
         .query(
             "SELECT trigger_name, event_object_table, event_manipulation,
                     action_timing, action_statement, trigger_schema
              FROM information_schema.triggers
-             WHERE event_object_table = $1
-             ORDER BY trigger_name",
-            &[&table],
+             WHERE event_object_table = $1 AND trigger_schema = $2
+             ORDER BY trigger_name
+             LIMIT $3",
+            &[&table, &schema, &limit],
         )
         .await?;
 
@@ -366,6 +384,7 @@ pub async fn show_triggers_for_table(client: &Client, params: &Option<&Value>) -
 
     Ok(json!({
         "table": table,
+        "schema": schema,
         "trigger_count": triggers.len(),
         "triggers": triggers
     }))
