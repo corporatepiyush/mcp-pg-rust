@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use tracing::info;
-use mcp_postgres::{config, pool, server, metrics, Args};
+use mcp_postgres::{config, pool, server, metrics, http, Args};
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -39,15 +39,38 @@ async fn main() -> Result<()> {
         config.pool.min_size, config.pool.max_size);
 
     // Create server
-    let server = server::MCPServer::new(config, pool);
+    let mcp_server = server::MCPServer::new(config.clone(), pool.clone());
     info!("Server initialized successfully");
 
-    // Run server (TCP or stdio mode)
+    // Run server (TCP, HTTP, or stdio mode)
     if args.stdio {
         info!("Running in stdio mode");
-        server.run_stdio().await?;
+        mcp_server.run_stdio().await?;
     } else {
-        server.run().await?;
+        // Start both TCP and HTTP servers in parallel
+        info!("Starting TCP server on port {}", args.port);
+        info!("Starting HTTP/2 server on port {}", args.http_port);
+
+        let tcp_handle = tokio::spawn(async move {
+            if let Err(e) = mcp_server.run().await {
+                eprintln!("TCP server error: {}", e);
+            }
+        });
+
+        let http_config = config.clone();
+        let http_pool = pool.clone();
+        let http_port = args.http_port;
+        let http_handle = tokio::spawn(async move {
+            if let Err(e) = http::create_http_server(http_pool, http_config, http_port).await {
+                eprintln!("HTTP server error: {}", e);
+            }
+        });
+
+        // Wait for either server to exit
+        tokio::select! {
+            _ = tcp_handle => info!("TCP server exited"),
+            _ = http_handle => info!("HTTP server exited"),
+        }
     }
 
     info!("Server shutdown complete");

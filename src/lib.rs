@@ -22,9 +22,13 @@ pub struct Args {
     #[arg(short = 'H', long, default_value = "127.0.0.1")]
     pub host: String,
 
-    /// Server port
+    /// TCP server port
     #[arg(short = 'p', long, default_value = "3000")]
     pub port: u16,
+
+    /// HTTP server port
+    #[arg(long, default_value = "3001")]
+    pub http_port: u16,
 
     /// Minimum pool connections (default: 1)
     #[arg(long)]
