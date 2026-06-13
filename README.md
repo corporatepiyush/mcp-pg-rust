@@ -4,7 +4,7 @@ High-performance MCP (Model Context Protocol) server for PostgreSQL, written in 
 
 ## Features
 
-- **59 database tools** — schema inspection, queries, monitoring, maintenance, security, replication, transactions, batch operations, health analysis
+- **61 database tools** — schema inspection, queries, monitoring, maintenance, security, replication, transactions, batch operations, health analysis
 - **Lock-free connection pool** — high throughput with minimal contention
 - **Dual transport** — TCP (HTTP-like) and stdio (Claude Desktop compatible)
 - **Thread-local metrics** — zero-allocation sharded counters (no lock contention)
@@ -12,6 +12,7 @@ High-performance MCP (Model Context Protocol) server for PostgreSQL, written in 
 - **~20,000 req/s** — with 10 concurrent clients under realistic workload
 - **Restricted mode** — `--access-mode=restricted` for read-only operation, blocking all write tools at dispatch level
 - **PG 18 compatible** — works with PostgreSQL 15–18, tested on PG 18
+- **Input validation** — bounds checking on all tool parameters: batch rows (max 1000), SQL length (max 10k chars), identifier length (max 255), PID range, setting name length
 
 ## Quick Start
 
@@ -215,6 +216,8 @@ Show the execution plan for a query with configurable options.
 ---
 
 ### Batch Operations (High-Performance Bulk DML)
+
+All batch tools enforce a maximum of **1000 rows** per request.
 
 #### `batch_insert`
 High-performance multi-row insert. Temporarily disables `synchronous_commit` for maximum throughput.
