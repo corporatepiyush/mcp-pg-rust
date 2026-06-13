@@ -640,5 +640,29 @@
         "query"
       ]
     }
+  },
+  {
+    "name": "drop_view",
+    "description": "Drop (delete) a view. Works for both regular and materialized views. Use IF EXISTS to avoid errors. Use CASCADE to also drop dependent views/objects.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "view_name": {
+          "type": "string",
+          "description": "View name to drop (required). Example: 'user_summary', 'active_orders'. Case-insensitive."
+        },
+        "if_exists": {
+          "type": "boolean",
+          "description": "Only drop if view exists, don't error if missing (optional, default: false)."
+        },
+        "cascade": {
+          "type": "boolean",
+          "description": "Also drop dependent views and objects (optional, default: false). WARNING: Drops dependent views."
+        }
+      },
+      "required": [
+        "view_name"
+      ]
+    }
   }
 ]

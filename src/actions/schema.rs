@@ -729,3 +729,38 @@ pub async fn create_view(client: &Client, params: &Option<&Value>) -> MCPResult<
         "or_replace": or_replace
     }))
 }
+
+/// 14. Drop view
+pub async fn drop_view(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+    let view_name = params
+        .as_ref()
+        .and_then(|p| p.get("view_name").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'view_name' parameter".into()))?;
+
+    validate_identifier(view_name, "view_name")?;
+
+    let if_exists = params
+        .as_ref()
+        .and_then(|p| p.get("if_exists").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+
+    let cascade = params
+        .as_ref()
+        .and_then(|p| p.get("cascade").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+
+    let if_exists_str = if if_exists { "IF EXISTS " } else { "" };
+    let cascade_str = if cascade { " CASCADE" } else { "" };
+
+    let sql = format!("DROP VIEW {}{}{}", if_exists_str, view_name, cascade_str);
+
+    client.execute(&sql, &[]).await?;
+
+    Ok(json!({
+        "status": "success",
+        "action": "DROP VIEW",
+        "view_name": view_name,
+        "if_exists": if_exists,
+        "cascade": cascade
+    }))
+}
