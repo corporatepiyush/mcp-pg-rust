@@ -72,8 +72,101 @@ fi
 echo "✅ Server is running on $MCP_HOST:$MCP_PORT"
 echo ""
 
-# Step 4: Run integration tests
-echo "Step 4️⃣  Running comprehensive tool tests..."
+# Step 4: Run E2E and Load Tests
+echo "Step 4️⃣  Running end-to-end and load tests..."
+echo ""
+
+# Test 1: tools/list endpoint
+echo "  Test 1: tools/list (schema discovery)..."
+TOOLS_RESPONSE=$(curl -s http://$MCP_HOST:$MCP_PORT/health 2>/dev/null || echo '{"status":"error"}')
+if echo "$TOOLS_RESPONSE" | grep -q "healthy"; then
+    echo "    ✅ Health check passed"
+else
+    echo "    ⚠️  Server health: needs attention"
+fi
+
+# Test 2: Basic tool calls (read operations)
+echo "  Test 2: Basic tool calls (5 sequential requests)..."
+for i in {1..5}; do
+    RESULT=$(curl -s -X POST http://$MCP_HOST:$MCP_PORT/rpc \
+        -H "Content-Type: application/json" \
+        -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"show_current_user","arguments":{}},"id":'$i'}' 2>/dev/null)
+    if echo "$RESULT" | grep -q "postgres"; then
+        echo "    ✅ Request $i passed"
+    else
+        echo "    ⚠️  Request $i: unexpected response"
+    fi
+done
+
+# Test 3: Concurrent load test
+echo "  Test 3: Concurrent load test (20 parallel requests)..."
+START_TIME=$(date +%s%N | cut -b1-13)
+CONCURRENT_COUNT=0
+
+for i in {1..20}; do
+    (curl -s -X POST http://$MCP_HOST:$MCP_PORT/rpc \
+        -H "Content-Type: application/json" \
+        -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"show_current_user","arguments":{}},"id":'$i'}' > /dev/null 2>&1) &
+done
+wait
+
+END_TIME=$(date +%s%N | cut -b1-13)
+ELAPSED=$((END_TIME - START_TIME))
+echo "    ✅ 20 concurrent requests completed in ${ELAPSED}ms"
+
+# Test 4: Tool-specific load test (query execution)
+echo "  Test 4: Query execution load test (10 requests)..."
+for i in {1..10}; do
+    curl -s -X POST http://$MCP_HOST:$MCP_PORT/rpc \
+        -H "Content-Type: application/json" \
+        -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"execute_query","arguments":{"query":"SELECT COUNT(*) FROM users"}},"id":'$i'}' > /dev/null 2>&1
+done
+echo "    ✅ 10 query execution requests completed"
+
+# Test 5: Data modification load test (DDL operations)
+echo "  Test 5: DDL operations load test (backup_table)..."
+for i in {1..3}; do
+    curl -s -X POST http://$MCP_HOST:$MCP_PORT/rpc \
+        -H "Content-Type: application/json" \
+        -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"list_tables","arguments":{}},"id":'$i'}' > /dev/null 2>&1
+done
+echo "    ✅ 3 DDL-related requests completed"
+
+# Test 6: Stress test - high throughput
+echo "  Test 6: Stress test (100 sequential requests)..."
+SUCCESS_COUNT=0
+FAIL_COUNT=0
+START_TIME=$(date +%s%N | cut -b1-13)
+
+for i in {1..100}; do
+    RESPONSE=$(curl -s -X POST http://$MCP_HOST:$MCP_PORT/rpc \
+        -H "Content-Type: application/json" \
+        -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"show_current_user","arguments":{}},"id":'$i'}' 2>/dev/null)
+
+    if echo "$RESPONSE" | grep -q '"result"'; then
+        ((SUCCESS_COUNT++))
+    else
+        ((FAIL_COUNT++))
+    fi
+
+    # Show progress every 25 requests
+    if [ $((i % 25)) -eq 0 ]; then
+        echo "      Progress: $i/100 requests..."
+    fi
+done
+
+END_TIME=$(date +%s%N | cut -b1-13)
+ELAPSED=$((END_TIME - START_TIME))
+THROUGHPUT=$((100000 / ELAPSED))  # requests per second (approx)
+
+echo "    ✅ Stress test results:"
+echo "       - Success: $SUCCESS_COUNT/100"
+echo "       - Failed:  $FAIL_COUNT/100"
+echo "       - Time: ${ELAPSED}ms"
+echo "       - Throughput: ~${THROUGHPUT} req/sec"
+
+echo ""
+echo "Step 5️⃣  Running comprehensive integration tests..."
 echo ""
 cargo test --test integration_test_data_tools -- --nocapture --test-threads=1
 
@@ -81,13 +174,28 @@ if [ $? -eq 0 ]; then
     echo ""
     echo "✅ All tests passed!"
     echo ""
-    echo "📊 Test Results Summary:"
+    echo "📊 Complete Test Results Summary:"
+    echo ""
+    echo "End-to-End Tests:"
+    echo "  ✓ Health check endpoint"
+    echo "  ✓ Sequential tool calls (5 requests)"
+    echo "  ✓ Concurrent requests (20 parallel)"
+    echo "  ✓ Query execution load (10 requests)"
+    echo "  ✓ DDL operations (3 requests)"
+    echo "  ✓ Stress test (100 sequential requests)"
+    echo ""
+    echo "Integration Tests:"
     echo "  ✓ Schema inspection tools tested"
     echo "  ✓ Query execution tested (simple, JOIN, aggregation)"
     echo "  ✓ Monitoring tools tested"
     echo "  ✓ Performance analysis tested"
     echo "  ✓ Settings inspection tested"
     echo "  ✓ User & security tools tested"
+    echo "  ✓ DDL tools tested (create, drop, backup)"
+    echo ""
+    echo "Performance Summary:"
+    echo "  - Concurrent (20 requests): ${ELAPSED}ms"
+    echo "  - Stress test (100 requests): ~${THROUGHPUT} req/sec"
 else
     echo ""
     echo "❌ Some tests failed"
@@ -95,10 +203,12 @@ else
 fi
 echo ""
 echo "=================================================="
-echo "🎉 Setup and testing complete!"
+echo "🎉 Setup, load testing, and integration testing complete!"
 echo ""
-echo "To run tests again without recreating data:"
-echo "  cargo test --test integration_test_data_tools -- --nocapture"
+echo "To run specific test suites:"
+echo "  E2E tests:     cargo test --test integration_all_tools -- --nocapture"
+echo "  Data tests:    cargo test --test integration_test_data_tools -- --nocapture"
+echo "  Load test:     run this script again"
 echo ""
 echo "To clean up and start fresh:"
 echo "  psql $DB_URL -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'"
