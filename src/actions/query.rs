@@ -185,11 +185,11 @@ pub async fn explain_query(client: &Client, params: &Option<Value>) -> MCPResult
     }
 }
 
-/// 26. Async execute insert (with synchronous_commit=off for bulk operations)
+/// 26. Async execute insert (with synchronous_commit=off for high-volume operations)
 ///
-/// High-performance insert for large batch operations.
+/// High-performance insert for operations affecting more than 100 rows.
 /// Disables synchronous_commit temporarily for maximum throughput.
-/// Recommended for operations affecting 10+ rows.
+/// Significant performance benefit when rows affected > 100.
 /// Returns rows affected count.
 pub async fn async_execute_insert(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
     let sql = params
@@ -207,11 +207,11 @@ pub async fn async_execute_insert(client: &Client, params: &Option<Value>) -> MC
     Ok(json!({ "rows_affected": rows_affected }))
 }
 
-/// 27. Async execute update (with synchronous_commit=off for bulk operations)
+/// 27. Async execute update (with synchronous_commit=off for high-volume operations)
 ///
-/// High-performance update for large batch operations.
+/// High-performance update for operations affecting more than 100 rows.
 /// Disables synchronous_commit temporarily for maximum throughput.
-/// Recommended for operations affecting 10+ rows.
+/// Significant performance benefit when rows affected > 100.
 /// Always include WHERE clause to prevent accidental updates.
 /// Returns rows affected count.
 pub async fn async_execute_update(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
@@ -230,11 +230,11 @@ pub async fn async_execute_update(client: &Client, params: &Option<Value>) -> MC
     Ok(json!({ "rows_affected": rows_affected }))
 }
 
-/// 28. Async execute delete (with synchronous_commit=off for bulk operations)
+/// 28. Async execute delete (with synchronous_commit=off for high-volume operations)
 ///
-/// High-performance delete for large batch operations.
+/// High-performance delete for operations affecting more than 100 rows.
 /// Disables synchronous_commit temporarily for maximum throughput.
-/// Recommended for operations affecting 10+ rows.
+/// Significant performance benefit when rows affected > 100.
 /// Always include WHERE clause - deleting without one removes all rows.
 /// Returns rows affected count.
 pub async fn async_execute_delete(client: &Client, params: &Option<Value>) -> MCPResult<Value> {
