@@ -948,3 +948,89 @@ pub async fn drop_sequence(client: &Client, params: &Option<&Value>) -> MCPResul
         "if_exists": if_exists
     }))
 }
+
+/// 20. Alter index
+pub async fn alter_index(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+    let index_name = params
+        .as_ref()
+        .and_then(|p| p.get("index_name").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'index_name' parameter".into()))?;
+
+    validate_identifier(index_name, "index_name")?;
+
+    let rename_to = params
+        .as_ref()
+        .and_then(|p| p.get("rename_to").and_then(|v| v.as_str()));
+
+    let set_schema = params
+        .as_ref()
+        .and_then(|p| p.get("set_schema").and_then(|v| v.as_str()));
+
+    if rename_to.is_none() && set_schema.is_none() {
+        return Err(MCPError::InvalidParams(
+            "Must provide either 'rename_to' or 'set_schema' parameter".into()
+        ));
+    }
+
+    let mut action_desc = Vec::new();
+
+    if let Some(new_name) = rename_to {
+        validate_identifier(new_name, "rename_to")?;
+        let sql = format!("ALTER INDEX {} RENAME TO {}", index_name, new_name);
+        client.execute(&sql, &[]).await?;
+        action_desc.push(format!("renamed to {}", new_name));
+    }
+
+    if let Some(schema) = set_schema {
+        validate_identifier(schema, "set_schema")?;
+        let sql = format!("ALTER INDEX {} SET SCHEMA {}", index_name, schema);
+        client.execute(&sql, &[]).await?;
+        action_desc.push(format!("moved to schema {}", schema));
+    }
+
+    Ok(json!({
+        "status": "success",
+        "action": "ALTER INDEX",
+        "index_name": index_name,
+        "changes": action_desc
+    }))
+}
+
+/// 21. List partitions
+pub async fn list_partitions(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'table' parameter".into()))?;
+
+    validate_identifier(table, "table")?;
+
+    let rows = client
+        .query(
+            "SELECT inhrelname as partition_name, pg_size_pretty(pg_relation_size(inhrelid)) as size
+             FROM pg_inherits
+             JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
+             JOIN pg_class child ON pg_inherits.inhrelid = child.oid
+             JOIN pg_namespace ON child.relnamespace = pg_namespace.oid
+             WHERE parent.relname = $1
+             ORDER BY child.relname",
+            &[&table],
+        )
+        .await?;
+
+    let partitions: Vec<Value> = rows
+        .iter()
+        .map(|row| {
+            json!({
+                "partition_name": row.get::<_, String>(0),
+                "size": row.get::<_, String>(1),
+            })
+        })
+        .collect();
+
+    Ok(json!({
+        "table": table,
+        "partition_count": partitions.len(),
+        "partitions": partitions
+    }))
+}

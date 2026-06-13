@@ -780,5 +780,45 @@
         "sequence_name"
       ]
     }
+  },
+  {
+    "name": "alter_index",
+    "description": "Modify an index by renaming it or changing its schema. Use to reorganize indexes or fix naming.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "index_name": {
+          "type": "string",
+          "description": "Index name to alter (required). Example: 'idx_users_email'."
+        },
+        "rename_to": {
+          "type": "string",
+          "description": "New name for the index (optional). Example: 'idx_users_email_v2'. Either this or set_schema required."
+        },
+        "set_schema": {
+          "type": "string",
+          "description": "New schema for the index (optional). Example: 'archive'. Either this or rename_to required."
+        }
+      },
+      "required": [
+        "index_name"
+      ]
+    }
+  },
+  {
+    "name": "list_partitions",
+    "description": "List all partitions of a partitioned table, including partition names and sizes. Use to understand table partitioning structure.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {
+          "type": "string",
+          "description": "Partitioned table name (required). Example: 'events', 'logs'. Must be a partitioned table."
+        }
+      },
+      "required": [
+        "table"
+      ]
+    }
   }
 ]
