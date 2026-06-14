@@ -2,6 +2,11 @@
 
 Reference documentation for mcp-postgres development and operations.
 
+## Getting Started
+
+- **[INSTALLATION.md](./INSTALLATION.md)** - Installation methods (crates.io, source, Homebrew), configuration, Claude Desktop setup, verification
+- **[QUICK_TEST.md](./QUICK_TEST.md)** - Quick reference for running tests, common commands
+
 ## MCP Compliance
 
 - **[MCP_COMPLIANCE.md](./MCP_COMPLIANCE.md)** - Input validation rules, error formats, security considerations per tool

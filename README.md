@@ -17,14 +17,20 @@ High-performance MCP (Model Context Protocol) server for PostgreSQL, written in 
 
 ### Installation
 
+**See [INSTALLATION.md](./guides/INSTALLATION.md) for complete instructions** covering:
+- crates.io, source build, and Homebrew installation
+- Configuration and verification
+- Claude Desktop setup
+- Troubleshooting
+
+Quick start:
 ```bash
-# From crates.io
+# From crates.io (easiest)
 cargo install mcp-postgres
 
-# Or build from source
-git clone https://github.com/corporatepiyush/mcp-pg-rust.git
-cd mcp-postgres
-cargo build --release
+# Or from Homebrew (macOS)
+brew tap corporatepiyush/mcp-postgres
+brew install mcp-postgres
 ```
 
 ### Run
@@ -559,6 +565,34 @@ High-performance bulk DML. Max 1000 rows per request.
   - Identifiers: max 255 characters
   - Batch rows: max 1,000 per request
   - SQL injection prevention via identifier validation
+
+---
+
+## Guides & Documentation
+
+Complete reference documentation available in [`guides/`](./guides/) folder:
+
+**Getting Started**:
+- [INSTALLATION.md](./guides/INSTALLATION.md) — Installation, setup, Claude Desktop configuration
+- [QUICK_TEST.md](./guides/QUICK_TEST.md) — Quick test commands and verification
+
+**Testing & Setup**:
+- [TEST_SETUP.md](./guides/TEST_SETUP.md) — Test environment setup, schema creation
+- [LATENCY_MEASUREMENT.md](./guides/LATENCY_MEASUREMENT.md) — Measuring and interpreting latency
+
+**Compliance & Specification**:
+- [MCP_COMPLIANCE.md](./guides/MCP_COMPLIANCE.md) — Input validation, error formats, security
+- [MCP_SPEC_VERIFICATION.md](./guides/MCP_SPEC_VERIFICATION.md) — Protocol compliance verification
+
+**Performance & Optimization**:
+- [OPTIMIZATION_STRATEGIES.md](./guides/OPTIMIZATION_STRATEGIES.md) — Optimization decision framework
+- [CODE_OPTIMIZATION.md](./guides/CODE_OPTIMIZATION.md) — Verified optimizations, profiling guide
+- [LOW_LEVEL_OPTIMIZATION.md](./guides/LOW_LEVEL_OPTIMIZATION.md) — Hardware-level optimization principles
+
+**Development**:
+- [SKILLS.md](./SKILLS.md) — SDLC automation, testing procedures, release workflow
+- [CLAUDE.md](./CLAUDE.md) — Agent responsibilities and package manager updates
+- [guides/INDEX.md](./guides/INDEX.md) — Complete guide listing
 
 ---
 

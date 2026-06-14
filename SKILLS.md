@@ -364,6 +364,50 @@ echo "PASS: $TESTS_PASSED"
 
 ---
 
+## 3.5 Installation & Setup
+
+**TRIGGER**: First-time setup, new environment, deployment
+
+**See [guides/INSTALLATION.md](./guides/INSTALLATION.md) for complete instructions**:
+- Installation methods: crates.io, source, Homebrew
+- PostgreSQL configuration and verification
+- Claude Desktop setup
+- Docker deployment
+- Troubleshooting
+
+**Prerequisites Check**:
+```bash
+# Rust toolchain
+rustc --version && cargo --version
+
+# PostgreSQL client
+psql --version
+
+# Database connectivity
+psql "postgres://localhost:5432/postgres" -c "SELECT 1;"
+```
+
+**Quick Installation**:
+```bash
+# From crates.io (easiest)
+cargo install mcp-postgres
+
+# From Homebrew (macOS)
+brew tap corporatepiyush/mcp-postgres && brew install mcp-postgres
+
+# From source (development)
+git clone https://github.com/corporatepiyush/mcp-pg-rust.git
+cd mcp-postgres && cargo build --release
+```
+
+**Acceptance Criteria**:
+- ✅ `mcp-postgres --version` returns version
+- ✅ PostgreSQL connection verified
+- ✅ Server starts without errors
+- ✅ Health check passes
+
+---
+
 ## 4. INTEGRATION TEST WORKFLOW
 
 **TRIGGER**: Before release, after functional code changes, every 10 commits
