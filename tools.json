@@ -1,31 +1,98 @@
 [
   {
-    "name": "create_table",
-    "description": "Create a new table with specified columns and constraints. Define each column with type and optional constraints (PRIMARY KEY, UNIQUE, NOT NULL, DEFAULT, etc.). Use for creating new tables with custom schemas.",
+    "name": "execute_query",
+    "description": "Execute a SELECT query and retrieve data as arrays. Supports all SELECT operations: filtering, aggregation, joins, subqueries, window functions, CTEs, UNION, INTERSECT, EXCEPT. Returns rows as arrays of column values. Maximum SQL length 10,000 characters. Use for data retrieval, analysis, reporting, and exploratory queries. SELECT queries only - no INSERT/UPDATE/DELETE allowed.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "table": {
-          "type": "string",
-          "description": "Table name (required). Example: 'users', 'products'. Case-insensitive."
-        },
-        "columns": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Column definitions (required). Each string defines one column with type and constraints. Examples: ['id SERIAL PRIMARY KEY', 'email VARCHAR(255) UNIQUE NOT NULL', 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP', 'status VARCHAR(20) DEFAULT \\'active\\'']. Format: 'column_name TYPE [CONSTRAINT...]'"
-        }
+        "sql": {"type": "string", "description": "SELECT SQL query (required). Max 10,000 chars. Examples: 'SELECT * FROM users LIMIT 10', 'SELECT u.id, COUNT(o.id) as order_count FROM users u LEFT JOIN orders o ON u.id=o.user_id GROUP BY u.id'. Must start with SELECT."}
       },
-      "required": [
-        "table",
-        "columns"
-      ]
+      "required": ["sql"]
+    }
+  },
+  {
+    "name": "execute_insert",
+    "description": "Execute INSERT statement to add new records. Returns number of rows affected. Supports single row, multi-row, and SELECT-based inserts. Supports RETURNING clause to get inserted IDs or values. Use for adding new data, bulk imports, migrations, data loading. Max SQL length 10,000 characters.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sql": {"type": "string", "description": "INSERT SQL statement (required). Max 10,000 chars. Examples: 'INSERT INTO users (email, name) VALUES (''a@x.com'', ''Alice'')', 'INSERT INTO users SELECT * FROM staging WHERE active=true RETURNING id'. Use RETURNING to get inserted IDs."}
+      },
+      "required": ["sql"]
+    }
+  },
+  {
+    "name": "execute_update",
+    "description": "Execute UPDATE statement to modify existing records. Returns number of rows affected. ALWAYS requires WHERE clause to prevent accidental full-table updates. Supports RETURNING clause to verify changes. Use for data corrections, status changes, bulk updates. Max SQL length 10,000 characters. CRITICAL: Include WHERE clause or transaction will fail.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sql": {"type": "string", "description": "UPDATE SQL with WHERE clause (required). Max 10,000 chars. Examples: 'UPDATE users SET status=''active'' WHERE created_at > now()-interval ''7 days''', 'UPDATE orders SET shipped_at=now() WHERE status=''ready'' RETURNING id'. MUST include WHERE clause to prevent accidental updates of all rows."}
+      },
+      "required": ["sql"]
+    }
+  },
+  {
+    "name": "execute_delete",
+    "description": "Execute DELETE statement to remove records. Returns number of rows deleted. ALWAYS requires WHERE clause - deleting without one removes ALL rows and is dangerous. Supports RETURNING clause to show which rows were deleted. Use CAREFULLY. Consider soft-delete (UPDATE status='deleted') for critical data. Max SQL length 10,000 characters.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sql": {"type": "string", "description": "DELETE SQL with WHERE clause (required). Max 10,000 chars. Examples: 'DELETE FROM audit_logs WHERE created_at < now()-interval ''90 days''', 'DELETE FROM temp_uploads WHERE status=''failed'' RETURNING id'. CRITICAL: ALWAYS include WHERE clause or all rows will be deleted."}
+      },
+      "required": ["sql"]
+    }
+  },
+  {
+    "name": "async_execute_insert",
+    "description": "High-performance INSERT with synchronous_commit=OFF for bulk operations (100+ rows). Much faster than execute_insert when WHERE predicate affects many rows. Trades immediate durability for speed - data persisted but not guaranteed on disk immediately. Returns rows affected. Use for bulk imports, data migrations, high-volume inserts. Optimal when WHERE affects 100+ rows.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sql": {"type": "string", "description": "INSERT SQL statement (required). Max 10,000 chars. Optimized when affecting 100+ rows. Examples: 'INSERT INTO users SELECT * FROM staging WHERE active=true', 'INSERT INTO archive (id, data) VALUES (1, ''d1''), (2, ''d2''), ... (500, ''d500'')'. Performance benefit significant for large batches."}
+      },
+      "required": ["sql"]
+    }
+  },
+  {
+    "name": "async_execute_update",
+    "description": "High-performance UPDATE with synchronous_commit=OFF for bulk operations (100+ rows). Much faster than execute_update when WHERE condition matches many rows. Trades immediate durability for speed. ALWAYS requires WHERE clause to prevent full-table updates. Returns rows affected. Use for bulk updates, status changes, large-scale modifications.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sql": {"type": "string", "description": "UPDATE SQL with WHERE clause (required). Max 10,000 chars. Optimized when WHERE affects 100+ rows. Examples: 'UPDATE users SET status=''inactive'' WHERE updated_at < now()-interval ''1 year''', 'UPDATE products SET price=price*1.1 WHERE category IN (1,2,3,4,5)'. MUST include WHERE clause. Performance benefit significant for large batches."}
+      },
+      "required": ["sql"]
+    }
+  },
+  {
+    "name": "async_execute_delete",
+    "description": "High-performance DELETE with synchronous_commit=OFF for bulk operations (100+ rows). Much faster than execute_delete when WHERE condition matches many rows. Trades immediate durability for speed. ALWAYS requires WHERE clause - deleting without one removes ALL rows. Returns rows deleted. Use carefully for bulk deletes, archive cleanup, large-scale record removal.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sql": {"type": "string", "description": "DELETE SQL with WHERE clause (required). Max 10,000 chars. Optimized when WHERE affects 100+ rows. Examples: 'DELETE FROM audit_logs WHERE created_at < now()-interval ''365 days''', 'DELETE FROM sessions WHERE expires_at < now()'. CRITICAL: ALWAYS include WHERE clause. Performance benefit significant for large batches."}
+      },
+      "required": ["sql"]
+    }
+  },
+  {
+    "name": "explain_query",
+    "description": "Analyze query execution plans to understand performance. Shows how PostgreSQL executes a SELECT query: sequential vs index scans, join types, estimated rows. ANALYZE option executes query and shows actual metrics (execution time, actual rows, buffer usage). Use to identify missing indexes, inefficient joins, slow query plans. Output formats: JSON (machine-readable), TEXT (human-readable), YAML (structured text).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sql": {"type": "string", "description": "SELECT query to explain (required). Example: 'SELECT u.id, COUNT(o.id) FROM users u LEFT JOIN orders o ON u.id=o.user_id GROUP BY u.id HAVING COUNT(o.id) > 5'. Must be SELECT query."},
+        "analyze": {"type": "boolean", "description": "Execute query and show actual metrics (optional, default: false). WARNING: Executes the query - avoid on slow queries. Shows real execution time, actual vs estimated rows, buffer usage. Use true to diagnose performance."},
+        "buffers": {"type": "boolean", "description": "Include buffer usage statistics (optional, default: false). Requires analyze=true. Shows cache hits/misses and I/O stats. Useful for diagnosing cache efficiency and disk I/O bottlenecks."},
+        "format": {"type": "string", "enum": ["json", "text", "yaml"], "description": "Output format (optional, default: 'json'). 'json'=machine-readable/parseable, 'text'=human-readable/visual, 'yaml'=structured/readable. Recommend 'text' for visual inspection, 'json' for analysis."}
+      },
+      "required": ["sql"]
     }
   },
   {
     "name": "list_tables",
-    "description": "List all user-defined tables in the database with schema, name, and table type. Use this to discover available tables, understand the database structure, and identify which tables are available for querying or modification. Returns a list of tables (BASE TABLE, TEMPORARY, etc.) excluding system tables. Useful for schema exploration and data modeling.",
+    "description": "List all user-defined tables in the database with schema, name, and table type (BASE TABLE, TEMPORARY, etc). Excludes system tables from pg_catalog and information_schema. Use to discover available tables, understand database structure, identify tables available for querying or modification. Essential for schema exploration and data modeling.",
     "inputSchema": {
       "type": "object",
       "properties": {}
@@ -33,261 +100,26 @@
   },
   {
     "name": "describe_table",
-    "description": "Get detailed column information for a specific table including column names, data types, nullability, default values, and column order. Essential for understanding table structure before querying or modifying data. Shows constraints, triggers, and column descriptions. Use this to explore unfamiliar tables or verify schema assumptions.",
+    "description": "Get detailed column information for a specific table: column names, data types, nullability, default values, column order. Shows all column metadata needed to understand table structure. Essential before querying or modifying data. Helps explore unfamiliar tables and verify schema assumptions. Returns columns as array with full metadata.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "table": {
-          "type": "string",
-          "description": "Table name to describe (required). Example: 'users', 'orders', 'products'. Case-insensitive. Use schema.table for non-public schemas."
-        }
+        "table": {"type": "string", "description": "Table name to describe (required). Example: 'users', 'orders', 'products'. Case-insensitive. Use schema.table for non-public schemas."}
       },
-      "required": [
-        "table"
-      ]
-    }
-  },
-  {
-    "name": "execute_query",
-    "description": "Execute a SELECT query and retrieve data. Returns result rows as arrays with column values. Supports all SELECT operations: filtering, aggregation, joins, subqueries, window functions, CTEs. Use for data retrieval, analysis, and reporting. Maximum query execution time enforced to prevent runaway queries.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "sql": {
-          "type": "string",
-          "description": "SELECT SQL query to execute (required). Max 10,000 characters. Examples: 'SELECT * FROM users LIMIT 10', 'SELECT COUNT(*) as count FROM orders WHERE status = ''shipped''', 'SELECT u.name, COUNT(o.id) FROM users u LEFT JOIN orders o ON u.id = o.user_id GROUP BY u.id'. Must be a SELECT query only."
-        }
-      },
-      "required": [
-        "sql"
-      ]
-    }
-  },
-  {
-    "name": "execute_insert",
-    "description": "Execute an INSERT statement to add new records to a table. Returns the number of rows affected and optionally inserted IDs if RETURNING clause is used. Supports single row, multi-row, and SELECT-based inserts. Useful for adding new data, bulk imports, and data migrations. Rows are returned in the order inserted.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "sql": {
-          "type": "string",
-          "description": "INSERT SQL statement (required). Max 10,000 characters. Examples: 'INSERT INTO users (email, name) VALUES (''user@example.com'', ''John'')', 'INSERT INTO users (email, name) VALUES (''a@test.com'', ''A''), (''b@test.com'', ''B'') RETURNING id', 'INSERT INTO archive SELECT * FROM temp_table'. Use RETURNING clause to get inserted IDs or values."
-        }
-      },
-      "required": [
-        "sql"
-      ]
-    }
-  },
-  {
-    "name": "execute_update",
-    "description": "Execute an UPDATE statement to modify existing records. Returns the number of rows affected. Supports conditional updates with WHERE clause, computed values, and RETURNING clause for verification. Essential for data corrections, status changes, and bulk updates. Consider using RETURNING to verify the changes.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "sql": {
-          "type": "string",
-          "description": "UPDATE SQL statement with WHERE clause for safety (required). Max 10,000 characters. Examples: 'UPDATE users SET status = ''active'' WHERE created_at > now() - interval ''7 days''', 'UPDATE products SET price = price * 1.1 WHERE category_id = 5 RETURNING id, price', 'UPDATE orders SET shipped_at = now() WHERE status = ''ready'''. ALWAYS include WHERE clause to prevent accidental updates."
-        }
-      },
-      "required": [
-        "sql"
-      ]
-    }
-  },
-  {
-    "name": "execute_delete",
-    "description": "Execute a DELETE statement to remove records from a table. Returns the number of rows deleted. Always requires careful WHERE clauses to prevent accidental data loss. Consider backing up or using soft-delete (UPDATE status) for critical data. RETURNING clause shows which rows were deleted.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "sql": {
-          "type": "string",
-          "description": "DELETE SQL statement with WHERE clause (required). Max 10,000 characters. Examples: 'DELETE FROM audit_logs WHERE created_at < now() - interval ''90 days''', 'DELETE FROM temp_uploads WHERE status = ''failed'' RETURNING id, filename'. ALWAYS include a WHERE clause - deleting without one removes all rows. Use RETURNING to verify what was deleted."
-        }
-      },
-      "required": [
-        "sql"
-      ]
-    }
-  },
-  {
-    "name": "async_batch_insert",
-    "description": "High-performance multi-row insert optimized for speed with synchronous_commit temporarily disabled. Insert up to 1,000 rows in a single operation. Much faster than individual INSERT statements for bulk loads. Returns rows affected count and optionally inserted IDs via RETURNING. Perfect for importing CSV data, test data loading, and bulk operations.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "table": {
-          "type": "string",
-          "description": "Target table name (required). Example: 'users', 'products', 'orders'. Case-insensitive. Must exist and have INSERT permissions."
-        },
-        "columns": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Column names in order matching the row data (required). Example: ['email', 'name', 'created_at']. Column count must match row data length. Order matters - first column in array corresponds to first value in each row."
-        },
-        "rows": {
-          "type": "array",
-          "items": {
-            "type": "array"
-          },
-          "description": "Array of rows to insert (required). Max 1,000 rows per call. Each row is an array of values matching columns order. Example: [['user1@test.com', 'User 1', '2026-01-01'], ['user2@test.com', 'User 2', '2026-01-02']]. NULL values supported as null."
-        },
-        "returning": {
-          "type": "string",
-          "description": "Optional: Column to return after insert. Example: 'id' returns inserted IDs, 'id, email' returns multiple columns. Useful for getting auto-generated IDs. Omit if not needed."
-        }
-      },
-      "required": [
-        "table",
-        "columns",
-        "rows"
-      ]
-    }
-  },
-  {
-    "name": "async_batch_insert_copy",
-    "description": "Ultra-high-performance bulk insert using PostgreSQL's COPY protocol. Optimized for massive imports (10K+ rows). Uses automatic batching with configurable batch size. Returns total rows affected and batch count. Perfect for data warehouse loads, ETL operations, and large-scale migrations. Much faster than batch_insert for very large datasets.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "table": {
-          "type": "string",
-          "description": "Target table name (required). Example: 'users', 'events', 'transactions'. Case-insensitive. Should be empty or recently truncated for best performance."
-        },
-        "columns": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Column names in order matching rows data (required). Example: ['id', 'event_type', 'timestamp', 'value']. All columns must be in the target table."
-        },
-        "rows": {
-          "type": "array",
-          "items": {
-            "type": "array"
-          },
-          "description": "Array of rows as arrays of values (required). Can be very large (10K+, 100K+). Each row must have same number of values as columns. NULL values represented as null in JSON."
-        },
-        "batch_size": {
-          "type": "integer",
-          "description": "Rows per INSERT batch statement (optional, default: 1,000). Range: 100-5,000. Larger batches = faster but uses more memory. For 100K+ rows, use 1,000-2,000. For small inserts, can use larger values up to 5,000."
-        }
-      },
-      "required": [
-        "table",
-        "columns",
-        "rows"
-      ]
-    }
-  },
-  {
-    "name": "explain_query",
-    "description": "Analyze query execution plans to understand performance characteristics. Shows how PostgreSQL will execute a SELECT query including sequential vs index scans, join types, and estimated rows. ANALYZE option executes the query and shows actual execution metrics. Use to identify missing indexes, slow joins, or inefficient query plans. Output format can be JSON (machine readable) or text (human readable).",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "sql": {
-          "type": "string",
-          "description": "SELECT query to explain (required). Example: 'SELECT u.id, u.email, COUNT(o.id) FROM users u LEFT JOIN orders o ON u.id = o.user_id GROUP BY u.id HAVING COUNT(o.id) > 5'. Must be a SELECT query."
-        },
-        "analyze": {
-          "type": "boolean",
-          "description": "Execute query and show actual metrics (optional, default: false). Set to true to see real execution time, actual rows, and buffer stats. WARNING: This executes the query - avoid on slow queries. Use false for planning without execution."
-        },
-        "buffers": {
-          "type": "boolean",
-          "description": "Include buffer usage statistics (optional, default: false). Requires analyze=true. Shows shared_buffers hits/misses and I/O stats. Useful for diagnosing cache efficiency and disk I/O bottlenecks."
-        },
-        "format": {
-          "type": "string",
-          "enum": [
-            "json",
-            "text",
-            "xml",
-            "yaml"
-          ],
-          "description": "Output format (optional, default: 'json'). 'json' = machine-readable, structured; 'text' = human-readable plain text (best for reading); 'xml' = structured markup; 'yaml' = human-readable structured. Recommend 'json' for parsing, 'text' for visual inspection."
-        }
-      },
-      "required": [
-        "sql"
-      ]
-    }
-  },
-  {
-    "name": "analyze_db_health",
-    "description": "Comprehensive one-stop health dashboard checking: buffer cache hit ratios, active/idle connection counts, unused and duplicate indexes, VACUUM progress, tables needing maintenance, and tables with excessive sequential scans. Excellent for spotting performance issues, identifying optimization opportunities, and monitoring overall database wellness. Runs multiple diagnostics and returns consolidated health status.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {}
-    }
-  },
-  {
-    "name": "list_unused_indexes",
-    "description": "Identify indexes that have never been used (zero index scans) or are not helping with performance. These indexes consume disk space, slow down writes, and should be considered for removal. Returns index metadata including size estimates. Useful for cleanup and performance tuning. Review before removing to ensure they're truly unused (consider index-only scans).",
-    "inputSchema": {
-      "type": "object",
-      "properties": {}
-    }
-  },
-  {
-    "name": "list_duplicate_indexes",
-    "description": "Find potentially redundant or duplicate indexes that overlap in functionality. Duplicate indexes waste storage and slow down DML operations without benefiting queries. Shows which indexes are candidates for consolidation or removal. Useful for index optimization and cleanup after schema changes or migrations.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {}
-    }
-  },
-  {
-    "name": "show_vacuum_progress",
-    "description": "Monitor ongoing VACUUM and AUTOVACUUM operations in real-time. Shows which tables are being vacuumed, progress percentage, blocks processed, index vacuum count, and estimated time remaining. Use to track maintenance operations and identify long-running vacuum processes that might impact performance.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {}
-    }
-  },
-  {
-    "name": "get_object_details",
-    "description": "Get comprehensive information about a specific table including: all columns with types, primary key, foreign keys, all indexes with definitions, constraints, table size estimates, row counts, description/comments. Use for thorough schema exploration, dependency mapping, and understanding table relationships. Returns everything needed to understand a table's role in the database.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "table": {
-          "type": "string",
-          "description": "Table name to get details for (required). Example: 'users', 'orders', 'products'. Case-insensitive. Returns all columns, indexes, constraints, FKs, and metadata."
-        },
-        "schema": {
-          "type": "string",
-          "description": "Schema name containing the table (optional, default: 'public'). Example: 'public', 'staging', 'archive'. Use 'schema.table' format in table parameter to override. Specify if table exists in non-public schema."
-        }
-      },
-      "required": [
-        "table"
-      ]
-    }
-  },
-  {
-    "name": "list_indexes",
-    "description": "List all indexes in the database with their definitions, associated tables, columns, and types (unique, partial, expression, etc.). Use for index inventory, migration planning, and understanding database indexing strategy. Shows CREATE INDEX statements that can be copied for replication.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {}
+      "required": ["table"]
     }
   },
   {
     "name": "list_schemas",
-    "description": "List all non-system schemas in the database with their owners and descriptions. Shows the organizational structure of database objects. Useful for understanding multi-schema setups, permissions, and logical data organization. Excludes system schemas like pg_catalog and information_schema.",
+    "description": "List all non-system schemas in the database with owners. Shows organizational structure of database objects. Excludes system schemas (pg_catalog, information_schema, pg_toast). Useful for understanding multi-schema setups, permissions, and logical data organization. Essential for schema-aware object management.",
     "inputSchema": {
       "type": "object",
       "properties": {}
     }
   },
   {
-    "name": "show_constraints",
-    "description": "List all table constraints across the entire database including PRIMARY KEY, FOREIGN KEY, UNIQUE, CHECK, and NOT NULL constraints. Shows constraint definitions and which tables/columns are affected. Use for understanding data integrity rules, dependency chains, and constraint-driven optimization opportunities.",
+    "name": "list_indexes",
+    "description": "List all indexes in database with definitions, associated tables, columns, and types (UNIQUE, PARTIAL, EXPRESSION, etc). Shows CREATE INDEX statements that can be copied for replication. Use for index inventory, migration planning, understanding indexing strategy. Includes index size estimates and column ordering.",
     "inputSchema": {
       "type": "object",
       "properties": {}
@@ -295,31 +127,20 @@
   },
   {
     "name": "list_triggers",
-    "description": "List all triggers defined on a specific table with their trigger names, event types, timing (BEFORE/AFTER), and action statements. Shows what automated actions occur when table data changes. Use to understand table behavior, debug unexpected changes, identify side effects of DML operations, and understand cascade rules. Essential for understanding table automation and data integrity logic.",
+    "description": "List all triggers defined on a specific table with trigger names, event types (INSERT/UPDATE/DELETE), timing (BEFORE/AFTER), and action statements. Shows automated actions occurring when table data changes. Use to understand table behavior, debug unexpected changes, identify side effects of DML operations, understand cascade rules. Critical for understanding automation and data integrity logic.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "table": {
-          "type": "string",
-          "description": "Table name to show triggers for (required). Example: 'users', 'orders'. Case-insensitive. Triggers from this table in specified schema will be returned."
-        },
-        "schema": {
-          "type": "string",
-          "description": "Schema name to filter triggers (optional, default: 'public'). Example: 'public', 'myschema'. Filters triggers to only those defined in specified schema."
-        },
-        "limit": {
-          "type": "integer",
-          "description": "Maximum triggers to return (optional, default: 1000). Range: 1-10000. Prevents memory exhaustion on tables with many triggers."
-        }
+        "table": {"type": "string", "description": "Table name to show triggers for (required). Example: 'users', 'orders'. Case-insensitive."},
+        "schema": {"type": "string", "description": "Schema name to filter triggers (optional, default: 'public'). Example: 'public', 'myschema'."},
+        "limit": {"type": "integer", "description": "Max triggers to return (optional, default: 1000). Range: 1-10000. Prevents memory issues on tables with many triggers."}
       },
-      "required": [
-        "table"
-      ]
+      "required": ["table"]
     }
   },
   {
-    "name": "list_database_privileges",
-    "description": "List database-level access control lists (ACLs) and permissions for all non-template databases. Shows which users/roles have which privileges on each database (CONNECT, CREATE, TEMPORARY, etc.). Use for auditing access control, understanding permission structure, and verifying security policies.",
+    "name": "show_constraints",
+    "description": "List all table constraints across database: PRIMARY KEY, FOREIGN KEY, UNIQUE, CHECK, and NOT NULL constraints. Shows constraint definitions and affected tables/columns. Use for understanding data integrity rules, dependency chains, constraint-driven optimizations. Essential for schema comprehension and migration planning.",
     "inputSchema": {
       "type": "object",
       "properties": {}
@@ -327,55 +148,42 @@
   },
   {
     "name": "list_users",
-    "description": "List all database users and roles with their attributes: superuser status, can create databases, can create roles, can login, connection limits, and validity expiration dates. Use for user administration auditing, understanding team access levels, and identifying unused or expired accounts.",
+    "description": "List all database users and roles with attributes: superuser status, can create databases, can create roles, can login, connection limits, validity expiration dates. Use for user administration auditing, understanding team access levels, identifying unused/expired accounts. Shows complete user metadata and permissions.",
     "inputSchema": {
       "type": "object",
       "properties": {}
+    }
+  },
+  {
+    "name": "list_user_privileges",
+    "description": "List table-level privileges for a specific user or role showing which tables they can SELECT, INSERT, UPDATE, DELETE, REFERENCES, TRIGGER on. Use for auditing user permissions, understanding access control, verifying security policies. Shows grant status and grantor information.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "username": {"type": "string", "description": "Username or role name to check privileges for (required). Example: 'alice', 'readonly_role'. Case-insensitive."}
+      },
+      "required": ["username"]
     }
   },
   {
     "name": "list_role_memberships",
-    "description": "Show role membership hierarchy - which users belong to which roles and who has admin grant options. Useful for understanding permission inheritance, group membership structure, and organizational access patterns. Essential for permission auditing and understanding delegation levels.",
+    "description": "Show role membership hierarchy - which users belong to which roles, admin grant options. Useful for understanding permission inheritance, group membership structure, organizational access patterns. Essential for permission auditing and understanding delegation. Shows complete role hierarchy.",
     "inputSchema": {
       "type": "object",
       "properties": {}
     }
   },
   {
-    "name": "get_cache_hit_ratio",
-    "description": "Get buffer cache hit ratio metrics from pg_stat_user_tables and pg_stat_user_indexes. Shows what percentage of data is being read from cache vs disk. High ratio (>95%) indicates efficient buffering. Low ratio suggests missing indexes, insufficient shared_buffers setting, or cold cache. Use to diagnose I/O performance issues.",
+    "name": "list_database_privileges",
+    "description": "List database-level access control lists (ACLs) for all non-template databases. Shows which users/roles have which privileges (CONNECT, CREATE, TEMPORARY, etc) on each database. Use for auditing access control, understanding permission structure, verifying security policies at database level.",
     "inputSchema": {
       "type": "object",
       "properties": {}
-    }
-  },
-  {
-    "name": "get_pg_stat_statements",
-    "description": "Get top 50 slowest queries from pg_stat_statements extension ranked by total execution time. Shows query text, call count, mean time, max time, and total time. Essential for identifying performance bottlenecks and optimization targets. Requires pg_stat_statements extension to be installed and enabled. Use after enabling statistics for a representative period.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {}
-    }
-  },
-  {
-    "name": "get_setting",
-    "description": "Retrieve a specific PostgreSQL configuration setting with full metadata: current value, unit (bytes/seconds/etc), description, context (when it can be changed), and default value. Use to inspect any configuration parameter (e.g., max_connections, shared_buffers, work_mem). Helpful for understanding database tuning and current configuration state.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "setting_name": {
-          "type": "string",
-          "description": "PostgreSQL setting name (required). Examples: 'max_connections' (max concurrent connections), 'shared_buffers' (memory for caching), 'work_mem' (memory per operation), 'effective_cache_size' (total available cache), 'random_page_cost' (cost model), 'maintenance_work_mem' (VACUUM/CREATE INDEX memory). Case-insensitive. Returns value, unit, description, and context."
-        }
-      },
-      "required": [
-        "setting_name"
-      ]
     }
   },
   {
     "name": "show_current_user",
-    "description": "Show information about the current database connection: authenticated user, current database, PostgreSQL version with platform details, and system info. Use to verify connection identity, check PostgreSQL version compatibility, and understand session context. Helpful for debugging permission issues or verifying server configuration.",
+    "description": "Show information about the current database connection: authenticated username, current database name, PostgreSQL version with platform details, system information. Use to verify connection identity, check PostgreSQL version compatibility, understand session context. Helpful for debugging permission issues.",
     "inputSchema": {
       "type": "object",
       "properties": {}
@@ -383,458 +191,580 @@
   },
   {
     "name": "show_session_info",
-    "description": "Show current session connection details: current user, database, client IP address and port, server address and port, and application name. Useful for debugging connection issues, understanding session context in multi-client scenarios, and auditing who is connected where.",
+    "description": "Show current session connection details: current user, database, client IP and port, server address and port, application name. Useful for debugging connection issues, understanding session context in multi-client scenarios, auditing who is connected where. Shows complete network-level session information.",
     "inputSchema": {
       "type": "object",
       "properties": {}
     }
   },
   {
-    "name": "async_execute_insert",
-    "description": "Execute an INSERT statement with optimized performance for high-volume operations (WHERE predicate affects 100+ rows) by temporarily disabling synchronous_commit. Returns the number of rows affected. Optimized when the operation affects more than 100 rows via the WHERE condition. Much faster than execute_insert for large batches but trades immediate durability for speed. Data is still persisted, just not guaranteed to be on disk immediately. Perfect for bulk imports, data migrations, and high-volume inserts.",
+    "name": "list_connections",
+    "description": "List all active database connections (excluding self) with PID, username, application name, state (active/idle/idle in transaction), connection start time, query start time. Use for monitoring active sessions, identifying long-running queries, understanding connection state. Essential for connection management and monitoring.",
     "inputSchema": {
       "type": "object",
-      "properties": {
-        "sql": {
-          "type": "string",
-          "description": "INSERT SQL statement (required). Max 10,000 characters. Optimized when WHERE predicate affects more than 100 rows. Examples: 'INSERT INTO users SELECT * FROM staging WHERE active = true', 'INSERT INTO archive (id, data) VALUES (1, ''data1''), (2, ''data2''), ... (500, ''data500'')'. Use RETURNING clause to verify inserted rows. Best when WHERE predicate affects more than 100 rows for significant performance benefit."
-        }
-      },
-      "required": [
-        "sql"
-      ]
+      "properties": {}
     }
   },
   {
-    "name": "async_execute_update",
-    "description": "Execute an UPDATE statement with optimized performance for high-volume operations (WHERE predicate affects 100+ rows) by temporarily disabling synchronous_commit. Returns the number of rows affected. Optimized when the WHERE condition matches more than 100 rows in the table. Much faster than execute_update for bulk updates but trades immediate durability for speed. Always include WHERE clause to prevent accidental updates. Data is persisted but not guaranteed on disk immediately.",
+    "name": "show_running_queries",
+    "description": "Show all non-idle queries currently executing: PID, username, application, state, full query text, start time. Use to identify long-running or problematic queries, monitor concurrent activity. Essential for live query monitoring and performance troubleshooting.",
     "inputSchema": {
       "type": "object",
-      "properties": {
-        "sql": {
-          "type": "string",
-          "description": "UPDATE SQL statement with WHERE clause (required). Max 10,000 characters. Optimized when WHERE predicate affects more than 100 rows. Examples: 'UPDATE users SET status = ''active'' WHERE updated_at < now() - interval ''7 days'' AND status = ''pending''', 'UPDATE products SET price = price * 1.1 WHERE category IN (1, 2, 3, 4, 5)', 'UPDATE orders SET shipped_at = now() WHERE status = ''ready'' AND created_at > now() - interval ''30 days'''. ALWAYS include WHERE clause. Use RETURNING to verify changes."
-        }
-      },
-      "required": [
-        "sql"
-      ]
+      "properties": {}
     }
   },
   {
-    "name": "async_execute_delete",
-    "description": "Execute a DELETE statement with optimized performance for high-volume operations (WHERE predicate affects 100+ rows) by temporarily disabling synchronous_commit. Returns the number of rows deleted. Optimized when the WHERE condition matches more than 100 rows in the table. Much faster than execute_delete for bulk deletes but trades immediate durability for speed. ALWAYS requires WHERE clause to prevent accidental full table deletion. Data is removed but not guaranteed on disk immediately.",
+    "name": "show_connection_summary",
+    "description": "Aggregate connection counts by state (active, idle, idle in transaction, etc). Provides high-level connection summary without listing individual connections. Use for quick connection health check, understanding load distribution.",
     "inputSchema": {
       "type": "object",
-      "properties": {
-        "sql": {
-          "type": "string",
-          "description": "DELETE SQL statement with WHERE clause (required). Max 10,000 characters. Optimized when WHERE predicate affects more than 100 rows. Examples: 'DELETE FROM audit_logs WHERE created_at < now() - interval ''365 days''', 'DELETE FROM temp_uploads WHERE status = ''failed'' AND created_at < now() - interval ''1 day''', 'DELETE FROM sessions WHERE expires_at < now() AND user_id NOT IN (SELECT id FROM users WHERE premium = true)'. CRITICAL: ALWAYS include WHERE clause - deleting without one removes ALL rows. Use RETURNING to verify what was deleted."
-        }
-      },
-      "required": [
-        "sql"
-      ]
+      "properties": {}
     }
   },
   {
-    "name": "create_index",
-    "description": "Create a database index on one or more table columns. Indexes improve query performance by allowing faster data lookups. Supports UNIQUE indexes for constraint enforcement and CONCURRENTLY option for non-blocking index creation on live tables. Use for optimizing slow queries or enforcing column uniqueness.",
+    "name": "show_active_transactions",
+    "description": "Show all transactions currently in progress: PID, username, application, state, transaction start time, query start time, full query. Essential for understanding transaction state, identifying blocking transactions, diagnosing transaction-related performance issues.",
     "inputSchema": {
       "type": "object",
-      "properties": {
-        "index_name": {
-          "type": "string",
-          "description": "Index name (required). Example: 'idx_users_email'. Must be unique within the schema. Follows naming convention: idx_table_column(s)."
-        },
-        "table": {
-          "type": "string",
-          "description": "Table name to create index on (required). Example: 'users', 'orders'. Case-insensitive."
-        },
-        "columns": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Column names to index (required). Example: ['email'] for single column or ['user_id', 'created_at'] for composite index. Order matters for composite indexes."
-        },
-        "unique": {
-          "type": "boolean",
-          "description": "Create UNIQUE index to enforce column uniqueness constraint (optional, default: false). Useful for email, username fields. All indexed column combinations must be unique."
-        },
-        "concurrent": {
-          "type": "boolean",
-          "description": "Use CONCURRENTLY option to avoid blocking table writes during index creation (optional, default: false). Required for production tables to avoid locks. Slower but non-blocking."
-        }
-      },
-      "required": [
-        "index_name",
-        "table",
-        "columns"
-      ]
+      "properties": {}
     }
   },
   {
-    "name": "drop_index",
-    "description": "Drop (delete) a database index. Frees storage space and removes any locking overhead from index maintenance. Use CONCURRENTLY option on live tables to avoid blocking. Safe to remove unused or duplicate indexes without affecting data.",
+    "name": "show_locks",
+    "description": "Show all locks held with lock holders and queries: lock PID, user, application, lock type (ExclusiveLock, ShareLock, etc), granted status, fastpath flag, query. Use to diagnose lock contention, understand blocking relationships, identify lock holders.",
     "inputSchema": {
       "type": "object",
-      "properties": {
-        "index_name": {
-          "type": "string",
-          "description": "Index name to drop (required). Example: 'idx_users_email'. Must exist in the database."
-        },
-        "if_exists": {
-          "type": "boolean",
-          "description": "Only drop index if it exists, don't error if missing (optional, default: false). Use true to avoid errors in scripts."
-        },
-        "concurrent": {
-          "type": "boolean",
-          "description": "Use CONCURRENTLY option to avoid blocking table writes during index drop (optional, default: false). Required for production tables. Slower but non-blocking."
-        }
-      },
-      "required": [
-        "index_name"
-      ]
+      "properties": {}
     }
   },
   {
-    "name": "create_partition",
-    "description": "Create a new partition for a partitioned table. Partitioning splits large tables into smaller logical pieces for better performance and manageability. Supports RANGE (date ranges), LIST (discrete values), and HASH (modulo) partitioning. Use for tables with millions of rows.",
+    "name": "show_waiting_locks",
+    "description": "Show all locks waiting to be granted (not granted). Critical for diagnosing deadlocks and blocking: which transactions are waiting, what they're waiting for, lock types. Essential for resolving lock contention issues.",
     "inputSchema": {
       "type": "object",
-      "properties": {
-        "table": {
-          "type": "string",
-          "description": "Parent partitioned table name (required). Example: 'events'. Must be defined as partitioned table."
-        },
-        "partition_name": {
-          "type": "string",
-          "description": "Name for the new partition (required). Example: 'events_2026_01'. Naming convention: parent_table_partition_identifier."
-        },
-        "partition_type": {
-          "type": "string",
-          "enum": [
-            "RANGE",
-            "LIST",
-            "HASH"
-          ],
-          "description": "Partitioning strategy (required). RANGE: date/number ranges, LIST: specific values, HASH: modulo-based distribution."
-        },
-        "column": {
-          "type": "string",
-          "description": "Column name used for partitioning (required). Example: 'created_date' for date partitioning. Must match parent table's partition column."
-        },
-        "values": {
-          "type": "string",
-          "description": "Partition bounds (required). Examples: 'FROM (2026-01-01) TO (2026-02-01)' for RANGE, 'IN (value1, value2)' for LIST, 'MODULUS 4 REMAINDER 0' for HASH."
-        }
-      },
-      "required": [
-        "table",
-        "partition_name",
-        "partition_type",
-        "column",
-        "values"
-      ]
+      "properties": {}
     }
   },
   {
-    "name": "drop_partition",
-    "description": "Drop (delete) a partition from a partitioned table. Removes the partition and its data. Use carefully - deleting a partition deletes all rows in that partition. Use if_exists to avoid errors if partition already missing.",
+    "name": "show_deadlocks",
+    "description": "Detect potential deadlock situations by identifying transactions in circular wait patterns. Shows which PIDs are involved, queries, timing. Use to identify and resolve deadlock conditions before they cause failures.",
     "inputSchema": {
       "type": "object",
-      "properties": {
-        "table": {
-          "type": "string",
-          "description": "Parent table name (required). Example: 'events'. Used for context/logging, partition is identified by partition_name."
-        },
-        "partition_name": {
-          "type": "string",
-          "description": "Partition name to drop (required). Example: 'events_2026_01'. Must be an existing partition."
-        },
-        "if_exists": {
-          "type": "boolean",
-          "description": "Only drop if partition exists, don't error if missing (optional, default: false). Use true in cleanup scripts."
-        }
-      },
-      "required": [
-        "table",
-        "partition_name"
-      ]
+      "properties": {}
     }
   },
   {
-    "name": "truncate_table",
-    "description": "Quickly delete all rows from a table without deleting the table structure. Much faster than DELETE for clearing large tables. Use RESTART IDENTITY to reset auto-increment sequences. Use CASCADE to handle foreign key constraints.",
+    "name": "analyze_table",
+    "description": "Update table statistics for query optimizer. PostgreSQL uses these statistics to choose optimal query plans. Run after large data changes or before complex queries. Returns success/failure status and affected table name.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "table": {
-          "type": "string",
-          "description": "Table name to truncate (required). Example: 'temp_data', 'logs'. All rows will be deleted. Structure remains."
-        },
-        "cascade": {
-          "type": "boolean",
-          "description": "Also truncate tables with foreign keys referencing this table (optional, default: false). Use when dependencies exist. Dangerous - affects related tables."
-        },
-        "restart_identity": {
-          "type": "boolean",
-          "description": "Reset auto-increment sequences to their seed values (optional, default: false). Use if table has SERIAL/IDENTITY columns and you want IDs to restart from 1."
-        }
+        "table": {"type": "string", "description": "Table name to analyze (required). Example: 'users', 'orders'. Case-insensitive."}
       },
-      "required": [
-        "table"
-      ]
+      "required": ["table"]
+    }
+  },
+  {
+    "name": "vacuum_analyze",
+    "description": "Run VACUUM ANALYZE on specific table or entire database. VACUUM removes dead tuples and updates free space map. ANALYZE updates statistics. Combined operation optimizes storage and query performance. Use after large deletes or bulk operations. Omit table parameter to vacuum entire database.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name to vacuum (optional). Example: 'users'. Omit to vacuum entire database."}
+      }
+    }
+  },
+  {
+    "name": "reindex_table",
+    "description": "Rebuild all indexes on a table. Use when indexes become bloated, corrupted, or after major updates. Rebuilding improves performance and reclaims space. Locks table during operation - use CONCURRENTLY option for live tables.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name to reindex (required). Example: 'users', 'orders'. Case-insensitive."},
+        "concurrent": {"type": "boolean", "description": "Use CONCURRENTLY to avoid blocking (optional, default: false). Slower but non-blocking for production tables."}
+      },
+      "required": ["table"]
+    }
+  },
+  {
+    "name": "reset_statistics",
+    "description": "Reset all PostgreSQL statistics counters (pg_stat_statements, pg_stat_user_tables, pg_stat_user_indexes, etc). Use to clear old statistics and start fresh measurement. Useful for baseline measurement or after significant changes.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "analyze_db_health",
+    "description": "Comprehensive one-stop health dashboard checking buffer cache hit ratios, active/idle connection counts, unused and duplicate indexes, VACUUM progress, tables needing maintenance, tables with excessive sequential scans. Runs multiple diagnostics and returns consolidated health status. Excellent for spotting performance issues and identifying optimization opportunities.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "list_unused_indexes",
+    "description": "Identify indexes with zero scans (never used). Consume disk space, slow down writes, should be removed. Returns index metadata and size estimates. Review before removing to ensure not helping with index-only scans. Useful for cleanup and performance tuning.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "list_duplicate_indexes",
+    "description": "Find redundant or duplicate indexes with overlapping functionality. Duplicate indexes waste storage and slow DML without query benefits. Shows candidates for consolidation/removal. Useful for index optimization and cleanup after schema changes.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "get_table_stats",
+    "description": "Get live row counts, dead tuples, and vacuum history from pg_stat_user_tables for all tables. Shows table bloat indicators, live vs dead tuples, vacuum timing. Essential for identifying tables needing VACUUM and understanding table health.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "get_index_stats",
+    "description": "Get index scan and tuple statistics from pg_stat_user_indexes for all indexes. Shows index usage patterns: scans, tuples read, tuples fetched. Essential for identifying unused/underused indexes and understanding index effectiveness.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "show_table_size",
+    "description": "Get total size of each user table including indexes and TOAST storage. Shows table sizes as human-readable (MB/GB) and bytes. Use for identifying large tables, storage planning, capacity management.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "show_database_size",
+    "description": "Get size of each database in bytes and human-readable format (MB/GB). Use for storage monitoring, capacity planning, database sizing decisions.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "get_cache_hit_ratio",
+    "description": "Get buffer cache hit ratio (0-1.0 or 0-100%). Shows what percentage of data reads come from cache vs disk. High ratio (>0.95) indicates efficient caching. Low ratio suggests missing indexes, insufficient shared_buffers, or cold cache. Essential for I/O performance diagnosis.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "get_pg_stat_statements",
+    "description": "Get top 50 slowest queries ranked by total execution time from pg_stat_statements extension. Shows query text, call count, mean/max/total execution time. Essential for identifying performance bottlenecks. Requires pg_stat_statements extension installed and enabled.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "get_setting",
+    "description": "Retrieve specific PostgreSQL configuration setting with full metadata: current value, unit (bytes/seconds/etc), description, context (when changeable), default value. Use to inspect any configuration parameter. Helpful for understanding database tuning and current configuration state.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "setting_name": {"type": "string", "description": "PostgreSQL setting name (required). Examples: 'max_connections', 'shared_buffers', 'work_mem', 'effective_cache_size'. Case-insensitive. Returns value, unit, description, and context."}
+      },
+      "required": ["setting_name"]
+    }
+  },
+  {
+    "name": "show_all_settings",
+    "description": "List all non-internal PostgreSQL settings with values, units, descriptions, and context. Shows complete configuration tuning surface. Useful for configuration review, audit, and understanding all available settings.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "show_memory_settings",
+    "description": "Show key memory-related settings: shared_buffers (cache size), work_mem (operation workspace), maintenance_work_mem (VACUUM/CREATE INDEX memory), effective_cache_size (total available cache). Essential for tuning database performance.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "show_performance_settings",
+    "description": "Show performance-related settings: max_connections, synchronous_commit, random_page_cost, effective_cache_size, work_mem. Essential for performance tuning and understanding current optimization level.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "show_log_settings",
+    "description": "Show all logging-related settings: log_min_duration_statement, log_statement, log_connections, log_disconnections, log_duration. Useful for configuring audit logging and query monitoring.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "show_vacuum_progress",
+    "description": "Monitor ongoing VACUUM and AUTOVACUUM operations in real-time. Shows which tables are being vacuumed, progress percentage, blocks processed, index vacuum count, estimated time remaining. Use to track maintenance operations and identify long-running vacuum processes impacting performance.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "show_transaction_isolation",
+    "description": "Show current transaction isolation level (READ UNCOMMITTED, READ COMMITTED, REPEATABLE READ, SERIALIZABLE) and available levels. Use to understand current transaction safety level.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "show_transaction_timeout",
+    "description": "Show current statement_timeout setting (maximum allowed query execution time). Use to verify query timeout configuration.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "show_autocommit_status",
+    "description": "Show whether autocommit is enabled. Shows autocommit on/off status. Essential for understanding transaction behavior.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "show_replication_status",
+    "description": "Show WAL replay status and uptime on replicas: whether WAL replay is paused, last WAL LSN received/replayed, uptime. Essential for monitoring replication health.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "list_replication_slots",
+    "description": "List all replication slots (physical for streaming, logical for logical decoding). Shows slot name, type, database, active status, restart LSN, confirmed flush LSN. Use for replication monitoring and slot management.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "list_standby_servers",
+    "description": "List connected standby servers with replication lag information. Shows client address, port, state (streaming/catchup), sync state (sync/async), write/flush/replay lag. Essential for monitoring streaming replication health.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "show_wal_info",
+    "description": "Show current WAL (Write-Ahead Log) status: current LSN, insert LSN, replay paused flag, WAL size in bytes. Essential for understanding transaction log size and WAL archiving.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "show_base_backup_progress",
+    "description": "Show base backup progress (PostgreSQL 17+): phase, total size, streamed size, tablespaces progress. Use to monitor full database backups.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "get_object_details",
+    "description": "Get comprehensive information about specific table: all columns with types, primary key, foreign keys, all indexes, constraints, table size, row counts, descriptions. Complete schema information for thorough understanding. Returns everything needed to understand table role and relationships.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name to get details for (required). Example: 'users', 'orders'. Case-insensitive."},
+        "schema": {"type": "string", "description": "Schema name (optional, default: 'public'). Example: 'public', 'staging'. Use schema.table format in table param to override."}
+      },
+      "required": ["table"]
+    }
+  },
+  {
+    "name": "create_table",
+    "description": "Create a new table with specified columns and constraints. Define each column with type and optional constraints (PRIMARY KEY, UNIQUE, NOT NULL, DEFAULT, etc). Use for creating new tables with custom schemas. Max identifier length 255 characters.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name (required). Example: 'users', 'products'. Case-insensitive. Max 255 chars."},
+        "columns": {"type": "array", "items": {"type": "string"}, "description": "Column definitions (required). Examples: ['id SERIAL PRIMARY KEY', 'email VARCHAR(255) UNIQUE NOT NULL', 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP']. Format: 'column_name TYPE [CONSTRAINT...]'"}
+      },
+      "required": ["table", "columns"]
     }
   },
   {
     "name": "drop_table",
-    "description": "Drop (delete) a table and its data permanently. Use IF EXISTS to avoid errors if table doesn't exist. Use CASCADE to also drop dependent objects (views, constraints, etc). WARNING: This deletes all table data - use carefully.",
+    "description": "Drop (delete) a table and all its data permanently. Use IF EXISTS to avoid errors if table missing. Use CASCADE to also drop dependent objects (views, constraints). WARNING: Deletes all table data - use carefully.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "table": {
-          "type": "string",
-          "description": "Table name to drop (required). Example: 'users', 'temp_data'. Case-insensitive."
-        },
-        "if_exists": {
-          "type": "boolean",
-          "description": "Only drop if table exists, don't error if missing (optional, default: false). Use in cleanup scripts."
-        },
-        "cascade": {
-          "type": "boolean",
-          "description": "Also drop dependent objects like views and constraints (optional, default: false). WARNING: Drops dependent views, materialized views, and constraints. Use false unless you understand the impact."
-        }
+        "table": {"type": "string", "description": "Table name to drop (required). Example: 'users', 'temp_data'. Case-insensitive."},
+        "if_exists": {"type": "boolean", "description": "Only drop if exists (optional, default: false). Use in cleanup scripts."},
+        "cascade": {"type": "boolean", "description": "Also drop dependent views and constraints (optional, default: false). WARNING: Drops dependent views."}
       },
-      "required": [
-        "table"
-      ]
+      "required": ["table"]
     }
   },
   {
-    "name": "create_view",
-    "description": "Create a database view from a SELECT query. Views are virtual tables that execute the query every time accessed. Use MATERIALIZED for performance (stores results), or regular view for always-current data. Use OR REPLACE to update existing views.",
+    "name": "truncate_table",
+    "description": "Quickly delete all rows from a table without deleting structure. Much faster than DELETE for clearing large tables. Use RESTART IDENTITY to reset auto-increment sequences. Use CASCADE for tables with foreign key constraints.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "view_name": {
-          "type": "string",
-          "description": "View name (required). Example: 'user_summary', 'active_orders'. Case-insensitive."
-        },
-        "query": {
-          "type": "string",
-          "description": "SELECT query defining the view (required). Example: 'SELECT id, name, COUNT(*) as count FROM users GROUP BY id, name'. Must be valid SQL SELECT statement."
-        },
-        "materialized": {
-          "type": "boolean",
-          "description": "Create materialized view (stores results, fast queries, stale data) vs regular view (always current, slower) (optional, default: false). Materialized views need REFRESH MATERIALIZED VIEW to update."
-        },
-        "or_replace": {
-          "type": "boolean",
-          "description": "Replace view if exists (optional, default: false). For materialized views, requires same column names and types. For regular views, allows changing definition."
-        }
+        "table": {"type": "string", "description": "Table name to truncate (required). Example: 'temp_data', 'logs'. All rows deleted, structure remains."},
+        "cascade": {"type": "boolean", "description": "Also truncate dependent tables (optional, default: false). Use when FK dependencies exist. Dangerous - affects related tables."},
+        "restart_identity": {"type": "boolean", "description": "Reset auto-increment sequences (optional, default: false). For SERIAL/IDENTITY columns."}
       },
-      "required": [
-        "view_name",
-        "query"
-      ]
-    }
-  },
-  {
-    "name": "drop_view",
-    "description": "Drop (delete) a view. Works for both regular and materialized views. Use IF EXISTS to avoid errors. Use CASCADE to also drop dependent views/objects.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "view_name": {
-          "type": "string",
-          "description": "View name to drop (required). Example: 'user_summary', 'active_orders'. Case-insensitive."
-        },
-        "if_exists": {
-          "type": "boolean",
-          "description": "Only drop if view exists, don't error if missing (optional, default: false)."
-        },
-        "cascade": {
-          "type": "boolean",
-          "description": "Also drop dependent views and objects (optional, default: false). WARNING: Drops dependent views."
-        }
-      },
-      "required": [
-        "view_name"
-      ]
-    }
-  },
-  {
-    "name": "alter_view",
-    "description": "Modify a view by renaming it or changing its schema. Use to reorganize views or fix naming.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "view_name": {
-          "type": "string",
-          "description": "View name to alter (required). Example: 'user_summary'."
-        },
-        "rename_to": {
-          "type": "string",
-          "description": "New name for the view (optional). Example: 'users_summary'. Either this or set_schema required."
-        },
-        "set_schema": {
-          "type": "string",
-          "description": "New schema for the view (optional). Example: 'analytics'. Either this or rename_to required."
-        }
-      },
-      "required": [
-        "view_name"
-      ]
+      "required": ["table"]
     }
   },
   {
     "name": "create_schema",
-    "description": "Create a new schema (namespace for database objects). Schemas organize tables, views, and other objects into logical groups. Use IF NOT EXISTS to safely create if not present.",
+    "description": "Create a new schema (namespace for objects). Schemas organize tables, views, sequences into logical groups. Use IF NOT EXISTS to safely create if not present.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "schema_name": {
-          "type": "string",
-          "description": "Schema name to create (required). Example: 'analytics', 'reporting', 'archive'. Case-insensitive."
-        },
-        "if_not_exists": {
-          "type": "boolean",
-          "description": "Only create if schema doesn't exist, don't error if exists (optional, default: false)."
-        }
+        "schema_name": {"type": "string", "description": "Schema name (required). Example: 'analytics', 'reporting', 'archive'. Case-insensitive."},
+        "if_not_exists": {"type": "boolean", "description": "Only create if doesn't exist (optional, default: false)."}
       },
-      "required": [
-        "schema_name"
-      ]
+      "required": ["schema_name"]
     }
   },
   {
     "name": "drop_schema",
-    "description": "Drop (delete) a schema and optionally its contents. Use IF EXISTS to avoid errors. Use CASCADE to drop all objects in schema.",
+    "description": "Drop (delete) a schema. Use IF EXISTS to avoid errors. Use CASCADE to drop all objects in schema.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "schema_name": {
-          "type": "string",
-          "description": "Schema name to drop (required). Example: 'analytics'. Case-insensitive."
-        },
-        "if_exists": {
-          "type": "boolean",
-          "description": "Only drop if exists, don't error if missing (optional, default: false)."
-        },
-        "cascade": {
-          "type": "boolean",
-          "description": "Also drop all objects in schema (tables, views, functions, etc) (optional, default: false). WARNING: Drops all schema contents."
-        }
+        "schema_name": {"type": "string", "description": "Schema name to drop (required). Example: 'analytics'. Case-insensitive."},
+        "if_exists": {"type": "boolean", "description": "Only drop if exists (optional, default: false)."},
+        "cascade": {"type": "boolean", "description": "Also drop all objects in schema (optional, default: false). WARNING: Drops all schema contents."}
       },
-      "required": [
-        "schema_name"
-      ]
+      "required": ["schema_name"]
     }
   },
   {
-    "name": "create_sequence",
-    "description": "Create a sequence for generating auto-incrementing values. Used for PRIMARY KEY values and counter columns. Sequences are independent objects that can be shared across multiple tables.",
+    "name": "create_view",
+    "description": "Create a database view from a SELECT query. Views are virtual tables executing query each access. Use MATERIALIZED for performance (stores results), regular view for always-current data. Use OR REPLACE to update existing views.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "sequence_name": {
-          "type": "string",
-          "description": "Sequence name to create (required). Example: 'user_id_seq', 'order_seq'. Case-insensitive."
-        },
-        "if_not_exists": {
-          "type": "boolean",
-          "description": "Only create if sequence doesn't exist (optional, default: false)."
-        },
-        "start": {
-          "type": "integer",
-          "description": "Starting value for sequence (optional, default: 1). Example: 100 to start from 100."
-        },
-        "increment": {
-          "type": "integer",
-          "description": "Increment by this value each time (optional, default: 1). Example: 5 increments by 5 each time."
-        }
+        "view_name": {"type": "string", "description": "View name (required). Example: 'user_summary', 'active_orders'. Case-insensitive."},
+        "query": {"type": "string", "description": "SELECT query defining view (required). Example: 'SELECT id, name, COUNT(*) FROM users GROUP BY id, name'. Must be valid SELECT."},
+        "materialized": {"type": "boolean", "description": "Create materialized view (stores results, fast, stale) vs regular (always current, slower) (optional, default: false). Materialized need REFRESH to update."},
+        "or_replace": {"type": "boolean", "description": "Replace if exists (optional, default: false). For materialized, requires same columns/types."}
       },
-      "required": [
-        "sequence_name"
-      ]
+      "required": ["view_name", "query"]
     }
   },
   {
-    "name": "drop_sequence",
-    "description": "Drop (delete) a sequence. Use IF EXISTS to avoid errors if sequence doesn't exist.",
+    "name": "drop_view",
+    "description": "Drop (delete) a view (regular or materialized). Use IF EXISTS to avoid errors. Use CASCADE to drop dependent views.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "sequence_name": {
-          "type": "string",
-          "description": "Sequence name to drop (required). Example: 'user_id_seq'."
-        },
-        "if_exists": {
-          "type": "boolean",
-          "description": "Only drop if exists, don't error if missing (optional, default: false)."
-        }
+        "view_name": {"type": "string", "description": "View name to drop (required). Example: 'user_summary'. Case-insensitive."},
+        "if_exists": {"type": "boolean", "description": "Only drop if exists (optional, default: false)."},
+        "cascade": {"type": "boolean", "description": "Also drop dependent views (optional, default: false). WARNING: Drops dependent views."}
       },
-      "required": [
-        "sequence_name"
-      ]
+      "required": ["view_name"]
+    }
+  },
+  {
+    "name": "alter_view",
+    "description": "Modify a view by renaming or changing schema. Use to reorganize views or fix naming.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "view_name": {"type": "string", "description": "View name to alter (required). Example: 'user_summary'."},
+        "rename_to": {"type": "string", "description": "New name (optional). Example: 'users_summary'. Either this or set_schema required."},
+        "set_schema": {"type": "string", "description": "New schema (optional). Example: 'analytics'. Either this or rename_to required."}
+      },
+      "required": ["view_name"]
+    }
+  },
+  {
+    "name": "create_index",
+    "description": "Create a database index on columns for faster queries. Supports UNIQUE indexes for constraints and CONCURRENTLY for non-blocking creation on live tables. Use for optimizing slow queries or enforcing uniqueness. Max identifier 255 chars.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "index_name": {"type": "string", "description": "Index name (required). Example: 'idx_users_email'. Must be unique in schema."},
+        "table": {"type": "string", "description": "Table name (required). Example: 'users', 'orders'. Case-insensitive."},
+        "columns": {"type": "array", "items": {"type": "string"}, "description": "Column names (required). Example: ['email'] for single or ['user_id', 'created_at'] for composite. Order matters."},
+        "unique": {"type": "boolean", "description": "Create UNIQUE index (optional, default: false). Enforces column uniqueness."},
+        "concurrent": {"type": "boolean", "description": "Use CONCURRENTLY (optional, default: false). Non-blocking for live tables. Required for production."}
+      },
+      "required": ["index_name", "table", "columns"]
+    }
+  },
+  {
+    "name": "drop_index",
+    "description": "Drop (delete) an index. Frees storage space and removes locking overhead. Use CONCURRENTLY on live tables. Safe to remove unused/duplicate indexes.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "index_name": {"type": "string", "description": "Index name to drop (required). Example: 'idx_users_email'. Must exist."},
+        "if_exists": {"type": "boolean", "description": "Only drop if exists (optional, default: false). Use in scripts."},
+        "concurrent": {"type": "boolean", "description": "Use CONCURRENTLY (optional, default: false). Non-blocking for live tables. Required for production."}
+      },
+      "required": ["index_name"]
     }
   },
   {
     "name": "alter_index",
-    "description": "Modify an index by renaming it or changing its schema. Use to reorganize indexes or fix naming.",
+    "description": "Modify an index by renaming or changing schema. Use to reorganize indexes or fix naming.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "index_name": {
-          "type": "string",
-          "description": "Index name to alter (required). Example: 'idx_users_email'."
-        },
-        "rename_to": {
-          "type": "string",
-          "description": "New name for the index (optional). Example: 'idx_users_email_v2'. Either this or set_schema required."
-        },
-        "set_schema": {
-          "type": "string",
-          "description": "New schema for the index (optional). Example: 'archive'. Either this or rename_to required."
-        }
+        "index_name": {"type": "string", "description": "Index name to alter (required). Example: 'idx_users_email'."},
+        "rename_to": {"type": "string", "description": "New name (optional). Example: 'idx_users_email_v2'. Either this or set_schema required."},
+        "set_schema": {"type": "string", "description": "New schema (optional). Example: 'archive'. Either this or rename_to required."}
       },
-      "required": [
-        "index_name"
-      ]
+      "required": ["index_name"]
+    }
+  },
+  {
+    "name": "create_sequence",
+    "description": "Create a sequence for generating auto-incrementing values. Used for PRIMARY KEY values and counters. Sequences are independent objects shared across tables. Max identifier 255 chars.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sequence_name": {"type": "string", "description": "Sequence name (required). Example: 'user_id_seq', 'order_seq'. Case-insensitive."},
+        "if_not_exists": {"type": "boolean", "description": "Only create if doesn't exist (optional, default: false)."},
+        "start": {"type": "integer", "description": "Starting value (optional, default: 1). Example: 100 starts from 100."},
+        "increment": {"type": "integer", "description": "Increment by value (optional, default: 1). Example: 5 increments by 5."}
+      },
+      "required": ["sequence_name"]
+    }
+  },
+  {
+    "name": "drop_sequence",
+    "description": "Drop (delete) a sequence. Use IF EXISTS to avoid errors if sequence missing.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sequence_name": {"type": "string", "description": "Sequence name to drop (required). Example: 'user_id_seq'."},
+        "if_exists": {"type": "boolean", "description": "Only drop if exists (optional, default: false)."}
+      },
+      "required": ["sequence_name"]
+    }
+  },
+  {
+    "name": "create_partition",
+    "description": "Create a new partition for a partitioned table. Partitioning splits large tables for better performance. Supports RANGE (date ranges), LIST (discrete values), HASH (modulo) partitioning. Use for tables with millions of rows.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Parent partitioned table (required). Example: 'events'. Must be defined as partitioned."},
+        "partition_name": {"type": "string", "description": "Partition name (required). Example: 'events_2026_01'. Convention: parent_partition_identifier."},
+        "partition_type": {"type": "string", "enum": ["RANGE", "LIST", "HASH"], "description": "Partitioning strategy (required). RANGE=date/number ranges, LIST=specific values, HASH=modulo."},
+        "column": {"type": "string", "description": "Partition column (required). Example: 'created_date'. Must match parent's partition column."},
+        "values": {"type": "string", "description": "Partition bounds (required). Examples: 'FROM (2026-01-01) TO (2026-02-01)' for RANGE, 'IN (val1, val2)' for LIST, 'MODULUS 4 REMAINDER 0' for HASH."}
+      },
+      "required": ["table", "partition_name", "partition_type", "column", "values"]
+    }
+  },
+  {
+    "name": "drop_partition",
+    "description": "Drop (delete) a partition from a partitioned table. Removes partition and all its data. Use carefully - deletes all partition rows. Use IF EXISTS to avoid errors.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Parent table (required). Example: 'events'. For context/logging."},
+        "partition_name": {"type": "string", "description": "Partition name to drop (required). Example: 'events_2026_01'. Must be existing partition."},
+        "if_exists": {"type": "boolean", "description": "Only drop if exists (optional, default: false). Use in cleanup scripts."}
+      },
+      "required": ["table", "partition_name"]
     }
   },
   {
     "name": "list_partitions",
-    "description": "List all partitions of a partitioned table, including partition names and sizes. Use to understand table partitioning structure.",
+    "description": "List all partitions of a partitioned table including names and sizes. Use to understand table partitioning structure.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "table": {
-          "type": "string",
-          "description": "Partitioned table name (required). Example: 'events', 'logs'. Must be a partitioned table."
-        }
+        "table": {"type": "string", "description": "Partitioned table (required). Example: 'events', 'logs'. Must be partitioned table."}
       },
-      "required": [
-        "table"
-      ]
+      "required": ["table"]
+    }
+  },
+  {
+    "name": "async_batch_insert",
+    "description": "High-performance multi-row insert (max 1,000 rows) with synchronous_commit=OFF. Much faster than individual inserts for bulk loads. Returns rows affected and optionally inserted IDs via RETURNING. Perfect for CSV imports, test data, bulk operations.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Target table (required). Example: 'users', 'products'. Case-insensitive. Must exist with INSERT perms."},
+        "columns": {"type": "array", "items": {"type": "string"}, "description": "Column names in order (required). Example: ['email', 'name', 'created_at']. Count must match row data."},
+        "rows": {"type": "array", "items": {"type": "array"}, "description": "Rows to insert (required). Max 1,000 rows. Each row is array of values. Example: [['a@x.com', 'Alice', '2026-01-01'], ['b@x.com', 'Bob', '2026-01-02']]."},
+        "returning": {"type": "string", "description": "Column to return (optional). Example: 'id' returns inserted IDs. Useful for getting auto-generated IDs."}
+      },
+      "required": ["table", "columns", "rows"]
+    }
+  },
+  {
+    "name": "async_batch_insert_copy",
+    "description": "Ultra-high-performance bulk insert (10K+ rows) using automatic batching. Much faster than async_batch_insert for massive imports. Returns total rows affected and batch count. Perfect for data warehouse loads, ETL, large migrations.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Target table (required). Example: 'users', 'events'. Case-insensitive. Should be empty for best performance."},
+        "columns": {"type": "array", "items": {"type": "string"}, "description": "Column names in order (required). Example: ['id', 'event_type', 'timestamp']. All must exist."},
+        "rows": {"type": "array", "items": {"type": "array"}, "description": "Rows to insert (required). Can be huge (10K+, 100K+). Each row must have matching column count."},
+        "batch_size": {"type": "integer", "description": "Rows per batch (optional, default: 1,000). Range: 100-5,000. Larger = faster but more memory. For 100K+ use 1,000-2,000."}
+      },
+      "required": ["table", "columns", "rows"]
+    }
+  },
+  {
+    "name": "async_batch_update",
+    "description": "High-performance bulk update with multiple WHERE clauses (each applied independently) and synchronous_commit=OFF. Much faster than individual updates for bulk modifications. Returns total rows affected.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Target table (required). Example: 'users', 'orders'. Case-insensitive."},
+        "updates": {"type": "object", "description": "Column→value mappings (required). Example: {'status': 'inactive'}. Columns being updated."},
+        "where_clauses": {"type": "array", "items": {"type": "string"}, "description": "WHERE conditions (required). Example: ['id = 1', 'id = 2']. Each applied independently."}
+      },
+      "required": ["table", "updates", "where_clauses"]
+    }
+  },
+  {
+    "name": "async_batch_delete",
+    "description": "High-performance bulk delete with OR-combined WHERE clauses and synchronous_commit=OFF. Much faster than individual deletes for bulk removal. Returns rows deleted. Supports RETURNING for verification.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Target table (required). Example: 'users', 'logs'. Case-insensitive."},
+        "where_clauses": {"type": "array", "items": {"type": "string"}, "description": "WHERE conditions (required). Example: ['id = 1', 'id = 2']. OR-combined together."},
+        "returning": {"type": "string", "description": "Column to return (optional). Example: 'id'. Useful for verifying deletion."}
+      },
+      "required": ["table", "where_clauses"]
     }
   },
   {
     "name": "backup_table",
-    "description": "Complete table backup copying columns, data, indexes, and partitions. Creates backup_<table_name> with full schema preservation. Columns: all column definitions (names, types, defaults, nullability). Data: all rows copied (complete dataset). Indexes: all indexes recreated with same structure. Partitions: partition structure preserved for partitioned tables. Essential safety feature - backup before DROP, bulk DELETE, or schema changes. If original deleted: full backup with all data survives. Recovery mechanism for accidental deletion protection.",
+    "description": "Complete table backup copying columns, data, indexes, partitions. Creates backup_<table_name> with full schema preservation. All column definitions copied with types, defaults, nullability. All rows copied (complete dataset). All indexes recreated with same structure. Partition structure preserved. Essential safety - backup before DROP, bulk DELETE, schema changes. If original deleted: backup survives with all data. Complete recovery mechanism.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "table": {
-          "type": "string",
-          "description": "Table name to backup (required). Example: 'users', 'orders'. Backup will be created as 'backup_users', 'backup_orders'. Case-insensitive."
-        }
+        "table": {"type": "string", "description": "Table to backup (required). Example: 'users', 'orders'. Case-insensitive. Backup created as 'backup_users', 'backup_orders'."}
       },
-      "required": [
-        "table"
-      ]
+      "required": ["table"]
     }
   }
 ]
