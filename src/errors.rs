@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn test_error_clone_via_debug() {
         let err = MCPError::MethodNotFound("test".into());
-        let json_err = serde_json::to_value(&format!("{:?}", err)).unwrap();
+        let json_err = serde_json::to_value(format!("{:?}", err)).unwrap();
         assert!(json_err.as_str().unwrap().contains("MethodNotFound"));
     }
 }

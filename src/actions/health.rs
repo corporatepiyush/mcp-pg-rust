@@ -80,13 +80,17 @@ pub async fn analyze_db_health(client: &Client, _params: &Option<&Value>) -> MCP
         })
         .unwrap_or_default();
 
+    // Note: `max_dead_tuple_bytes` only exists in PG 17+. In PG 16- it's `max_dead_tuples`.
+    // We try PG 17+ columns first, fall back gracefully.
     let vacuum_progress = client
         .query(
-            "SELECT schemaname::text, relname::text, phase::text,
-                    heap_blks_total, heap_blks_scanned, heap_blks_vacuumed,
-                    index_vacuum_count, max_dead_tuple_index_pages
-             FROM pg_stat_progress_vacuum
-             ORDER BY schemaname, relname",
+            "SELECT n.nspname::text, c.relname::text, p.phase::text,
+                    p.heap_blks_total, p.heap_blks_scanned, p.heap_blks_vacuumed,
+                    p.index_vacuum_count
+             FROM pg_stat_progress_vacuum p
+             JOIN pg_class c ON p.relid = c.oid
+             JOIN pg_namespace n ON c.relnamespace = n.oid
+             ORDER BY n.nspname, c.relname",
             &[],
         )
         .await
@@ -98,6 +102,7 @@ pub async fn analyze_db_health(client: &Client, _params: &Option<&Value>) -> MCP
                 "blocks_total": row.get::<_, i64>(3),
                 "blocks_scanned": row.get::<_, i64>(4),
                 "blocks_vacuumed": row.get::<_, i64>(5),
+                "index_vacuum_count": row.get::<_, i64>(6),
             })).collect::<Vec<_>>()
         })
         .unwrap_or_default();
@@ -238,7 +243,9 @@ pub async fn list_duplicate_indexes(client: &Client, _params: &Option<&Value>) -
 }
 
 pub async fn show_vacuum_progress(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
-    let rows = client
+    // `max_dead_tuple_bytes` is PG 17+. On PG 16- the column is `max_dead_tuples`.
+    // Try PG 17+ query first; fall back to PG 16- columns.
+    let result = client
         .query(
             "SELECT n.nspname::text, c.relname::text, p.phase::text,
                     p.heap_blks_total, p.heap_blks_scanned, p.heap_blks_vacuumed,
@@ -251,7 +258,28 @@ pub async fn show_vacuum_progress(client: &Client, _params: &Option<&Value>) -> 
              ORDER BY n.nspname, c.relname",
             &[],
         )
-        .await?;
+        .await;
+
+    let rows = match result {
+        Ok(rows) => rows,
+        Err(_) => {
+            // Fallback: PG 16- uses max_dead_tuples instead of max_dead_tuple_bytes
+            client
+                .query(
+                    "SELECT n.nspname::text, c.relname::text, p.phase::text,
+                            p.heap_blks_total, p.heap_blks_scanned, p.heap_blks_vacuumed,
+                            p.heap_blks_total - p.heap_blks_scanned AS blks_remaining,
+                            round(100.0 * p.heap_blks_scanned / nullif(p.heap_blks_total, 0)::numeric, 1)::float8 AS progress_pct,
+                            p.index_vacuum_count, p.max_dead_tuples
+                     FROM pg_stat_progress_vacuum p
+                     JOIN pg_class c ON p.relid = c.oid
+                     JOIN pg_namespace n ON c.relnamespace = n.oid
+                     ORDER BY n.nspname, c.relname",
+                    &[],
+                )
+                .await?
+        }
+    };
 
     if rows.is_empty() {
         return Ok(json!({
@@ -271,7 +299,7 @@ pub async fn show_vacuum_progress(client: &Client, _params: &Option<&Value>) -> 
             "blocks_remaining": row.get::<_, i64>(6),
             "progress_pct": row.get::<_, f64>(7),
             "index_vacuum_count": row.get::<_, i64>(8),
-            "max_dead_tuple_bytes": row.get::<_, Option<i64>>(9),
+            "max_dead_tuples": row.get::<_, Option<i64>>(9),
         })
     }).collect();
 

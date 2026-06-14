@@ -6,7 +6,8 @@ High-performance MCP (Model Context Protocol) server for PostgreSQL, written in 
 
 **mcp-postgres** brings your PostgreSQL database into Claude and other MCP-compatible AI tools. Execute queries, manage schema, monitor performance, and handle bulk operations—all through a clean JSON-RPC interface.
 
-- **46 PostgreSQL tools** — query execution, schema inspection, DDL operations, batch operations, monitoring, maintenance, replication, and more
+- **76 PostgreSQL tools** — query execution, schema inspection, DDL operations, batch operations, monitoring, maintenance, replication, transactions, and more
+- **PostgreSQL documentation-compliant** — all queries verified against official PG docs (v16-18). Uses correct view/column names across PG versions with graceful fallbacks
 - **Dual-protocol transport** — TCP (port 3000) and HTTP/2 (port 3001) for flexibility
 - **Sub-10ms latency** — optimized for interactive AI workflows
 - **Production-grade** — connection pooling, health checks, input validation, SQL injection prevention
@@ -136,393 +137,55 @@ All tools follow the [MCP JSON-RPC 2.0](https://spec.modelcontextprotocol.io) sp
 
 ---
 
-## Tools Reference (46 Total)
+## Tools Reference (76 Total)
 
-### Query Execution (6 tools)
-
-**`execute_query`** — Execute SELECT and return rows
-
-```json
-{ "sql": "SELECT id, name FROM users LIMIT 10" }
-→ { "rows": [[1, "Alice"], [2, "Bob"]] }
-```
-
-**`execute_insert`** — Execute INSERT and return rows affected
-
-```json
-{ "sql": "INSERT INTO users (name) VALUES ('Charlie')" }
-→ { "rows_affected": 1 }
-```
-
-**`execute_update`** — Execute UPDATE and return rows affected
-
-```json
-{ "sql": "UPDATE users SET status='active' WHERE id=1" }
-→ { "rows_affected": 1 }
-```
-
-**`execute_delete`** — Execute DELETE and return rows affected
-
-```json
-{ "sql": "DELETE FROM users WHERE id=1" }
-→ { "rows_affected": 1 }
-```
-
-**`explain_query`** — Show query execution plan
-
-```json
-{
-  "sql": "SELECT * FROM users WHERE id = 1",
-  "analyze": true,
-  "buffers": true,
-  "format": "json"
-}
-→ { "plan": [...], "options": {...} }
-```
-
-**`async_*` variants** — High-performance versions with temporary sync commit disabled
-
-```json
-{ "sql": "INSERT INTO large_table VALUES (...)" }
-// for async_execute_insert, async_execute_update, async_execute_delete
-```
-
----
+### Query Execution (8 tools)
+`execute_query`, `execute_insert`, `execute_update`, `execute_delete`, `explain_query`, `async_execute_insert`, `async_execute_update`, `async_execute_delete`
 
 ### Schema Inspection (8 tools)
+`list_tables`, `describe_table`, `list_schemas`, `list_indexes`, `list_triggers`, `show_constraints`, `list_partitions`, `get_object_details`
 
-**`list_tables`** — List all tables in database
-
-```json
-{}
-→ { "tables": [{"schema": "public", "name": "users", "type": "BASE TABLE"}, ...] }
-```
-
-**`list_schemas`** — List all schemas
-
-```json
-{}
-→ { "schemas": [{"name": "public", "owner": "postgres"}, ...] }
-```
-
-**`list_columns`** — List columns in a table
-
-```json
-{ "table": "users" }
-→ { "columns": [{"name": "id", "type": "bigint", "nullable": "NO"}, ...] }
-```
-
-**`list_indexes`** — List all indexes
-
-```json
-{}
-→ { "indexes": [{"schema": "public", "table": "users", "name": "users_pkey", ...}, ...] }
-```
-
-**`list_triggers`** — List triggers on a table
-
-```json
-{ "table": "users" }
-→ { "triggers": [...] }
-```
-
-**`list_views`** — List all views
-
-```json
-{}
-→ { "views": [{"schema": "public", "name": "active_users", ...}, ...] }
-```
-
-**`list_sequences`** — List all sequences
-
-```json
-{}
-→ { "sequences": [{"schema": "public", "name": "users_id_seq", ...}, ...] }
-```
-
-**`describe_table`** — Get detailed table metadata
-
-```json
-{ "table": "users" }
-→ { "columns": [...], "constraints": [...], "size": "256 MB", ... }
-```
-
----
-
-### DDL Operations (16 tools)
-
-Create, modify, and drop database objects safely.
-
-**`create_table`** — Create a new table
-
-```json
-{
-  "table": "users",
-  "columns": [
-    "id SERIAL PRIMARY KEY",
-    "name VARCHAR(255) NOT NULL",
-    "email VARCHAR(255) UNIQUE"
-  ]
-}
-```
-
-**`drop_table`** — Drop a table
-
-```json
-{ "table": "users" }
-```
-
-**`create_view`** — Create a view
-
-```json
-{
-  "view_name": "active_users",
-  "query": "SELECT * FROM users WHERE status='active'"
-}
-```
-
-**`drop_view`** — Drop a view
-
-```json
-{ "view_name": "active_users" }
-```
-
-**`alter_view`** — Rename a view
-
-```json
-{ "view_name": "active_users", "rename_to": "active_accounts" }
-```
-
-**`create_schema`** — Create a schema
-
-```json
-{ "schema_name": "analytics" }
-```
-
-**`drop_schema`** — Drop a schema
-
-```json
-{ "schema_name": "analytics" }
-```
-
-**`create_index`** — Create an index
-
-```json
-{
-  "index_name": "idx_users_email",
-  "table": "users",
-  "columns": ["email"]
-}
-```
-
-**`drop_index`** — Drop an index
-
-```json
-{ "index_name": "idx_users_email" }
-```
-
-**`alter_index`** — Rename an index
-
-```json
-{ "index_name": "idx_users_email", "rename_to": "idx_email" }
-```
-
-**`create_sequence`** — Create a sequence
-
-```json
-{ "sequence_name": "app_id_seq", "start": 1000, "increment": 1 }
-```
-
-**`drop_sequence`** — Drop a sequence
-
-```json
-{ "sequence_name": "app_id_seq" }
-```
-
-**`create_partition`** — Create table partition
-
-```json
-{
-  "table": "orders",
-  "partition_name": "orders_2024",
-  "partition_type": "RANGE",
-  "column": "created_at",
-  "values": "FROM ('2024-01-01') TO ('2025-01-01')"
-}
-```
-
-**`delete_table_partition`** — Drop a partition
-
-```json
-{ "partition_name": "orders_2024" }
-```
-
-**`list_partitions`** — List partitions on a table
-
-```json
-{ "table": "orders" }
-→ { "partitions": [...] }
-```
-
-**`backup_table`** — Create a backup copy of a table
-
-```json
-{ "table": "users" }
-→ Creates table: backup_users with all data
-```
-
----
+### DDL Operations (15 tools)
+`create_table`, `drop_table`, `create_view`, `drop_view`, `alter_view`, `create_schema`, `drop_schema`, `create_sequence`, `drop_sequence`, `create_index`, `drop_index`, `alter_index`, `create_partition`, `drop_partition`, `backup_table`
 
 ### Batch Operations (4 tools)
+`async_batch_insert`, `async_batch_update`, `async_batch_delete`, `async_batch_insert_copy`
 
-High-performance bulk DML. Max 1000 rows per request.
+### Database Monitoring (10 tools)
+`get_table_stats`, `get_index_stats`, `show_database_size`, `show_table_size`, `get_cache_hit_ratio`, `analyze_table`, `vacuum_analyze`, `reindex_table`, `get_pg_stat_statements`, `reset_statistics`
 
-**`async_batch_insert`** — Insert multiple rows
+### Connection Management (4 tools)
+`list_connections`, `show_current_user`, `show_running_queries`, `show_connection_summary`
 
-```json
-{
-  "table": "users",
-  "columns": ["name", "email"],
-  "rows": [
-    ["Alice", "alice@example.com"],
-    ["Bob", "bob@example.com"]
-  ],
-  "returning": "id"
-}
-→ { "rows_affected": 2, "inserted_ids": [1, 2] }
-```
+### Security & Users (5 tools)
+`list_users`, `list_user_privileges`, `list_role_memberships`, `list_database_privileges`, `show_session_info`
 
-**`async_batch_update`** — Update multiple rows with different conditions
+### Configuration (5 tools)
+`show_all_settings`, `get_setting`, `show_memory_settings`, `show_performance_settings`, `show_log_settings`
 
-```json
-{
-  "table": "users",
-  "updates": { "status": "inactive" },
-  "where_clauses": ["id = 1", "id = 2"]
-}
-→ { "rows_affected": 2 }
-```
+### Transaction Monitoring (7 tools)
+`show_active_transactions`, `show_locks`, `show_waiting_locks`, `show_transaction_isolation`, `show_deadlocks`, `show_autocommit_status`, `show_transaction_timeout`
 
-**`async_batch_delete`** — Delete multiple rows
+### Replication (5 tools)
+`show_replication_status`, `list_replication_slots`, `list_standby_servers`, `show_wal_info`, `show_base_backup_progress`
 
-```json
-{
-  "table": "users",
-  "where_clauses": ["id = 1", "id = 2"],
-  "returning": "id"
-}
-→ { "rows_affected": 2, "inserted_ids": [1, 2] }
-```
+### Database Health (4 tools)
+`analyze_db_health`, `list_unused_indexes`, `list_duplicate_indexes`, `show_vacuum_progress`
 
-**`async_batch_insert_copy`** — Bulk insert with configurable batch size
-
-```json
-{
-  "table": "events",
-  "columns": ["user_id", "event_type"],
-  "rows": [[...5000 rows...]],
-  "batch_size": 1000
-}
-→ { "rows_affected": 5000, "batches": 5 }
-```
+### Maintenance (1 tool)
+`truncate_table`
 
 ---
 
-### Monitoring & Analysis (6 tools)
+## Version 3.0.0 Highlights
 
-**`list_connections`** — Show active database connections
-
-```json
-{}
-→ { "connections": [{"pid": 12345, "user": "postgres", "state": "active", ...}, ...] }
-```
-
-**`show_current_user`** — Show current user and database
-
-```json
-{}
-→ { "user": "postgres", "database": "mydb", "version": "PostgreSQL 16" }
-```
-
-**`analyze_table`** — Update table statistics
-
-```json
-{ "table": "users" }
-→ { "status": "success", "action": "ANALYZE", "table": "users" }
-```
-
-**`vacuum_table`** — Clean dead tuples and optimize
-
-```json
-{ "table": "users" }
-→ { "status": "success", "action": "VACUUM", "table": "users" }
-```
-
-**`get_table_size`** — Get table size in bytes and human-readable format
-
-```json
-{ "table": "users" }
-→ { "size": "256 MB", "size_bytes": 268435456 }
-```
-
-**`get_database_size`** — Get total database size
-
-```json
-{}
-→ { "size": "2.5 GB", "size_bytes": 2684354560 }
-```
-
----
-
-### Connection & Security (4 tools)
-
-**`show_running_queries`** — Show all non-idle queries
-
-```json
-{}
-→ { "queries": [{"pid": 12345, "user": "postgres", "query": "SELECT ...", ...}, ...] }
-```
-
-**`list_users`** — List all database users
-
-```json
-{}
-→ { "users": [{"username": "alice", "superuser": false, "canlogin": true}, ...] }
-```
-
-**`list_user_privileges`** — List privileges for a user
-
-```json
-{ "username": "alice" }
-→ { "privileges": [{"schema": "public", "table": "users", "privilege": "SELECT"}, ...] }
-```
-
-**`show_session_info`** — Show current session details
-
-```json
-{}
-→ { "current_user": "postgres", "current_database": "mydb", "client_address": "127.0.0.1", ... }
-```
-
----
-
-### Configuration (2 tools)
-
-**`show_all_settings`** — List all PostgreSQL settings
-
-```json
-{}
-→ { "settings": [{"name": "work_mem", "value": "4096", "unit": "kB", ...}, ...] }
-```
-
-**`get_setting`** — Get a specific setting
-
-```json
-{ "setting": "work_mem" }
-→ { "name": "work_mem", "value": "4096", "unit": "kB", "description": "...", ... }
-```
-
----
+- **PostgreSQL Documentation Audit**: All SQL queries verified against official PostgreSQL documentation (v16–18). Fixed 4 bugs found during audit:
+  - `show_autocommit_status`: removed dead `SHOW autocommit` call (GUC removed in PG 7.4)
+  - `show_deadlocks`: replaced unreliable `state='disabled'` filter with `pg_blocking_pids()` for accurate blocked-process detection
+  - `analyze_db_health`/`show_vacuum_progress`: fixed nonexistent `max_dead_tuple_index_pages` column; added PG version-aware fallback for `max_dead_tuple_bytes` vs `max_dead_tuples`
+  - `show_base_backup_progress`: fixed wrong view name `pg_stat_basebackup` (never existed); corrected to `pg_stat_progress_basebackup` (PG 13+)
+- **Security Hardening** (v2.1.1): SQL injection prevention, SET LOCAL isolation, structured predicates
+- **76 tools with integration tests** — coverage for all tool categories
 
 ## Architecture
 
@@ -542,8 +205,8 @@ High-performance bulk DML. Max 1000 rows per request.
               └────────┬────────┘
                        │
           ┌────────────┴────────────┐
-          │   Tool Dispatcher       │
-          │   (46 tools)            │
+           │   Tool Dispatcher       │
+           │   (76 tools)            │
           └────────────┬────────────┘
                        │
         ┌──────────────┴──────────────┐

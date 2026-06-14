@@ -1,7 +1,6 @@
 /// Data generator for test schema
 /// Generates realistic test data across 12 tables with thousands of records
 /// Run: cargo run --release --bin load_test_data -- --database-url "postgres://..."
-
 use tokio_postgres::{connect, NoTls};
 
 #[tokio::main]
@@ -100,7 +99,7 @@ async fn generate_categories(client: &tokio_postgres::Client, count: i32) -> Res
         "Pet Supplies", "Office Supplies", "Tools", "Music", "Video Games"
     ];
 
-    for (i, name) in category_names.iter().enumerate().take(count as usize) {
+    for (_i, name) in category_names.iter().enumerate().take(count as usize) {
         let description = format!("Category for {}", name);
         client
             .execute(
@@ -117,7 +116,7 @@ async fn generate_products(client: &tokio_postgres::Client, count: i32) -> Resul
         let category_id = (i % 15) + 1;
         let name = format!("Product {}", i);
         let description = format!("High-quality product #{} with excellent features", i);
-        let price = (10.0 + (i as f64 * 3.14) % 490.0).round() / 100.0;
+        let price = (10.0 + (i as f64 * std::f64::consts::PI) % 490.0).round() / 100.0;
         let stock = (i * 7) % 1000;
 
         client
@@ -276,7 +275,7 @@ async fn generate_audit_logs(client: &tokio_postgres::Client, count: i32) -> Res
     for i in 0..count {
         let table = tables[i as usize % tables.len()];
         let operation = operations[i as usize % operations.len()];
-        let user_id = ((i % 100) + 1);
+        let user_id = (i % 100) + 1;
 
         client
             .execute(

@@ -1,6 +1,5 @@
 /// HTTP Black Box Load Test for MCP PostgreSQL
 /// Measures real throughput with concurrent requests and connection pooling
-
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
@@ -247,7 +246,7 @@ async fn load_test_tool_variations() {
             });
         }
 
-        while let Some(_) = tasks.join_next().await {}
+        while tasks.join_next().await.is_some() {}
 
         let elapsed = start.elapsed().as_secs_f64();
         let total = success.load(Ordering::Relaxed);

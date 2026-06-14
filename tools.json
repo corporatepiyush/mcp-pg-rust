@@ -738,7 +738,7 @@
       "properties": {
         "table": {"type": "string", "description": "Target table (required). Example: 'users', 'orders'. Case-insensitive."},
         "updates": {"type": "object", "description": "Column→value mappings (required). Example: {'status': 'inactive'}. Columns being updated."},
-        "where_clauses": {"type": "array", "items": {"type": "string"}, "description": "WHERE conditions (required). Example: ['id = 1', 'id = 2']. Each applied independently."}
+        "where_clauses": {"type": "array", "items": {"type": "object", "properties": {"column": {"type": "string"}, "op": {"type": "string", "enum": ["=", "<", ">", "<=", ">=", "<>", "IN", "LIKE"]}, "value": {}}}, "description": "Structured WHERE conditions (required). Example: [{'column': 'id', 'op': '=', 'value': 1}]. OR-combined. Operators: =, <, >, <=, >=, <>, IN, LIKE."}
       },
       "required": ["table", "updates", "where_clauses"]
     }
@@ -750,7 +750,7 @@
       "type": "object",
       "properties": {
         "table": {"type": "string", "description": "Target table (required). Example: 'users', 'logs'. Case-insensitive."},
-        "where_clauses": {"type": "array", "items": {"type": "string"}, "description": "WHERE conditions (required). Example: ['id = 1', 'id = 2']. OR-combined together."},
+        "where_clauses": {"type": "array", "items": {"type": "object", "properties": {"column": {"type": "string"}, "op": {"type": "string", "enum": ["=", "<", ">", "<=", ">=", "<>", "IN", "LIKE"]}, "value": {}}}, "description": "Structured WHERE conditions (required). Example: [{'column': 'id', 'op': '=', 'value': 1}]. OR-combined. Operators: =, <, >, <=, >=, <>, IN, LIKE."},
         "returning": {"type": "string", "description": "Column to return (optional). Example: 'id'. Useful for verifying deletion."}
       },
       "required": ["table", "where_clauses"]

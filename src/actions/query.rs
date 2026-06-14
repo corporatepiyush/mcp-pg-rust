@@ -13,11 +13,26 @@ fn validate_sql(sql: &str, allowed_prefix: &str, label: &str) -> std::result::Re
             format!("SQL exceeds maximum length of {MAX_SQL_LEN} characters (got {})", sql.len())
         ));
     }
-    let first_word = sql.split_whitespace().next().unwrap_or("").to_uppercase();
+    let trimmed = sql.trim();
+    let first_word = trimmed.split_whitespace().next().unwrap_or("").to_uppercase();
     if first_word != allowed_prefix {
         return Err(crate::errors::MCPError::InvalidParams(
             format!("Invalid {label} query: expected '{allowed_prefix}'")
         ));
+    }
+    // Reject multi-statement: find the first unquoted ';' that is not trailing
+    let body = trimmed.strip_suffix(';').unwrap_or(trimmed);
+    let mut in_string = false;
+    for (i, ch) in body.char_indices() {
+        if ch == '\'' {
+            in_string = !in_string;
+        }
+        if !in_string && ch == ';' {
+            let ctx_end = (i + 20).min(sql.len());
+            return Err(crate::errors::MCPError::InvalidParams(
+                format!("Multi-statement queries are not allowed: {label} contained ';' at position {i} (context: ...{}...)", &sql[i..ctx_end])
+            ));
+        }
     }
     Ok(())
 }
@@ -200,11 +215,7 @@ pub async fn async_execute_insert(client: &Client, params: &Option<&Value>) -> M
 
     validate_sql(sql, "INSERT", "INSERT")?;
 
-    client.execute("SET synchronous_commit = OFF", &[]).await?;
-    let rows_affected = client.execute(sql, &[]).await?;
-    client.execute("SET synchronous_commit = ON", &[]).await?;
-
-    Ok(json!({ "rows_affected": rows_affected }))
+    async_sync_commit_execute(client, sql).await
 }
 
 /// 27. Async execute update (with synchronous_commit=off for high-volume operations)
@@ -223,11 +234,7 @@ pub async fn async_execute_update(client: &Client, params: &Option<&Value>) -> M
 
     validate_sql(sql, "UPDATE", "UPDATE")?;
 
-    client.execute("SET synchronous_commit = OFF", &[]).await?;
-    let rows_affected = client.execute(sql, &[]).await?;
-    client.execute("SET synchronous_commit = ON", &[]).await?;
-
-    Ok(json!({ "rows_affected": rows_affected }))
+    async_sync_commit_execute(client, sql).await
 }
 
 /// 28. Async execute delete (with synchronous_commit=off for high-volume operations)
@@ -246,9 +253,23 @@ pub async fn async_execute_delete(client: &Client, params: &Option<&Value>) -> M
 
     validate_sql(sql, "DELETE", "DELETE")?;
 
-    client.execute("SET synchronous_commit = OFF", &[]).await?;
-    let rows_affected = client.execute(sql, &[]).await?;
-    client.execute("SET synchronous_commit = ON", &[]).await?;
+    async_sync_commit_execute(client, sql).await
+}
 
-    Ok(json!({ "rows_affected": rows_affected }))
+/// Execute a DML statement inside a transaction with SET LOCAL synchronous_commit = OFF.
+/// The SET LOCAL is scoped to the transaction, so it auto-resets on COMMIT/ROLLBACK,
+/// preventing session-state leakage when the connection returns to the pool.
+async fn async_sync_commit_execute(client: &Client, sql: &str) -> MCPResult<Value> {
+    client.execute("BEGIN", &[]).await?;
+    client.execute("SET LOCAL synchronous_commit = OFF", &[]).await?;
+    match client.execute(sql, &[]).await {
+        Ok(rows_affected) => {
+            client.execute("COMMIT", &[]).await?;
+            Ok(json!({ "rows_affected": rows_affected }))
+        }
+        Err(e) => {
+            client.execute("ROLLBACK", &[]).await.ok();
+            Err(crate::errors::MCPError::DatabaseError(e))
+        }
+    }
 }

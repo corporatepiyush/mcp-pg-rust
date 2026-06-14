@@ -13,6 +13,11 @@ target
 # Contains mutation testing data
 **/mutants.out*/
 
+# AI agent docs (not for human reading)
+CHANGELOG.md
+AGENTS_CHANGELOG.md
+*CHANGELOG*
+
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore

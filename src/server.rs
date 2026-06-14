@@ -258,7 +258,7 @@ async fn handle_tools_call(
             | "execute_update" | "execute_delete" | "explain_query"
             | "async_execute_insert" | "async_execute_update" | "async_execute_delete"
             | "async_batch_insert" | "async_batch_update" | "async_batch_delete" | "async_batch_insert_copy"
-            | "create_table" | "drop_table" | "create_view" | "drop_view" | "alter_view" | "create_schema" | "drop_schema" | "create_sequence" | "drop_sequence" | "alter_index" | "create_index" | "list_partitions" | "drop_index" | "create_partition" | "drop_partition"
+            | "create_table" | "drop_table" | "create_view" | "drop_view" | "alter_view" | "create_schema" | "drop_schema" | "create_sequence" | "drop_sequence" | "alter_index" | "backup_table" | "create_index" | "list_partitions" | "drop_index" | "create_partition" | "drop_partition"
             | "get_table_stats" | "get_index_stats" | "show_database_size"
             | "show_table_size" | "get_cache_hit_ratio"
             | "list_connections" | "show_current_user"
@@ -377,6 +377,9 @@ async fn handle_tools_call(
         tool => Err(method_not_found(tool)),
     };
 
+    if let Err(ref e) = result {
+        error!("Tool '{}' error: {:?}", tool_name, e);
+    }
     pool.release(client);
     result
 }
@@ -483,5 +486,41 @@ mod tests {
         assert_eq!(result["protocolVersion"], "2024-11-05");
         assert!(result["capabilities"]["tools"]["listChanged"].is_boolean());
         assert_eq!(result["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
+    }
+
+    /// Enforce Phase 1.5: no bare `SET ` outside transaction blocks.
+    /// Every session-level SET must use `SET LOCAL` inside a `BEGIN`/`COMMIT` pair.
+    /// This grep-based test fails compilation if any violation exists in `src/actions/`.
+    #[test]
+    fn test_no_bare_set_outside_transaction() {
+        let source_files = &[
+            include_str!("../src/actions/query.rs"),
+            include_str!("../src/actions/batch.rs"),
+        ];
+        for (idx, source) in source_files.iter().enumerate() {
+            for (line_no, line) in source.lines().enumerate() {
+                let trimmed = line.trim();
+                // Skip comments, UPDATE SET, string literals
+                if trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with("*") {
+                    continue;
+                }
+                if trimmed.contains("UPDATE ") && trimmed.contains("SET ") {
+                    continue;
+                }
+                if trimmed.contains("SET LOCAL") {
+                    continue;
+                }
+                // Check for bare client.execute("SET ...") outside txn
+                if trimmed.contains("client.execute(\"SET ") && !trimmed.contains("SET LOCAL") {
+                    let names = ["query.rs", "batch.rs"];
+                    panic!(
+                        "Phase 1.5 violation: bare `SET` (not SET LOCAL) found in {}:{} — \
+                         use BEGIN + SET LOCAL + COMMIT pattern to avoid session leakage.\n\
+                         Line: {}",
+                        names[idx], line_no + 1, trimmed
+                    );
+                }
+            }
+        }
     }
 }

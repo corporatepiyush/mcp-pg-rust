@@ -131,7 +131,8 @@ pub async fn show_wal_info(client: &Client, _params: &Option<&Value>) -> MCPResu
 
 /// 40. Show base backup progress
 pub async fn show_base_backup_progress(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
-    // PG 16-17: pg_stat_basebackup; PG 18+: pg_stat_progress_basebackup
+    // `pg_stat_progress_basebackup` was added in PostgreSQL 13.
+    // No other view name exists for this purpose.
     let query = match client.query_one(
         "SELECT count(*) FROM pg_class WHERE relname = 'pg_stat_progress_basebackup'", &[]
     ).await {
@@ -140,8 +141,11 @@ pub async fn show_base_backup_progress(client: &Client, _params: &Option<&Value>
              FROM pg_stat_progress_basebackup WHERE phase IS NOT NULL"
         }
         _ => {
-            "SELECT phase, backup_total, backup_streamed, tablespaces_total, tablespaces_streamed
-             FROM pg_stat_basebackup WHERE phase IS NOT NULL"
+            // PG < 13 does not have progress reporting for base backups
+            return Ok(json!({
+                "status": "unavailable",
+                "message": "Base backup progress requires PostgreSQL 13+ (pg_stat_progress_basebackup view not found)"
+            }));
         }
     };
     let rows = client

@@ -109,19 +109,31 @@ pub async fn show_transaction_isolation(client: &Client, _params: &Option<&Value
     }))
 }
 
-/// 48. Show deadlocks
+/// 48. Show blocked processes (potential deadlock situations)
+///
+/// PostgreSQL's deadlock detector runs every `deadlock_timeout` (default 1s)
+/// and automatically cancels one transaction when a deadlock cycle is detected.
+/// By the time a deadlock is logged, it has already been resolved.
+/// This view shows processes that are currently blocked by other processes,
+/// which represents potential deadlock or lock contention situations.
 pub async fn show_deadlocks(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
+    // Show processes blocked by others, with the blocking PID identified
     let rows = client
         .query(
-            "SELECT pid, usename, application_name, state, query_start, query
-             FROM pg_stat_activity
-             WHERE state = 'disabled' OR wait_event = 'ProcArrayLock'
-             ORDER BY query_start ASC",
+            "SELECT a.pid, a.usename::text, a.application_name, a.state,
+                    a.query_start::text, a.query,
+                    pg_blocking_pids(a.pid) AS blocked_by,
+                    (SELECT count(*) FROM pg_stat_activity
+                     WHERE pid = ANY(pg_blocking_pids(a.pid))) AS blockers_count
+             FROM pg_stat_activity a
+             WHERE cardinality(pg_blocking_pids(a.pid)) > 0
+               AND a.pid != pg_backend_pid()
+             ORDER BY a.query_start ASC",
             &[],
         )
         .await?;
 
-    let deadlocks: Vec<Value> = rows
+    let blocked: Vec<Value> = rows
         .iter()
         .map(|row| {
             json!({
@@ -131,27 +143,29 @@ pub async fn show_deadlocks(client: &Client, _params: &Option<&Value>) -> MCPRes
                 "state": row.get::<_, String>(3),
                 "query_start": row.get::<_, String>(4),
                 "query": row.get::<_, Option<String>>(5),
+                "blocked_by": row.get::<_, Vec<i32>>(6),
+                "blocker_count": row.get::<_, i64>(7),
+                "advisory": "Deadlocks are auto-detected and resolved within deadlock_timeout (default 1s). These are currently blocked processes — potential deadlock situations."
             })
         })
         .collect();
 
-    Ok(json!({ "potential_deadlocks": deadlocks }))
+    Ok(json!({ "blocked_processes": blocked, "count": blocked.len() }))
 }
 
 /// 49. Show auto commit status
 ///
-/// Note: PostgreSQL 17+ removed the `autocommit` GUC.
-/// Autocommit is always-on in the wire protocol and cannot be disabled.
-/// For PG < 17, we query `SHOW autocommit`; for PG >= 17, we return `true`.
-pub async fn show_autocommit_status(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
-    let autocommit = match client.query("SHOW autocommit", &[]).await {
-        Ok(rows) => rows[0].get::<_, String>(0) == "on",
-        Err(_) => true, // PG 17+ removed the setting; always-on
-    };
-
+/// PostgreSQL's `autocommit` GUC was removed in version 7.4 (2003).
+/// Autocommit is always-on in the PostgreSQL wire protocol and cannot be
+/// disabled server-side. Client libraries (psycopg2, JDBC, etc.) implement
+/// auto-commit-off at the client level by wrapping statements in BEGIN/COMMIT.
+/// This tool reports `always_on` because the server always uses autocommit.
+pub async fn show_autocommit_status(_client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     Ok(json!({
-        "autocommit": autocommit,
-        "value": if autocommit { "on" } else { "off" }
+        "autocommit": true,
+        "status": "always_on",
+        "detail": "PostgreSQL always operates in autocommit mode at the wire protocol level. Client-side autocommit control is implemented by your database driver, not the server.",
+        "note": "The autocommit GUC was removed in PostgreSQL 7.4 (2003) and is not available in any supported version."
     }))
 }
 

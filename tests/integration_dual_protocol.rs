@@ -2,7 +2,6 @@
 /// Tests both TCP (port 3000) and HTTP (port 3001)
 /// Records latency, throughput, and success/failure rates
 /// Run: cargo test --test integration_dual_protocol -- --nocapture
-
 use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -56,6 +55,7 @@ impl ProtocolStats {
     }
 }
 
+#[allow(clippy::type_complexity)]
 static STATS: Lazy<Arc<Mutex<HashMap<String, Vec<ProtocolStats>>>>> =
     Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 

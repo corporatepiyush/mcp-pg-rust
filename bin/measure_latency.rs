@@ -1,8 +1,7 @@
 /// HTTP Server Latency Measurement Tool
 /// Measures end-to-end latency for all MCP tools via HTTP/2
 /// Run: cargo run --release --bin measure_latency
-
-use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+use std::sync::Arc;
 use std::time::Instant;
 use tokio::task;
 use reqwest::Client;
@@ -10,6 +9,7 @@ use serde_json::json;
 use std::collections::BTreeMap;
 
 #[derive(Clone)]
+#[allow(dead_code)]
 struct LatencyStats {
     min_ms: f64,
     max_ms: f64,
@@ -195,7 +195,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut acceptable = 0;
     let mut slow = 0;
 
-    for (_, (_, stats)) in &all_results {
+    for (_, stats) in all_results.values() {
         if stats.p95_ms < 10.0 {
             excellent += 1;
         } else if stats.p95_ms < 20.0 {

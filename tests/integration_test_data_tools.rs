@@ -1,7 +1,6 @@
 /// Integration tests for all tools using generated test data
 /// Requires running: cargo run --release --bin load_test_data
 /// Then: cargo test --test integration_test_data_tools -- --nocapture
-
 use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -271,7 +270,7 @@ fn test_get_pg_stat_statements() {
             let stmt_list = statements.as_array().unwrap();
             println!("✓ get_pg_stat_statements: {} statements tracked", stmt_list.len());
         }
-        Err(e) => {
+        Err(_e) => {
             // Extension might not be installed
             println!("⚠ get_pg_stat_statements: extension not installed (this is OK)");
         }

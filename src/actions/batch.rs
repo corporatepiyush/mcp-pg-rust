@@ -1,11 +1,11 @@
 use serde_json::{json, Value};
 use tokio_postgres::Client;
-use crate::errors::Result as MCPResult;
+use crate::errors::{MCPError, Result as MCPResult};
+use crate::validation::{validate_identifier, quote_identifier};
 
 const MAX_BATCH_ROWS: usize = 1000;
-const MAX_IDENTIFIER_LEN: usize = 255;
+const ALLOWED_OPS: &[&str] = &["=", "<", ">", "<=", ">=", "<>", "IN", "LIKE"];
 
-/// Format JSON value as SQL-safe string
 fn format_sql_value(val: &Value) -> String {
     match val {
         Value::String(s) => format!("'{}'", s.replace("'", "''")),
@@ -16,40 +16,86 @@ fn format_sql_value(val: &Value) -> String {
     }
 }
 
+fn validate_table_columns(table: &str, columns: &[&str]) -> Result<(), MCPError> {
+    validate_identifier(table, "table")?;
+    for col in columns {
+        validate_identifier(col, "column")?;
+    }
+    Ok(())
+}
+
+fn validate_where_clauses(where_clauses: &[Value]) -> Result<Vec<(String, String, &Value)>, MCPError> {
+    if where_clauses.is_empty() {
+        return Err(MCPError::InvalidParams("'where_clauses' must not be empty".into()));
+    }
+    let mut parsed = Vec::new();
+    for clause in where_clauses {
+        let obj = clause.as_object().ok_or_else(|| {
+            MCPError::InvalidParams("Each where_clause must be an object with 'column', 'op', and 'value'".into())
+        })?;
+        let column = obj.get("column").and_then(|v| v.as_str()).ok_or_else(|| {
+            MCPError::InvalidParams("Each where_clause must have a string 'column'".into())
+        })?;
+        let op = obj.get("op").and_then(|v| v.as_str()).ok_or_else(|| {
+            MCPError::InvalidParams("Each where_clause must have a string 'op'".into())
+        })?;
+        let value = obj.get("value").ok_or_else(|| {
+            MCPError::InvalidParams("Each where_clause must have a 'value'".into())
+        })?;
+        validate_identifier(column, "where_clause.column")?;
+        if !ALLOWED_OPS.contains(&op) {
+            return Err(MCPError::InvalidParams(
+                format!("Invalid operator '{op}' — allowed: {}", ALLOWED_OPS.join(", "))
+            ));
+        }
+        parsed.push((column.to_string(), op.to_string(), value));
+    }
+    Ok(parsed)
+}
+
+fn build_where_sql(parsed: &[(String, String, &Value)]) -> String {
+    parsed.iter().map(|(col, op, val)| {
+        if op == "IN" {
+            if let Some(arr) = val.as_array() {
+                let items: Vec<String> = arr.iter().map(format_sql_value).collect();
+                format!("{} IN ({})", quote_identifier(col), items.join(", "))
+            } else {
+                format!("{} {} {}", quote_identifier(col), op, format_sql_value(val))
+            }
+        } else {
+            format!("{} {} {}", quote_identifier(col), op, format_sql_value(val))
+        }
+    }).collect::<Vec<_>>().join(" OR ")
+}
+
 /// Batch insert - high performance multi-row insertion
-/// Applies synchronous_commit = OFF at query level for maximum throughput during bulk loads
+/// Uses SET LOCAL inside a transaction to avoid session-level side effects.
 pub async fn async_batch_insert(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
     let params = params.as_ref().ok_or_else(|| {
-        crate::errors::MCPError::InvalidParams("Missing parameters".into())
+        MCPError::InvalidParams("Missing parameters".into())
     })?;
 
     let table = params
         .get("table")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table'".into()))?;
-
-    if table.is_empty() || table.len() > MAX_IDENTIFIER_LEN {
-        return Err(crate::errors::MCPError::InvalidParams(
-            format!("'table' must be 1-{MAX_IDENTIFIER_LEN} characters")
-        ));
-    }
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'table'".into()))?;
 
     let columns = params
         .get("columns")
         .and_then(|v| v.as_array())
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'columns'".into()))?;
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'columns'".into()))?;
 
     let rows = params
         .get("rows")
         .and_then(|v| v.as_array())
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'rows'".into()))?;
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'rows'".into()))?;
 
     if rows.is_empty() {
         return Ok(json!({ "rows_affected": 0 }));
     }
 
     if rows.len() > MAX_BATCH_ROWS {
-        return Err(crate::errors::MCPError::InvalidParams(
+        return Err(MCPError::InvalidParams(
             format!("Batch size exceeds maximum of {MAX_BATCH_ROWS} rows (got {})", rows.len())
         ));
     }
@@ -57,32 +103,30 @@ pub async fn async_batch_insert(client: &Client, params: &Option<&Value>) -> MCP
     let returning = params.get("returning").and_then(|v| v.as_str());
 
     let column_count = columns.len();
-    let column_names: Vec<&str> = columns
-        .iter()
-        .filter_map(|c| c.as_str())
-        .collect();
+    let column_names: Vec<&str> = columns.iter().filter_map(|c| c.as_str()).collect();
 
     if column_names.len() != column_count {
-        return Err(crate::errors::MCPError::InvalidParams(
-            "All column names must be strings".into(),
-        ));
+        return Err(MCPError::InvalidParams("All column names must be strings".into()));
     }
 
-    // Build VALUES clause
-    let cols = column_names.join(", ");
-    let total_capacity = 64 + cols.len() + rows.len() * (column_count * 16 + 4);
-    let mut sql = String::with_capacity(total_capacity);
+    validate_table_columns(table, &column_names)?;
+
+    let quoted_table = quote_identifier(table);
+    let quoted_cols: Vec<String> = column_names.iter().map(|c| quote_identifier(c)).collect();
+    let cols = quoted_cols.join(", ");
+
+    let mut sql = String::with_capacity(64 + cols.len() + rows.len() * (column_count * 16 + 4));
     use std::fmt::Write;
-    write!(sql, "INSERT INTO {table} ({cols}) VALUES ").unwrap();
+    write!(sql, "INSERT INTO {quoted_table} ({cols}) VALUES ").unwrap();
 
     for (i, row) in rows.iter().enumerate() {
         let row_array = row.as_array().ok_or_else(|| {
-            crate::errors::MCPError::InvalidParams("Each row must be an array".into())
+            MCPError::InvalidParams("Each row must be an array".into())
         })?;
 
         if row_array.len() != column_count {
-            return Err(crate::errors::MCPError::InvalidParams(
-                format!("Row has {} columns, expected {}", row_array.len(), column_count),
+            return Err(MCPError::InvalidParams(
+                format!("Row {} has {} columns, expected {}", i, row_array.len(), column_count),
             ));
         }
 
@@ -132,152 +176,115 @@ pub async fn async_batch_insert(client: &Client, params: &Option<&Value>) -> MCP
         sql.push(')');
     }
 
-    // Temporarily disable synchronous commit for bulk insert throughput,
-    // then restore the original setting to avoid session-level side effects.
-    let orig_sync = client
-        .query_one("SHOW synchronous_commit", &[])
-        .await
-        .map(|r| r.get::<_, String>(0))
-        .unwrap_or_else(|_| "on".to_string());
-    client.execute("SET synchronous_commit = OFF", &[]).await?;
+    client.execute("BEGIN", &[]).await?;
+    client.execute("SET LOCAL synchronous_commit = OFF", &[]).await?;
 
     let result = if let Some(col) = returning {
-        let r = format!(" RETURNING {}", col);
+        validate_identifier(col, "returning")?;
+        let r = format!(" RETURNING {}", quote_identifier(col));
         sql.push_str(&r);
-        let rows = client.query(&sql, &[]).await;
-        client
-            .execute(&format!("SET synchronous_commit = {}", orig_sync), &[])
-            .await
-            .ok();
-        let rows = rows?;
-        let ids: Vec<Value> = rows.iter().map(|r| {
-            if let Ok(id) = r.try_get::<_, i64>(0) {
-                json!(id)
-            } else if let Ok(id) = r.try_get::<_, i32>(0) {
-                json!(id)
-            } else {
-                json!(null)
+        match client.query(&sql, &[]).await {
+            Ok(rows) => {
+                client.execute("COMMIT", &[]).await?;
+                let ids: Vec<Value> = rows.iter().map(|r| {
+                    if let Ok(id) = r.try_get::<_, i64>(0) {
+                        json!(id)
+                    } else if let Ok(id) = r.try_get::<_, i32>(0) {
+                        json!(id)
+                    } else {
+                        json!(null)
+                    }
+                }).collect();
+                json!({ "rows_affected": ids.len(), "inserted_ids": ids })
             }
-        }).collect();
-        json!({
-            "rows_affected": ids.len(),
-            "inserted_ids": ids
-        })
+            Err(e) => {
+                client.execute("ROLLBACK", &[]).await.ok();
+                return Err(MCPError::DatabaseError(e));
+            }
+        }
     } else {
-        let rows_affected = client.execute(&sql, &[]).await;
-        client
-            .execute(&format!("SET synchronous_commit = {}", orig_sync), &[])
-            .await
-            .ok();
-        json!({
-            "rows_affected": rows_affected?
-        })
+        match client.execute(&sql, &[]).await {
+            Ok(rows_affected) => {
+                client.execute("COMMIT", &[]).await?;
+                json!({ "rows_affected": rows_affected })
+            }
+            Err(e) => {
+                client.execute("ROLLBACK", &[]).await.ok();
+                return Err(MCPError::DatabaseError(e));
+            }
+        }
     };
 
     Ok(result)
 }
 
-/// Batch update - bulk updates with WHERE conditions
+/// Batch update - bulk updates with structured WHERE conditions
 pub async fn async_batch_update(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
     let params = params.as_ref().ok_or_else(|| {
-        crate::errors::MCPError::InvalidParams("Missing parameters".into())
+        MCPError::InvalidParams("Missing parameters".into())
     })?;
 
     let table = params
         .get("table")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table'".into()))?;
-
-    if table.is_empty() || table.len() > MAX_IDENTIFIER_LEN {
-        return Err(crate::errors::MCPError::InvalidParams(
-            format!("'table' must be 1-{MAX_IDENTIFIER_LEN} characters")
-        ));
-    }
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'table'".into()))?;
 
     let updates = params
         .get("updates")
         .and_then(|v| v.as_object())
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'updates'".into()))?;
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'updates'".into()))?;
 
     let where_clauses = params
         .get("where_clauses")
         .and_then(|v| v.as_array())
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'where_clauses'".into()))?;
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'where_clauses'".into()))?;
 
-    if where_clauses.is_empty() {
-        return Ok(json!({ "rows_affected": 0 }));
+    validate_identifier(table, "table")?;
+    let parsed_where = validate_where_clauses(where_clauses)?;
+
+    let quoted_table = quote_identifier(table);
+    let mut set_clauses = Vec::new();
+    for (key, val) in updates {
+        validate_identifier(key, "updates key")?;
+        set_clauses.push(format!("{} = {}", quote_identifier(key), format_sql_value(val)));
     }
 
-    let mut total_affected = 0u64;
+    let where_sql = build_where_sql(&parsed_where);
+    let sql = format!("UPDATE {quoted_table} SET {} WHERE {where_sql}", set_clauses.join(", "));
 
-    for where_clause in where_clauses {
-        let where_str = where_clause
-            .as_str()
-            .ok_or_else(|| crate::errors::MCPError::InvalidParams("Where clause must be string".into()))?;
+    let rows_affected = client.execute(&sql, &[]).await?;
 
-        let mut set_clauses = Vec::new();
-        for (key, val) in updates {
-            let val_str = format_sql_value(val);
-            set_clauses.push(format!("{} = {}", key, val_str));
-        }
-
-        let sql = format!(
-            "UPDATE {} SET {} WHERE {}",
-            table,
-            set_clauses.join(", "),
-            where_str
-        );
-
-        let rows_affected = client.execute(&sql, &[]).await?;
-        total_affected += rows_affected;
-    }
-
-    Ok(json!({
-        "rows_affected": total_affected
-    }))
+    Ok(json!({ "rows_affected": rows_affected }))
 }
 
-/// Batch delete - bulk deletion with combined WHERE clauses
+/// Batch delete - bulk deletion with structured WHERE conditions
 pub async fn async_batch_delete(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
     let params = params.as_ref().ok_or_else(|| {
-        crate::errors::MCPError::InvalidParams("Missing parameters".into())
+        MCPError::InvalidParams("Missing parameters".into())
     })?;
 
     let table = params
         .get("table")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table'".into()))?;
-
-    if table.is_empty() || table.len() > MAX_IDENTIFIER_LEN {
-        return Err(crate::errors::MCPError::InvalidParams(
-            format!("'table' must be 1-{MAX_IDENTIFIER_LEN} characters")
-        ));
-    }
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'table'".into()))?;
 
     let where_clauses = params
         .get("where_clauses")
         .and_then(|v| v.as_array())
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'where_clauses'".into()))?;
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'where_clauses'".into()))?;
 
-    if where_clauses.is_empty() {
-        return Ok(json!({ "rows_affected": 0 }));
-    }
+    validate_identifier(table, "table")?;
+    let parsed_where = validate_where_clauses(where_clauses)?;
 
     let returning = params.get("returning").and_then(|v| v.as_str());
 
-    let where_conditions: Vec<String> = where_clauses
-        .iter()
-        .filter_map(|c| c.as_str().map(|s| format!("({})", s)))
-        .collect();
-
-    let mut sql = format!(
-        "DELETE FROM {} WHERE {}",
-        table,
-        where_conditions.join(" OR ")
-    );
+    let quoted_table = quote_identifier(table);
+    let where_sql = build_where_sql(&parsed_where);
+    let mut sql = format!("DELETE FROM {quoted_table} WHERE {where_sql}");
 
     if let Some(col) = returning {
-        sql.push_str(&format!(" RETURNING {}", col));
+        validate_identifier(col, "returning")?;
+        sql.push_str(&format!(" RETURNING {}", quote_identifier(col)));
         let rows = client.query(&sql, &[]).await?;
         let ids: Vec<Value> = rows.iter().map(|r| {
             if let Ok(id) = r.try_get::<_, i64>(0) {
@@ -288,44 +295,33 @@ pub async fn async_batch_delete(client: &Client, params: &Option<&Value>) -> MCP
                 json!(null)
             }
         }).collect();
-        Ok(json!({
-            "rows_affected": ids.len(),
-            "inserted_ids": ids
-        }))
+        Ok(json!({ "rows_affected": ids.len(), "inserted_ids": ids }))
     } else {
         let rows_affected = client.execute(&sql, &[]).await?;
-        Ok(json!({
-            "rows_affected": rows_affected
-        }))
+        Ok(json!({ "rows_affected": rows_affected }))
     }
 }
 
 /// Batch insert with auto-batching for massive loads
 pub async fn async_batch_insert_copy(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
     let params = params.as_ref().ok_or_else(|| {
-        crate::errors::MCPError::InvalidParams("Missing parameters".into())
+        MCPError::InvalidParams("Missing parameters".into())
     })?;
 
     let table = params
         .get("table")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table'".into()))?;
-
-    if table.is_empty() || table.len() > MAX_IDENTIFIER_LEN {
-        return Err(crate::errors::MCPError::InvalidParams(
-            format!("'table' must be 1-{MAX_IDENTIFIER_LEN} characters")
-        ));
-    }
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'table'".into()))?;
 
     let columns = params
         .get("columns")
         .and_then(|v| v.as_array())
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'columns'".into()))?;
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'columns'".into()))?;
 
     let rows = params
         .get("rows")
         .and_then(|v| v.as_array())
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'rows'".into()))?;
+        .ok_or_else(|| MCPError::InvalidParams("Missing 'rows'".into()))?;
 
     let batch_size = params
         .get("batch_size")
@@ -337,33 +333,29 @@ pub async fn async_batch_insert_copy(client: &Client, params: &Option<&Value>) -
     }
 
     if rows.len() > MAX_BATCH_ROWS {
-        return Err(crate::errors::MCPError::InvalidParams(
+        return Err(MCPError::InvalidParams(
             format!("Batch size exceeds maximum of {MAX_BATCH_ROWS} rows (got {})", rows.len())
         ));
     }
 
-    let column_names: Vec<&str> = columns
-        .iter()
-        .filter_map(|c| c.as_str())
-        .collect();
+    let column_names: Vec<&str> = columns.iter().filter_map(|c| c.as_str()).collect();
+    validate_table_columns(table, &column_names)?;
+
+    let quoted_table = quote_identifier(table);
+    let quoted_cols: Vec<String> = column_names.iter().map(|c| quote_identifier(c)).collect();
 
     let mut total_affected = 0u64;
 
-    // Process in batches
     for batch in rows.chunks(batch_size) {
-        let mut sql = format!("INSERT INTO {} ({}) VALUES ", table, column_names.join(", "));
+        let mut sql = format!("INSERT INTO {quoted_table} ({}) VALUES ", quoted_cols.join(", "));
         let mut value_parts = Vec::new();
 
         for row in batch {
             let row_array = row.as_array().ok_or_else(|| {
-                crate::errors::MCPError::InvalidParams("Each row must be an array".into())
+                MCPError::InvalidParams("Each row must be an array".into())
             })?;
 
-            let row_values: Vec<String> = row_array
-                .iter()
-                .map(format_sql_value)
-                .collect();
-
+            let row_values: Vec<String> = row_array.iter().map(format_sql_value).collect();
             value_parts.push(format!("({})", row_values.join(", ")));
         }
 
@@ -396,5 +388,74 @@ mod tests {
         let malicious = Value::String("'; DROP TABLE users; --".into());
         let result = format_sql_value(&malicious);
         assert_eq!(result, "'''; DROP TABLE users; --'");
+    }
+
+    #[test]
+    fn test_validate_table_columns_rejects_injection() {
+        let result = validate_table_columns("users; DROP TABLE", &["id"]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("invalid character"));
+    }
+
+    #[test]
+    fn test_validate_table_columns_rejects_sql_in_column() {
+        let result = validate_table_columns("users", &["id; DROP TABLE users"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_table_columns_accepts_valid() {
+        assert!(validate_table_columns("users", &["id", "name"]).is_ok());
+    }
+
+    #[test]
+    fn test_validate_where_clauses_accepts_structured() {
+        let clauses = vec![
+            json!({"column": "id", "op": "=", "value": 1}),
+            json!({"column": "status", "op": "IN", "value": ["active", "pending"]}),
+        ];
+        let result = validate_where_clauses(&clauses);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_where_clauses_rejects_invalid_op() {
+        let clauses = vec![
+            json!({"column": "id", "op": "EXECUTE", "value": "malicious"}),
+        ];
+        let result = validate_where_clauses(&clauses);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid operator"));
+    }
+
+    #[test]
+    fn test_validate_where_clauses_rejects_sql_in_column() {
+        let clauses = vec![
+            json!({"column": "id; DROP TABLE", "op": "=", "value": 1}),
+        ];
+        let result = validate_where_clauses(&clauses);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_build_where_sql() {
+        let v1 = Value::Number(1.into());
+        let v2 = Value::String("active".into());
+        let parsed = vec![
+            ("id".to_string(), "=".to_string(), &v1),
+            ("status".to_string(), "=".to_string(), &v2),
+        ];
+        let sql = build_where_sql(&parsed);
+        assert_eq!(sql, r#""id" = 1 OR "status" = 'active'"#);
+    }
+
+    #[test]
+    fn test_build_where_sql_in_op() {
+        let values = json!(["a", "b"]);
+        let parsed = vec![
+            ("status".to_string(), "IN".to_string(), &values),
+        ];
+        let sql = build_where_sql(&parsed);
+        assert_eq!(sql, r#""status" IN ('a', 'b')"#);
     }
 }

@@ -118,7 +118,11 @@ pub async fn show_table_size(client: &Client, _params: &Option<&Value>) -> MCPRe
 pub async fn get_cache_hit_ratio(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     let rows = client
         .query(
-            "SELECT sum(heap_blks_hit)::float / (sum(heap_blks_hit) + sum(heap_blks_read)) as ratio
+            "SELECT CASE
+                WHEN (sum(heap_blks_hit) + sum(heap_blks_read)) > 0
+                THEN sum(heap_blks_hit)::float / NULLIF(sum(heap_blks_hit) + sum(heap_blks_read), 0)
+                ELSE NULL
+             END as ratio
              FROM pg_statio_user_tables",
             &[],
         )

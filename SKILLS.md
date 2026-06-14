@@ -38,63 +38,45 @@
 }
 ```
 
-### 1.2 Tool Definitions (46 Total)
+### 1.2 Tool Definitions (76 Total)
 
-**CRITICAL**: Parameter names are case-sensitive and must match exactly. Verify against `tools/list` response.
+Source of truth is `tools.json`. Verify every call against `tools/list` response.
 
-**Query Execution Tools**:
-- `execute_query`: params = `{"sql": "SELECT..."}` (NOT "query")
-- `execute_insert`: params = `{"sql": "INSERT..."}`
-- `execute_update`: params = `{"sql": "UPDATE..."}`
-- `execute_delete`: params = `{"sql": "DELETE..."}`
-- `explain_query`: params = `{"sql": "SELECT...", "analyze": bool, "buffers": bool, "format": "json|text|yaml"}`
-- `async_execute_insert`: params = `{"sql": "INSERT..."}`
-- `async_execute_update`: params = `{"sql": "UPDATE..."}`
-- `async_execute_delete`: params = `{"sql": "DELETE..."}`
+**Query Execution (8)**:
+`execute_query`, `execute_insert`, `execute_update`, `execute_delete`, `explain_query`, `async_execute_insert`, `async_execute_update`, `async_execute_delete`
 
-**Connection Tools**:
-- `show_current_user`: params = `{}`
-- `list_connections`: params = `{}`
+**Schema Inspection (8)**:
+`list_tables`, `describe_table`, `list_schemas`, `list_indexes`, `list_triggers`, `show_constraints`, `list_partitions`, `get_object_details`
 
-**Schema Inspection Tools**:
-- `list_tables`: params = `{}`
-- `list_schemas`: params = `{}`
-- `list_columns`: params = `{"table": "table_name"}` (REQUIRED)
-- `list_indexes`: params = `{}`
-- `list_triggers`: params = `{"table": "table_name"}` (REQUIRED)
-- `list_views`: params = `{}`
-- `list_sequences`: params = `{}`
-- `describe_table`: params = `{"table": "table_name"}` (REQUIRED)
+**DDL (15)**:
+`create_table`, `drop_table`, `create_view`, `drop_view`, `alter_view`, `create_schema`, `drop_schema`, `create_sequence`, `drop_sequence`, `create_index`, `drop_index`, `alter_index`, `create_partition`, `drop_partition`, `backup_table`
 
-**DDL Tools (Create/Alter/Drop)**:
-- `create_table`: params = `{"table": "name", "columns": ["id SERIAL PRIMARY KEY", "name VARCHAR(255)"]}`
-- `drop_table`: params = `{"table": "name"}`
-- `create_view`: params = `{"view_name": "name", "query": "SELECT..."}`
-- `drop_view`: params = `{"view_name": "name"}`
-- `alter_view`: params = `{"view_name": "name", "rename_to": "new_name"}`
-- `create_schema`: params = `{"schema_name": "name"}`
-- `drop_schema`: params = `{"schema_name": "name"}`
-- `create_index`: params = `{"index_name": "name", "table": "table_name", "columns": ["col1", "col2"]}`
-- `drop_index`: params = `{"index_name": "name"}`
-- `alter_index`: params = `{"index_name": "name", "rename_to": "new_name"}`
-- `create_sequence`: params = `{"sequence_name": "name", "start": 1, "increment": 1}`
-- `drop_sequence`: params = `{"sequence_name": "name"}`
-- `create_partition`: params = `{"table": "name", "partition_name": "name_1", "partition_type": "RANGE", "column": "id", "values": "FROM (1) TO (100)"}`
-- `delete_table_partition`: params = `{"partition_name": "name_1"}`
-- `list_partitions`: params = `{"table": "name"}`
-- `backup_table`: params = `{"table": "name"}` (creates backup_<name> table)
+**Batch (4)**:
+`async_batch_insert`, `async_batch_update`, `async_batch_delete`, `async_batch_insert_copy`
 
-**Batch Operation Tools**:
-- `async_batch_insert`: params = `{"table": "name", "columns": ["col1", "col2"], "rows": [[val1, val2], ...], "returning": "id"}`
-- `async_batch_update`: params = `{"table": "name", "updates": {"col1": val1}, "where_clauses": ["col=val"]}`
-- `async_batch_delete`: params = `{"table": "name", "where_clauses": ["col=val"], "returning": "id"}`
-- `async_batch_insert_copy`: params = `{"table": "name", "columns": [...], "rows": [...], "batch_size": 1000}`
+**Database Monitoring (10)**:
+`get_table_stats`, `get_index_stats`, `show_database_size`, `show_table_size`, `get_cache_hit_ratio`, `analyze_table`, `vacuum_analyze`, `reindex_table`, `get_pg_stat_statements`, `reset_statistics`
 
-**Database Utility Tools**:
-- `analyze_table`: params = `{"table": "name"}`
-- `vacuum_table`: params = `{"table": "name"}`
-- `get_table_size`: params = `{"table": "name"}`
-- `get_database_size`: params = `{}`
+**Connection Management (4)**:
+`list_connections`, `show_current_user`, `show_running_queries`, `show_connection_summary`
+
+**Security & Users (5)**:
+`list_users`, `list_user_privileges`, `list_role_memberships`, `list_database_privileges`, `show_session_info`
+
+**Configuration (5)**:
+`show_all_settings`, `get_setting`, `show_memory_settings`, `show_performance_settings`, `show_log_settings`
+
+**Transaction Monitoring (7)**:
+`show_active_transactions`, `show_locks`, `show_waiting_locks`, `show_transaction_isolation`, `show_deadlocks`, `show_autocommit_status`, `show_transaction_timeout`
+
+**Replication (5)**:
+`show_replication_status`, `list_replication_slots`, `list_standby_servers`, `show_wal_info`, `show_base_backup_progress`
+
+**Database Health (4)**:
+`analyze_db_health`, `list_unused_indexes`, `list_duplicate_indexes`, `show_vacuum_progress`
+
+**Maintenance (1)**:
+`truncate_table`
 
 ### 1.3 Code Quality Standards
 
@@ -784,11 +766,11 @@ echo "✓ No known vulnerabilities"
 
 # 6. Tools count validation
 TOOLS_COUNT=$(jq 'length' tools.json)
-if [ "$TOOLS_COUNT" -ne 46 ]; then
-  echo "FAIL: Expected 46 tools, found $TOOLS_COUNT"
+if [ "$TOOLS_COUNT" -ne 76 ]; then
+  echo "FAIL: Expected 76 tools, found $TOOLS_COUNT"
   exit 1
 fi
-echo "✓ 46 tools present"
+echo "✓ 76 tools present"
 
 echo "=== ALL PRE-RELEASE CHECKS PASSED ==="
 echo "Ready to publish v$CARGO_VERSION"

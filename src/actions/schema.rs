@@ -1,20 +1,7 @@
 use serde_json::{json, Value};
 use tokio_postgres::Client;
 use crate::errors::{MCPError, Result as MCPResult};
-
-const MAX_IDENTIFIER_LEN: usize = 255;
-
-fn validate_identifier(name: &str, label: &str) -> std::result::Result<(), MCPError> {
-    if name.is_empty() {
-        return Err(MCPError::InvalidParams(format!("'{label}' must not be empty")));
-    }
-    if name.len() > MAX_IDENTIFIER_LEN {
-        return Err(MCPError::InvalidParams(
-            format!("'{label}' exceeds maximum length of {MAX_IDENTIFIER_LEN} characters (got {})", name.len())
-        ));
-    }
-    Ok(())
-}
+use crate::validation::validate_identifier;
 
 /// 1. List all tables
 pub async fn list_tables(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
@@ -165,11 +152,7 @@ pub async fn get_object_details(client: &Client, params: &Option<&Value>) -> MCP
         .and_then(|v| v.as_str())
         .unwrap_or("public");
 
-    if schema_name.len() > MAX_IDENTIFIER_LEN {
-        return Err(MCPError::InvalidParams(
-            format!("'schema' exceeds maximum length of {MAX_IDENTIFIER_LEN} characters (got {})", schema_name.len())
-        ));
-    }
+    validate_identifier(schema_name, "schema")?;
 
     let table_name = params
         .as_ref()
@@ -437,7 +420,7 @@ pub async fn create_index(client: &Client, params: &Option<&Value>) -> MCPResult
     let columns_str = column_list.join(", ");
 
     let sql = format!(
-        "CREATE {}INDEX {}{}ON {}({})",
+        "CREATE {}INDEX {} {} ON {}({})",
         unique_str,
         concurrent_str,
         index_name,
@@ -902,7 +885,7 @@ pub async fn create_sequence(client: &Client, params: &Option<&Value>) -> MCPRes
     let if_not_exists_str = if if_not_exists { "IF NOT EXISTS " } else { "" };
 
     let sql = format!(
-        "CREATE SEQUENCE {}{}START {} INCREMENT {}",
+        "CREATE SEQUENCE {}{} START {} INCREMENT {}",
         if_not_exists_str,
         sequence_name,
         start,
@@ -1007,7 +990,7 @@ pub async fn list_partitions(client: &Client, params: &Option<&Value>) -> MCPRes
 
     let rows = client
         .query(
-            "SELECT inhrelname as partition_name, pg_size_pretty(pg_relation_size(inhrelid)) as size
+            "SELECT child.relname as partition_name, pg_size_pretty(pg_relation_size(child.oid)) as size
              FROM pg_inherits
              JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
              JOIN pg_class child ON pg_inherits.inhrelid = child.oid
@@ -1048,7 +1031,7 @@ pub async fn backup_table(client: &Client, params: &Option<&Value>) -> MCPResult
     validate_identifier(&backup_name, "backup_name")?;
 
     // Verify source table exists
-    let _: (i64,) = client
+    let _: (i32,) = client
         .query_one(
             "SELECT 1 FROM information_schema.tables
              WHERE table_name = $1 AND table_schema NOT IN ('pg_catalog', 'information_schema')",

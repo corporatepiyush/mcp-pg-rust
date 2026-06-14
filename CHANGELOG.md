@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.1] - 2026-06-14
+
+### 🔴 SECURITY FIXES (Critical)
+
+#### SQL Injection — Identifiers in batch tools (CVE-2026-XXXX)
+`async_batch_insert`, `async_batch_update`, `async_batch_delete`, `async_batch_insert_copy` interpolated `table` and `column_names` with only a length check. An attacker could inject SQL via table/column names. Fixed by validating identifiers through `validate_identifier()` (alphanumeric + underscore only) and quoting with `"`.
+
+#### SQL Injection — Raw WHERE clauses (CVE-2026-XXXX)
+`async_batch_update` and `async_batch_delete` accepted arbitrary SQL `WHERE` strings. Replaced with structured predicates `[{column, op, value}]` — column validated as identifier, op allowed-listed (=, <, >, <=, >=, <>, IN, LIKE), value bound via parameterized `format_sql_value`.
+
+#### Multi-Statement Bypass in `validate_sql`
+`execute_query`, `execute_insert`, `execute_update`, `execute_delete`, `explain_query` only checked the first token — `SELECT 1; DROP TABLE x` was accepted. Now rejects any unquoted `;` that is not trailing.
+
+#### Session-State Leakage on Pooled Connections
+`async_execute_insert`, `async_execute_update`, `async_execute_delete` set `synchronous_commit=OFF` and then hardcoded `ON` on restore. A failed query skipped restore, leaving the connection poisoned for the next user. Fixed by using `BEGIN; SET LOCAL synchronous_commit=OFF; ...; COMMIT` — `SET LOCAL` is transaction-scoped and auto-resets.
+
+### FIXED
+
+- Test suite compilation: `E0716` temporary dropped while borrowed in `integration_all_tools.rs`
+- Tool count: reconciled at 76 across README, SKILLS.md, and tools.json
+- `validation.rs`: extracted `validate_identifier` from schema.rs, made it a shared module
+- `schema.rs`: now delegates to `crate::validation::validate_identifier`
+
+### CHANGED
+
+- `async_batch_update` / `async_batch_delete` `where_clauses` parameter:
+  - **Old**: `["id = 1", "id = 2"]` (raw SQL strings — injection vector)
+  - **New**: `[{"column": "id", "op": "=", "value": 1}]` (structured — validated)
+
 ## [2.0.0] - 2026-06-13
 
 ### BREAKING CHANGES ⚠️

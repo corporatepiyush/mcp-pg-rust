@@ -14,7 +14,7 @@ fn send_request(stream: &mut TcpStream) {
         match stream.read(&mut buf) {
             Ok(0) | Err(_) => break,
             Ok(n) => {
-                if buf[..n].iter().any(|&b| b == b'\n') {
+                if buf[..n].contains(&b'\n') {
                     break;
                 }
             }
@@ -55,7 +55,6 @@ fn main() {
     for _ in 0..concurrency {
         let counter = Arc::clone(&counter);
         let running = Arc::clone(&running);
-        let addr = addr;
         handles.push(thread::spawn(move || {
             client_loop(addr, counter, running);
         }));

@@ -183,9 +183,7 @@ impl Generator {
 
 impl Generator {
     async fn gen_misc(&self, o_ids: &[i64], u_ids: &[i64], e_ids: &[i64]) -> Result<()> {
-        let mut dt_r = vec![];
-        dt_r.push(vec![json!("Contract"), json!("Legal contracts")]);
-        dt_r.push(vec![json!("Invoice"), json!("Customer invoices")]);
+        let dt_r = vec![vec![json!("Contract"), json!("Legal contracts")], vec![json!("Invoice"), json!("Customer invoices")]];
         let dt_ids = self.ins("document_types", &["name", "description"], dt_r, Some("id")).await?;
 
         let mut doc_r = vec![];
@@ -194,8 +192,7 @@ impl Generator {
         }
         self.ins("documents", &["org_id", "document_type_id", "file_name", "file_path", "file_size", "created_by"], doc_r, None).await?;
 
-        let mut tp_r = vec![];
-        tp_r.push(vec![json!("Safety 101"), json!("Basic safety training")]);
+        let tp_r = vec![vec![json!("Safety 101"), json!("Basic safety training")]];
         let tp_ids = self.ins("training_programs", &["name", "description"], tp_r, Some("id")).await?;
 
         let mut et_r = vec![];
@@ -235,7 +232,7 @@ async fn run() -> Result<()> {
         let uid = u_ids[current as usize % u_ids.len()];
         au.push(vec![json!("users"), json!("UPDATE"), json!(uid), json!(null), json!({"status":"active"}), json!(uid)]);
         if au.len() >= a.batch_size {
-            g.ins("audit_logs", &["table_name", "operation", "record_id", "old_values", "new_values", "changed_by"], au.drain(..).collect(), None).await?;
+            g.ins("audit_logs", &["table_name", "operation", "record_id", "old_values", "new_values", "changed_by"], std::mem::take(&mut au), None).await?;
             current = g.total.load(Ordering::Relaxed);
         }
         if current + (au.len() as u64) >= a.target_rows { break; }
@@ -362,11 +359,9 @@ impl Generator {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn gen_remaining(&self, o_ids: &[i64], u_ids: &[i64], e_ids: &[i64], c_ids: &[i64], pr_ids: &[i64], ord_ids: &[i64], v_ids: &[i64], po_ids: &[i64], _p_ids: &[i64]) -> Result<()> {
-        let mut ct_r = vec![];
-        ct_r.push(vec![json!("Service")]);
-        ct_r.push(vec![json!("Maintenance")]);
-        ct_r.push(vec![json!("Lease")]);
+        let ct_r = vec![vec![json!("Service")], vec![json!("Maintenance")], vec![json!("Lease")]];
         let ct_ids = self.ins("contract_types", &["name"], ct_r, Some("id")).await?;
 
         let mut con_r = vec![];
@@ -391,10 +386,11 @@ impl Generator {
         }
         self.ins("purchase_order_items", &["purchase_order_id", "product_id", "quantity", "unit_price", "total"], poi_r, None).await?;
 
-        let mut eq_r = vec![];
-        eq_r.push(vec![json!("Laptop"), json!("AST-001"), json!("Electronics"), json!("2024-01-15"), json!(2000.0)]);
-        eq_r.push(vec![json!("Monitor"), json!("AST-002"), json!("Electronics"), json!("2024-02-01"), json!(500.0)]);
-        eq_r.push(vec![json!("Chair"), json!("AST-003"), json!("Furniture"), json!("2024-01-10"), json!(800.0)]);
+        let eq_r = vec![
+            vec![json!("Laptop"), json!("AST-001"), json!("Electronics"), json!("2024-01-15"), json!(2000.0)],
+            vec![json!("Monitor"), json!("AST-002"), json!("Electronics"), json!("2024-02-01"), json!(500.0)],
+            vec![json!("Chair"), json!("AST-003"), json!("Furniture"), json!("2024-01-10"), json!(800.0)],
+        ];
         let eq_ids = self.ins("equipment", &["name", "asset_number", "category", "purchase_date", "purchase_cost"], eq_r, Some("id")).await?;
 
         let mut ea_r = vec![];
@@ -415,9 +411,7 @@ impl Generator {
         }
         self.ins("performance_reviews", &["employee_id", "reviewer_id", "rating", "feedback", "review_date"], pr_r, None).await?;
 
-        let mut hol_r = vec![];
-        hol_r.push(vec![json!("New Year"), json!("2024-01-01"), json!("US")]);
-        hol_r.push(vec![json!("Christmas"), json!("2024-12-25"), json!("US")]);
+        let hol_r = vec![vec![json!("New Year"), json!("2024-01-01"), json!("US")], vec![json!("Christmas"), json!("2024-12-25"), json!("US")]];
         self.ins("holidays", &["name", "holiday_date", "country"], hol_r, None).await?;
 
         let mut ss_r = vec![];
@@ -426,9 +420,10 @@ impl Generator {
         }
         self.ins("shift_schedules", &["employee_id", "shift_date", "start_time", "end_time"], ss_r, None).await?;
 
-        let mut et_r = vec![];
-        et_r.push(vec![json!("Welcome Email"), json!("Welcome {{name}}"), json!("Hello {{name}}, welcome!")]);
-        et_r.push(vec![json!("Invoice Reminder"), json!("Invoice Due"), json!("Your invoice is due.")]);
+        let et_r = vec![
+            vec![json!("Welcome Email"), json!("Welcome {{name}}"), json!("Hello {{name}}, welcome!")],
+            vec![json!("Invoice Reminder"), json!("Invoice Due"), json!("Your invoice is due.")],
+        ];
         self.ins("email_templates", &["name", "subject", "body"], et_r, None).await?;
 
         let mut el_r = vec![];
