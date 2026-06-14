@@ -1,6 +1,6 @@
 # mcp-postgres
 
-High-performance MCP (Model Context Protocol) server for PostgreSQL, written in pure Rust with async/await.
+High-performance MCP (Model Context Protocol) server for PostgreSQL, written in pure Rust with the Tokio async runtime.
 
 ## Overview
 
