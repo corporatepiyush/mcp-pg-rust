@@ -1075,7 +1075,92 @@ AFTER load tests or performance-critical changes:
 
 ---
 
-## 10. REFERENCE: Tool Implementation Status
+## 10. README GENERATION PROCEDURE
+
+**TRIGGER**: When updating README.md for tool references, new releases, or documentation changes
+
+**CRITICAL CONSTRAINTS**:
+- README must match current tools.json exactly (tool count, names, parameters)
+- Verify every tool mentioned actually exists in source code
+- All parameter examples must use correct parameter names (e.g., 'sql' not 'query')
+- Remove tools that are removed from implementation
+- Add tools that are newly implemented
+- Don't invent or assume tools exist
+
+**PROCEDURE BEFORE UPDATING README**:
+
+**Step 1**: Count actual tools
+```bash
+# Get tool count from tools.json
+jq 'length' /Users/piyush/ai/mcp-postgres/tools.json
+
+# Count implemented tools
+grep -r "pub async fn" src/actions/*.rs | sed 's/.*pub async fn //' | sed 's/(.*//' | wc -l
+```
+
+**Step 2**: Verify each tool mentioned in README
+```bash
+# For each tool in README, verify it exists in tools.json
+jq '.[] | .name' tools.json | sort
+
+# Cross-check against README tool list
+grep "^#### \`" README.md | sed 's/#### `//' | sed 's/`.*//' | sort
+```
+
+**Step 3**: Validate examples
+```bash
+# Check parameter names match tools.json exactly
+# For execute_query: must use "sql" not "query"
+# For list_triggers: must include required "table" parameter
+# Verify all required parameters shown in examples
+```
+
+**Step 4**: Check for orphaned or missing tools
+- Tools in README not in tools.json → REMOVE
+- Tools in tools.json not in README → ADD if important
+- Tools removed from source but in tools.json → INVESTIGATE
+
+**ACCEPTANCE CRITERIA**:
+- ✅ Tool count in README matches tools.json exactly
+- ✅ Every tool name spelled correctly (case-sensitive in code)
+- ✅ All examples use correct parameter names from tools.json
+- ✅ All required parameters shown in examples
+- ✅ No tools mentioned that don't exist in tools.json
+- ✅ No made-up parameter names or behaviors
+- ✅ Parameter types match tools.json (string, integer, boolean, array, object)
+- ✅ Descriptions align with actual tool behavior
+- ✅ No outdated or removed tools documented
+
+**COMMON MISTAKES TO AVOID**:
+1. Using 'query' parameter instead of 'sql' for execute_query
+2. Missing required 'table' parameter in list_triggers examples
+3. Documenting transaction tools that don't exist in HTTP-only mode
+4. Wrong tool counts (saying 46 when actually 80+)
+5. Inventing parameters not in tools.json
+6. Removing tools without checking if they're implemented
+7. Adding tools not actually implemented
+8. Parameter type mismatches (e.g., string vs integer)
+
+**VERIFICATION WORKFLOW**:
+```bash
+# After updating README, run verification
+for tool in $(jq -r '.[] | .name' tools.json); do
+  if ! grep -q "^\*\*\`$tool\`\*\*" README.md; then
+    echo "MISSING: $tool not documented in README"
+  fi
+done
+
+# Check for orphaned tools (in README but not in tools.json)
+for readme_tool in $(grep "^\*\*\`" README.md | sed 's/.*`//;s/`.*//' ); do
+  if ! jq -e ".[] | select(.name==\"$readme_tool\")" tools.json > /dev/null; then
+    echo "ORPHANED: $readme_tool in README but not in tools.json"
+  fi
+done
+```
+
+---
+
+## 11. REFERENCE: Tool Implementation Status
 
 | Tool Name | Implementation | Status | Tests |
 |-----------|----------------|--------|-------|
