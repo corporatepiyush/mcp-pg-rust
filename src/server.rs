@@ -123,6 +123,7 @@ async fn handle_client(socket: TcpStream, pool: Arc<ConnectionPool>, config: Con
 }
 
 /// Core per-line processing shared by TCP and stdio transports.
+/// For notifications (JSON-RPC messages without `id`), no response is sent.
 #[inline]
 async fn process_one_line<W: AsyncWriteExt + Unpin>(
     line: &str,
@@ -133,19 +134,27 @@ async fn process_one_line<W: AsyncWriteExt + Unpin>(
 ) -> MCPResult<()> {
     metrics::inc_requests();
 
-    let response = match parse_request(line) {
-        Ok(req) => match process_request(&req, pool, config).await {
-            Ok(result) => JsonRpcResponse::success(req.id, result),
-            Err(e) => {
-                metrics::inc_errors();
-                JsonRpcResponse::error(req.id, e.error_code(), e.to_string())
+    let (response, is_notification) = match parse_request(line) {
+        Ok(req) => {
+            let is_notif = req.id.is_none();
+            match process_request(&req, pool, config).await {
+                Ok(result) => (JsonRpcResponse::success(req.id, result), is_notif),
+                Err(e) => {
+                    metrics::inc_errors();
+                    (JsonRpcResponse::error(req.id, e.error_code(), e.to_string()), is_notif)
+                }
             }
-        },
+        }
         Err(e) => {
             metrics::inc_errors();
-            parse_error(e)
+            (parse_error(e), false)
         }
     };
+
+    // JSON-RPC notifications (no `id`) do not expect a response
+    if is_notification {
+        return Ok(());
+    }
 
     response_buf.clear();
     serde_json::to_writer(&mut *response_buf, &response)?;
@@ -167,8 +176,23 @@ pub async fn process_request(
         "initialize" => handle_initialize(req),
         "tools/list" => handle_tools_list(),
         "tools/call" => handle_tools_call(req, pool, config).await,
+        "ping" => handle_ping(),
+        method if method.starts_with("notifications/") => handle_notification(method),
         _ => Err(MCPError::MethodNotFound(req.method.clone())),
     }
+}
+
+/// Handle JSON-RPC ping (respond with empty success)
+#[inline]
+fn handle_ping() -> MCPResult<Value> {
+    Ok(Value::Null)
+}
+
+/// Handle MCP notifications (silently accepted, no response needed per JSON-RPC spec)
+#[inline]
+fn handle_notification(method: &str) -> MCPResult<Value> {
+    tracing::trace!("Received notification: {method}");
+    Ok(Value::Null)
 }
 
 /// Public wrapper for HTTP handlers - returns complete JSON-RPC response
