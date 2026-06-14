@@ -68,6 +68,8 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
+See [guides/INSTALLATION.md](./guides/INSTALLATION.md) for complete setup and troubleshooting.
+
 ## Command-Line Options
 
 ```
