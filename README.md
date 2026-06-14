@@ -1,79 +1,97 @@
-# mcp-pg-rust
+# mcp-postgres
 
-High-performance MCP (Model Context Protocol) server for PostgreSQL, written in Rust.
+High-performance MCP (Model Context Protocol) server for PostgreSQL, written in pure Rust with async/await.
 
-## Features
+## Overview
 
-- **61 database tools** — schema inspection, queries, monitoring, maintenance, security, replication, transactions, batch operations, health analysis
-- **Production-grade connection pool** — deadpool-postgres with health checks, idle timeout, configurable sizing (default: min=5, max=20)
-- **4KB message buffers** — efficient JSON-RPC request/response handling with minimal memory per connection
-- **Dual transport** — TCP and HTTP/2 with SSE, plus stdio for Claude Desktop
-- **Thread-local metrics** — zero-allocation sharded counters (no lock contention)
-- **Data-oriented design** — cache-line aligned hot data, no false sharing
-- **~20,000+ req/s** — with 10 concurrent clients; scales to 50K+ with larger pools
-- **Restricted mode** — `--access-mode=restricted` for read-only operation, blocking all write tools at dispatch level
-- **PG 18 compatible** — works with PostgreSQL 15–18, tested on PG 18
-- **Input validation** — bounds checking on all tool parameters: batch rows (max 1000), SQL length (max 10k chars), identifier length (max 255), PID range, setting name length
+**mcp-postgres** brings your PostgreSQL database into Claude and other MCP-compatible AI tools. Execute queries, manage schema, monitor performance, and handle bulk operations—all through a clean JSON-RPC interface.
+
+- **46 PostgreSQL tools** — query execution, schema inspection, DDL operations, batch operations, monitoring, maintenance, replication, and more
+- **Dual-protocol transport** — TCP (port 3000) and HTTP/2 (port 3001) for flexibility
+- **Sub-10ms latency** — optimized for interactive AI workflows
+- **Production-grade** — connection pooling, health checks, input validation, SQL injection prevention
+- **Stateless HTTP** — each request is independent (no transaction state across requests)
+- **Claude Desktop ready** — works with stdio transport for seamless integration
 
 ## Quick Start
 
+### Installation
+
 ```bash
-# Install from source
+# From crates.io
 cargo install mcp-postgres
 
-# Run with TCP transport (default)
-mcp-postgres --database-url "host=127.0.0.1 dbname=mydb"
-
-# Run in stdio mode for Claude Desktop / MCP clients
-mcp-postgres --database-url "host=127.0.0.1 dbname=mydb" --stdio
-
-# Run in restricted (read-only) mode
-mcp-postgres --database-url "host=127.0.0.1 dbname=mydb" --stdio --access-mode restricted
+# Or build from source
+git clone https://github.com/corporatepiyush/mcp-pg-rust.git
+cd mcp-postgres
+cargo build --release
 ```
 
-### Usage
+### Run
+
+```bash
+# TCP server (default, port 3000)
+mcp-postgres --database-url "postgres://user:pass@localhost:5432/mydb"
+
+# HTTP/2 server (port 3001)
+mcp-postgres --database-url "postgres://user:pass@localhost:5432/mydb" --http-port 3001
+
+# Stdio mode for Claude Desktop
+mcp-postgres --database-url "postgres://user:pass@localhost:5432/mydb" --stdio
+
+# Restricted (read-only) mode
+mcp-postgres --database-url "postgres://user:pass@localhost:5432/mydb" --stdio --access-mode restricted
+```
+
+### Claude Desktop Configuration
+
+Add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "mcp-postgres",
+      "args": [
+        "--database-url",
+        "postgres://user:pass@localhost:5432/mydb",
+        "--stdio"
+      ]
+    }
+  }
+}
+```
+
+## Command-Line Options
 
 ```
 Usage: mcp-postgres [OPTIONS]
 
 Options:
   -d, --database-url <URL>       PostgreSQL connection string
-  -H, --host <HOST>              Server host [default: 127.0.0.1]
-  -p, --port <PORT>              Server port [default: 3000]
+  -H, --host <HOST>              Server host (TCP) [default: 127.0.0.1]
+  -p, --port <PORT>              TCP server port [default: 3000]
       --http-port <PORT>         HTTP/2 server port [default: 3001]
-      --min-connections <N>      Minimum pool connections [default: 5]
-      --max-connections <N>      Maximum pool connections [default: 20]
+      --min-connections <N>      Min pool connections [default: 5]
+      --max-connections <N>      Max pool connections [default: 20]
       --log-level <LEVEL>        Log level [default: info]
       --enable-metrics           Enable Prometheus /metrics endpoint
       --metrics-port <PORT>      Metrics port [default: 9090]
-      --stdio                    Run in stdio mode (for Claude Desktop)
-      --access-mode <MODE>       Access mode: unrestricted or restricted [default: unrestricted]
+      --stdio                    Stdio mode (Claude Desktop)
+      --access-mode <MODE>       unrestricted or restricted [default: unrestricted]
   -h, --help                     Print help
   -V, --version                  Print version
 ```
 
-### Claude Desktop Configuration
+---
 
-Add to your `claude_desktop_config.json`:
-
-```jsonc
-{
-  "mcpServers": {
-    "postgres": {
-      "command": "mcp-postgres",
-      "args": ["--database-url", "host=127.0.0.1 dbname=mydb", "--stdio"]
-    }
-  }
-}
-```
-
-## Tools Reference
+## Protocol & API
 
 All tools follow the [MCP JSON-RPC 2.0](https://spec.modelcontextprotocol.io) specification.
 
 ### Request Format
 
-```jsonc
+```json
 {
   "jsonrpc": "2.0",
   "method": "tools/call",
@@ -85,709 +103,527 @@ All tools follow the [MCP JSON-RPC 2.0](https://spec.modelcontextprotocol.io) sp
 }
 ```
 
----
+### Response Format (Success)
 
-### Schema Inspection
-
-#### `list_tables`
-List all user tables with schema and type.
-
-```jsonc
-// Request:  {}
-// Response: { "tables": [{ "schema": "public", "name": "users", "type": "BASE TABLE" }, ...] }
+```json
+{
+  "jsonrpc": "2.0",
+  "result": { ... },
+  "id": 1
+}
 ```
 
-#### `describe_table`
-Describe a table's columns, types, nullability, and defaults.
+### Response Format (Error)
 
-| Param | Type | Required |
-|-------|------|----------|
-| `table` | string | yes |
-
-```jsonc
-// Request:  { "table": "users" }
-// Response: { "columns": [{ "name": "id", "type": "bigint", "nullable": "NO", "default": "nextval(...)", "position": 1 }, ...] }
-```
-
-#### `get_object_details`
-Rich schema introspection for a single table — columns, constraints, indexes, foreign keys, descriptions, and size.
-
-| Param | Type | Required | Default |
-|-------|------|----------|---------|
-| `table` | string | yes | — |
-| `schema` | string | no | `"public"` |
-
-```jsonc
-// Request:  { "table": "users", "schema": "public" }
-// Response: { "table": "users", "schema": "public", "size": "256 MB", "row_estimate": 10000,
-//   "columns": [...], "indexes": [...], "constraints": [...], "foreign_keys": [...],
-//   "description": "Main user accounts table" }
-```
-
-#### `list_indexes`
-List all indexes with their definitions.
-
-```jsonc
-// Request:  {}
-// Response: { "indexes": [{ "schema": "public", "table": "users", "name": "users_pkey", "definition": "CREATE INDEX ..." }, ...] }
-```
-
-#### `list_schemas`
-List all non-system schemas.
-
-```jsonc
-// Request:  {}
-// Response: { "schemas": [{ "name": "public", "owner": "postgres" }, ...] }
-```
-
-#### `show_constraints`
-List all table constraints.
-
-```jsonc
-// Request:  {}
-// Response: { "constraints": [{ "schema": "public", "table": "users", "name": "users_pkey", "type": "PRIMARY KEY" }, ...] }
+```json
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": -32602,
+    "message": "Invalid params: Missing 'sql' parameter"
+  },
+  "id": 1
+}
 ```
 
 ---
 
-### Query Execution
+## Tools Reference (46 Total)
 
-#### `execute_query`
-Execute a SELECT query and return rows as arrays.
+### Query Execution (6 tools)
 
-| Param | Type | Required |
-|-------|------|----------|
-| `sql` | string | yes |
+**`execute_query`** — Execute SELECT and return rows
 
-```jsonc
-// Request:  { "sql": "SELECT id, name FROM users LIMIT 2" }
-// Response: { "rows": [[1, "Alice"], [2, "Bob"]] }
+```json
+{ "sql": "SELECT id, name FROM users LIMIT 10" }
+→ { "rows": [[1, "Alice"], [2, "Bob"]] }
 ```
 
-#### `execute_insert`
-Execute an INSERT and return rows affected.
+**`execute_insert`** — Execute INSERT and return rows affected
 
-| Param | Type | Required |
-|-------|------|----------|
-| `sql` | string | yes |
-
-```jsonc
-// Request:  { "sql": "INSERT INTO users (name) VALUES ('Charlie')" }
-// Response: { "rows_affected": 1 }
+```json
+{ "sql": "INSERT INTO users (name) VALUES ('Charlie')" }
+→ { "rows_affected": 1 }
 ```
 
-#### `execute_update`
-Execute an UPDATE and return rows affected.
+**`execute_update`** — Execute UPDATE and return rows affected
 
-| Param | Type | Required |
-|-------|------|----------|
-| `sql` | string | yes |
-
-```jsonc
-// Request:  { "sql": "UPDATE users SET name = 'Charlie' WHERE id = 3" }
-// Response: { "rows_affected": 1 }
+```json
+{ "sql": "UPDATE users SET status='active' WHERE id=1" }
+→ { "rows_affected": 1 }
 ```
 
-#### `execute_delete`
-Execute a DELETE and return rows affected.
+**`execute_delete`** — Execute DELETE and return rows affected
 
-| Param | Type | Required |
-|-------|------|----------|
-| `sql` | string | yes |
-
-```jsonc
-// Request:  { "sql": "DELETE FROM users WHERE id = 3" }
-// Response: { "rows_affected": 1 }
+```json
+{ "sql": "DELETE FROM users WHERE id=1" }
+→ { "rows_affected": 1 }
 ```
 
-#### `explain_query`
-Show the execution plan for a query with configurable options.
+**`explain_query`** — Show query execution plan
 
-| Param | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `sql` | string | yes | — | Query to explain |
-| `analyze` | boolean | no | false | Execute the query (EXPLAIN ANALYZE) |
-| `buffers` | boolean | no | false | Show buffer usage |
-| `format` | string | no | `"json"` | Output format: json, yaml, text |
+```json
+{
+  "sql": "SELECT * FROM users WHERE id = 1",
+  "analyze": true,
+  "buffers": true,
+  "format": "json"
+}
+→ { "plan": [...], "options": {...} }
+```
 
-```jsonc
-// Request:  { "sql": "SELECT * FROM users WHERE id = 1", "analyze": true, "buffers": true, "format": "json" }
-// Response: { "plan": [ /* PostgreSQL EXPLAIN JSON tree */ ], "options": { "analyze": true, "buffers": true, "format": "json" } }
+**`async_*` variants** — High-performance versions with temporary sync commit disabled
+
+```json
+{ "sql": "INSERT INTO large_table VALUES (...)" }
+// for async_execute_insert, async_execute_update, async_execute_delete
 ```
 
 ---
 
-### Batch Operations (High-Performance Bulk DML)
+### Schema Inspection (8 tools)
 
-All batch tools enforce a maximum of **1000 rows** per request.
+**`list_tables`** — List all tables in database
 
-#### `batch_insert`
-High-performance multi-row insert. Temporarily disables `synchronous_commit` for maximum throughput.
-
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `table` | string | yes | Target table |
-| `columns` | string[] | yes | Column names |
-| `rows` | array[] | yes | Array of value arrays |
-| `returning` | string | no | Column to return (e.g. `"id"`) |
-
-```jsonc
-// Request:  { "table": "users", "columns": ["name", "email"], "rows": [["Alice", "a@x.com"], ["Bob", "b@x.com"]] }
-// Response: { "rows_affected": 2 }
-
-// With RETURNING:
-// Request:  { "table": "users", "columns": ["name"], "rows": [["Charlie"]], "returning": "id" }
-// Response: { "rows_affected": 1, "inserted_ids": [42] }
+```json
+{}
+→ { "tables": [{"schema": "public", "name": "users", "type": "BASE TABLE"}, ...] }
 ```
 
-#### `batch_insert_copy`
-Batch insert with configurable batch size for massive bulk loads.
+**`list_schemas`** — List all schemas
 
-| Param | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `table` | string | yes | — | Target table |
-| `columns` | string[] | yes | — | Column names |
-| `rows` | array[] | yes | — | Array of value arrays |
-| `batch_size` | integer | no | 1000 | Rows per INSERT statement |
-
-```jsonc
-// Request:  { "table": "users", "columns": ["name"], "rows": [["a"], ["b"], ... 5000 rows], "batch_size": 1000 }
-// Response: { "rows_affected": 5000, "batches": 5 }
+```json
+{}
+→ { "schemas": [{"name": "public", "owner": "postgres"}, ...] }
 ```
 
-#### `batch_update`
-Bulk update with multiple WHERE clauses (each clause applied independently).
+**`list_columns`** — List columns in a table
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `table` | string | yes | Target table |
-| `updates` | object | yes | Column → value mappings |
-| `where_clauses` | string[] | yes | Array of WHERE conditions |
-
-```jsonc
-// Request:  { "table": "users", "updates": { "status": "inactive" }, "where_clauses": ["id = 1", "id = 2"] }
-// Response: { "rows_affected": 2 }
+```json
+{ "table": "users" }
+→ { "columns": [{"name": "id", "type": "bigint", "nullable": "NO"}, ...] }
 ```
 
-#### `batch_delete`
-Bulk deletion with OR-combined WHERE clauses.
+**`list_indexes`** — List all indexes
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `table` | string | yes | Target table |
-| `where_clauses` | string[] | yes | OR-combined conditions |
-| `returning` | string | no | Column to return |
+```json
+{}
+→ { "indexes": [{"schema": "public", "table": "users", "name": "users_pkey", ...}, ...] }
+```
 
-```jsonc
-// Request:  { "table": "users", "where_clauses": ["id = 1", "id = 2"] }
-// Response: { "rows_affected": 2 }
+**`list_triggers`** — List triggers on a table
+
+```json
+{ "table": "users" }
+→ { "triggers": [...] }
+```
+
+**`list_views`** — List all views
+
+```json
+{}
+→ { "views": [{"schema": "public", "name": "active_users", ...}, ...] }
+```
+
+**`list_sequences`** — List all sequences
+
+```json
+{}
+→ { "sequences": [{"schema": "public", "name": "users_id_seq", ...}, ...] }
+```
+
+**`describe_table`** — Get detailed table metadata
+
+```json
+{ "table": "users" }
+→ { "columns": [...], "constraints": [...], "size": "256 MB", ... }
 ```
 
 ---
 
-### Monitoring
+### DDL Operations (16 tools)
 
-#### `analyze_db_health`
-Unified database health dashboard — buffer cache hit ratio, connection utilization, unused/duplicate indexes, vacuum progress, tables needing vacuum, and tables with excessive sequential scans.
+Create, modify, and drop database objects safely.
 
-```jsonc
-// Request:  {}
-// Response: {
-//   "buffer_cache": { "hit_ratio_pct": 99.5, "status": "healthy" },
-//   "connections": { "active": 3, "waiting": 1, "idle_in_transaction": 0, "max": 100, "utilization_pct": 4.0, "status": "healthy" },
-//   "indexes": { "unused": [...], "duplicate_candidates": [...], "total_unused": 0 },
-//   "vacuum": { "in_progress": [], "tables_needing_vacuum": [] },
-//   "performance": { "tables_with_high_seq_scans": [] }
-// }
+**`create_table`** — Create a new table
+
+```json
+{
+  "table": "users",
+  "columns": [
+    "id SERIAL PRIMARY KEY",
+    "name VARCHAR(255) NOT NULL",
+    "email VARCHAR(255) UNIQUE"
+  ]
+}
 ```
 
-#### `list_unused_indexes`
-List all indexes with zero scans — candidates for removal to reduce write overhead.
+**`drop_table`** — Drop a table
 
-```jsonc
-// Request:  {}
-// Response: { "unused_indexes": [{ "schema": "public", "table": "users", "index": "users_email_idx", "scans": 0, "tuples_read": 0, "tuples_fetched": 0 }], "count": 0 }
+```json
+{ "table": "users" }
 ```
 
-#### `list_duplicate_indexes`
-Identify potentially duplicate or overlapping indexes.
+**`create_view`** — Create a view
 
-```jsonc
-// Request:  {}
-// Response: { "duplicate_indexes": [{ "schema": "public", "table": "users", "index": "users_name_idx", "duplicate_of": "users_name_idx2", "size": "64 MB" }], "count": 0 }
+```json
+{
+  "view_name": "active_users",
+  "query": "SELECT * FROM users WHERE status='active'"
+}
 ```
 
-#### `show_vacuum_progress`
-Real-time VACUUM operation monitoring.
+**`drop_view`** — Drop a view
 
-```jsonc
-// Request:  {}
-// Response: { "vacuum_in_progress": false, "message": "No VACUUM operations currently in progress" }
-// Response (active): { "vacuum_in_progress": true, "operations": [{ "schema": "public", "table": "users", "phase": "scanning heap", "blocks_total": 1000, "blocks_scanned": 500, "blocks_vacuumed": 200, "blocks_remaining": 500, "progress_pct": 50.0, "index_vacuum_count": 2, "max_dead_tuple_bytes": 1048576 }] }
+```json
+{ "view_name": "active_users" }
 ```
 
-#### `get_table_stats`
-Live row counts, dead tuples, and vacuum history from `pg_stat_user_tables`.
+**`alter_view`** — Rename a view
 
-```jsonc
-// Request:  {}
-// Response: { "tables": [{ "schema": "public", "table": "users", "live_tuples": 1000, "dead_tuples": 5, "last_vacuum": null, "last_autovacuum": "..." }, ...] }
+```json
+{ "view_name": "active_users", "rename_to": "active_accounts" }
 ```
 
-#### `get_index_stats`
-Index scan and tuple read statistics.
+**`create_schema`** — Create a schema
 
-```jsonc
-// Request:  {}
-// Response: { "indexes": [{ "schema": "public", "table": "users", "index": "users_pkey", "scans": 42, "tuples_read": 100, "tuples_fetched": 90 }, ...] }
+```json
+{ "schema_name": "analytics" }
 ```
 
-#### `show_database_size`
-Size of each database.
+**`drop_schema`** — Drop a schema
 
-```jsonc
-// Request:  {}
-// Response: { "databases": [{ "name": "mydb", "size": "12 GB", "size_bytes": 12884901888 }, ...] }
+```json
+{ "schema_name": "analytics" }
 ```
 
-#### `show_table_size`
-Total size of each user table (including indexes and TOAST).
+**`create_index`** — Create an index
 
-```jsonc
-// Request:  {}
-// Response: { "tables": [{ "schema": "public", "table": "users", "size": "256 MB", "size_bytes": 268435456 }, ...] }
+```json
+{
+  "index_name": "idx_users_email",
+  "table": "users",
+  "columns": ["email"]
+}
 ```
 
-#### `get_cache_hit_ratio`
-Buffer cache hit ratio from `pg_statio_user_tables`.
+**`drop_index`** — Drop an index
 
-```jsonc
-// Request:  {}
-// Response: { "cache_hit_ratio": 0.99, "percentage": 99.0 }
+```json
+{ "index_name": "idx_users_email" }
 ```
 
----
+**`alter_index`** — Rename an index
 
-### Connection Management
-
-#### `list_connections`
-List all active connections (excluding self).
-
-```jsonc
-// Request:  {}
-// Response: { "connections": [{ "pid": 12345, "user": "postgres", "application": "psql", "state": "active", "state_change": "2026-06-13 10:00:00", "backend_start": "2026-06-13 09:00:00", "query_start": "2026-06-13 10:00:00" }, ...] }
+```json
+{ "index_name": "idx_users_email", "rename_to": "idx_email" }
 ```
 
-#### `kill_connection`
-Terminate a specific connection by PID.
+**`create_sequence`** — Create a sequence
 
-| Param | Type | Required |
-|-------|------|----------|
-| `pid` | integer | yes |
-
-```jsonc
-// Request:  { "pid": 12345 }
-// Response: { "pid": 12345, "terminated": true }
+```json
+{ "sequence_name": "app_id_seq", "start": 1000, "increment": 1 }
 ```
 
-#### `show_current_user`
-Show current user, database, and PostgreSQL version.
+**`drop_sequence`** — Drop a sequence
 
-```jsonc
-// Request:  {}
-// Response: { "user": "postgres", "database": "mydb", "version": "PostgreSQL 16.4 on ..." }
+```json
+{ "sequence_name": "app_id_seq" }
 ```
 
-#### `show_running_queries`
-Show all non-idle queries.
+**`create_partition`** — Create table partition
 
-```jsonc
-// Request:  {}
-// Response: { "queries": [{ "pid": 12345, "user": "postgres", "application": "psql", "state": "active", "query": "SELECT ...", "query_start": "..." }, ...] }
+```json
+{
+  "table": "orders",
+  "partition_name": "orders_2024",
+  "partition_type": "RANGE",
+  "column": "created_at",
+  "values": "FROM ('2024-01-01') TO ('2025-01-01')"
+}
 ```
 
-#### `show_connection_summary`
-Aggregate connection counts by state.
+**`delete_table_partition`** — Drop a partition
 
-```jsonc
-// Request:  {}
-// Response: { "summary": [{ "state": "active", "count": 3 }, { "state": "idle", "count": 7 }] }
+```json
+{ "partition_name": "orders_2024" }
+```
+
+**`list_partitions`** — List partitions on a table
+
+```json
+{ "table": "orders" }
+→ { "partitions": [...] }
+```
+
+**`backup_table`** — Create a backup copy of a table
+
+```json
+{ "table": "users" }
+→ Creates table: backup_users with all data
 ```
 
 ---
 
-### Maintenance
+### Batch Operations (4 tools)
 
-#### `vacuum_analyze`
-Run VACUUM ANALYZE on a specific table or the entire database.
+High-performance bulk DML. Max 1000 rows per request.
 
-| Param | Type | Required |
-|-------|------|----------|
-| `table` | string | no (omitting vacuums entire DB) |
+**`async_batch_insert`** — Insert multiple rows
 
-```jsonc
-// Request:  { "table": "users" }
-// Response: { "status": "success", "action": "VACUUM ANALYZE", "table": "users" }
+```json
+{
+  "table": "users",
+  "columns": ["name", "email"],
+  "rows": [
+    ["Alice", "alice@example.com"],
+    ["Bob", "bob@example.com"]
+  ],
+  "returning": "id"
+}
+→ { "rows_affected": 2, "inserted_ids": [1, 2] }
 ```
 
-#### `analyze_table`
-Update table statistics.
+**`async_batch_update`** — Update multiple rows with different conditions
 
-| Param | Type | Required |
-|-------|------|----------|
-| `table` | string | yes |
-
-```jsonc
-// Request:  { "table": "users" }
-// Response: { "status": "success", "action": "ANALYZE", "table": "users" }
+```json
+{
+  "table": "users",
+  "updates": { "status": "inactive" },
+  "where_clauses": ["id = 1", "id = 2"]
+}
+→ { "rows_affected": 2 }
 ```
 
-#### `reindex_table`
-Rebuild all indexes on a table.
+**`async_batch_delete`** — Delete multiple rows
 
-| Param | Type | Required |
-|-------|------|----------|
-| `table` | string | yes |
-
-```jsonc
-// Request:  { "table": "users" }
-// Response: { "status": "success", "action": "REINDEX", "table": "users" }
+```json
+{
+  "table": "users",
+  "where_clauses": ["id = 1", "id = 2"],
+  "returning": "id"
+}
+→ { "rows_affected": 2, "inserted_ids": [1, 2] }
 ```
 
-#### `get_pg_stat_statements`
-Top 50 queries by total execution time (requires `pg_stat_statements` extension).
+**`async_batch_insert_copy`** — Bulk insert with configurable batch size
 
-```jsonc
-// Request:  {}
-// Response: { "statements": [{ "query": "SELECT * FROM users WHERE id = $1", "calls": 100, "mean_time_ms": 0.5, "max_time_ms": 2.0, "total_time_ms": 50.0 }, ...] }
-```
-
-#### `reset_statistics`
-Reset all PostgreSQL statistics counters.
-
-```jsonc
-// Request:  {}
-// Response: { "status": "success", "action": "reset_statistics", "message": "All statistics counters have been reset" }
-```
-
----
-
-### Security
-
-#### `list_users`
-List all database users and their attributes.
-
-```jsonc
-// Request:  {}
-// Response: { "users": [{ "username": "postgres", "superuser": true, "createdb": true, "canlogin": true, "valid_until": null }, ...] }
-```
-
-#### `list_user_privileges`
-List table-level privileges for a specific user.
-
-| Param | Type | Required |
-|-------|------|----------|
-| `username` | string | yes |
-
-```jsonc
-// Request:  { "username": "alice" }
-// Response: { "privileges": [{ "grantee": "alice", "schema": "public", "table": "users", "privilege": "SELECT" }, ...] }
-```
-
-#### `list_role_memberships`
-List role-to-role memberships.
-
-```jsonc
-// Request:  {}
-// Response: { "memberships": [{ "member": "alice", "role": "readonly", "admin": false }, ...] }
-```
-
-#### `list_database_privileges`
-List ACLs for all non-template databases.
-
-```jsonc
-// Request:  {}
-// Response: { "databases": [{ "database": "mydb", "acl": "postgres=C*T*/postgres+..." }, ...] }
-```
-
-#### `show_session_info`
-Current session's client/server address and port.
-
-```jsonc
-// Request:  {}
-// Response: { "current_user": "postgres", "current_database": "mydb", "client_address": "127.0.0.1", "client_port": 54321, "server_address": "127.0.0.1", "server_port": 5432 }
+```json
+{
+  "table": "events",
+  "columns": ["user_id", "event_type"],
+  "rows": [[...5000 rows...]],
+  "batch_size": 1000
+}
+→ { "rows_affected": 5000, "batches": 5 }
 ```
 
 ---
 
-### Configuration
+### Monitoring & Analysis (6 tools)
 
-#### `show_all_settings`
-List all non-internal PostgreSQL settings.
+**`list_connections`** — Show active database connections
 
-```jsonc
-// Request:  {}
-// Response: { "settings": [{ "name": "checkpoint_timeout", "value": "300", "unit": "s", "description": "Sets maximum time between automatic WAL checkpoints", "context": "sighup" }, ...] }
+```json
+{}
+→ { "connections": [{"pid": 12345, "user": "postgres", "state": "active", ...}, ...] }
 ```
 
-#### `get_setting`
-Get a specific PostgreSQL setting with full metadata.
+**`show_current_user`** — Show current user and database
 
-| Param | Type | Required |
-|-------|------|----------|
-| `setting` | string | yes |
-
-```jsonc
-// Request:  { "setting": "work_mem" }
-// Response: { "name": "work_mem", "value": "4096", "unit": "kB", "description": "Sets the maximum memory to be used for query workspaces", "context": "user", "type": "integer", "source": "default" }
+```json
+{}
+→ { "user": "postgres", "database": "mydb", "version": "PostgreSQL 16" }
 ```
 
-#### `show_memory_settings`
-Key memory configuration settings.
+**`analyze_table`** — Update table statistics
 
-```jsonc
-// Request:  {}
-// Response: { "memory_settings": [{ "name": "shared_buffers", "value": "128", "unit": "MB" }, { "name": "work_mem", "value": "4096", "unit": "kB" }, ...] }
+```json
+{ "table": "users" }
+→ { "status": "success", "action": "ANALYZE", "table": "users" }
 ```
 
-#### `show_performance_settings`
-Performance-related settings.
+**`vacuum_table`** — Clean dead tuples and optimize
 
-```jsonc
-// Request:  {}
-// Response: { "performance_settings": [{ "name": "max_connections", "value": "100" }, { "name": "synchronous_commit", "value": "on" }, ...] }
+```json
+{ "table": "users" }
+→ { "status": "success", "action": "VACUUM", "table": "users" }
 ```
 
-#### `show_log_settings`
-All logging-related settings.
+**`get_table_size`** — Get table size in bytes and human-readable format
 
-```jsonc
-// Request:  {}
-// Response: { "log_settings": [{ "name": "log_min_duration_statement", "value": "-1", "unit": "ms" }, ...] }
+```json
+{ "table": "users" }
+→ { "size": "256 MB", "size_bytes": 268435456 }
 ```
 
----
+**`get_database_size`** — Get total database size
 
-### Replication
-
-#### `show_replication_status`
-WAL replay status and uptime.
-
-```jsonc
-// Request:  {}
-// Response: { "is_wal_replay_paused": false, "last_wal_receive_lsn": "0/1234567", "last_wal_replay_lsn": "0/1234567", "uptime": "02:15:30" }
-```
-
-#### `list_replication_slots`
-List all replication slots.
-
-```jsonc
-// Request:  {}
-// Response: { "replication_slots": [{ "slot_name": "slot1", "slot_type": "physical", "database": null, "active": true, "restart_lsn": "0/1234567", "confirmed_flush_lsn": null }, ...] }
-```
-
-#### `list_standby_servers`
-List connected standby servers with replication lag.
-
-```jsonc
-// Request:  {}
-// Response: { "standbys": [{ "client_address": "10.0.0.2", "client_port": 5432, "state": "streaming", "sync_state": "sync", "write_lag": null, "flush_lag": null, "replay_lag": null }, ...] }
-```
-
-#### `show_wal_info`
-Current WAL position and size.
-
-```jsonc
-// Request:  {}
-// Response: { "current_wal_lsn": "0/1234567", "current_wal_insert_lsn": "0/1234567", "wal_replay_paused": false, "wal_size_bytes": 123456789 }
-```
-
-#### `show_base_backup_progress`
-Show base backup progress (PG 17+).
-
-```jsonc
-// Request:  {}
-// Response: { "phase": "streaming database files", "backup_total": 1000000000, "backup_streamed": 500000000, "tablespaces_total": 1, "tablespaces_streamed": 1 }
+```json
+{}
+→ { "size": "2.5 GB", "size_bytes": 2684354560 }
 ```
 
 ---
 
-### Transactions
+### Connection & Security (4 tools)
 
-#### `show_active_transactions`
-Show all transactions in progress.
+**`show_running_queries`** — Show all non-idle queries
 
-```jsonc
-// Request:  {}
-// Response: { "transactions": [{ "pid": 12345, "user": "postgres", "application": "psql", "state": "active", "xact_start": "2026-06-13 10:00:00", "query_start": "2026-06-13 10:00:00", "query": "UPDATE ..." }, ...] }
+```json
+{}
+→ { "queries": [{"pid": 12345, "user": "postgres", "query": "SELECT ...", ...}, ...] }
 ```
 
-#### `show_locks`
-Show all locks with their holders and queries.
+**`list_users`** — List all database users
 
-```jsonc
-// Request:  {}
-// Response: { "locks": [{ "pid": 12345, "user": "postgres", "application": "psql", "lock_type": "ExclusiveLock", "granted": true, "fastpath": false, "query_start": "2026-06-13 10:00:00", "query": "UPDATE ..." }, ...] }
+```json
+{}
+→ { "users": [{"username": "alice", "superuser": false, "canlogin": true}, ...] }
 ```
 
-#### `show_waiting_locks`
-Show all locks that are waiting (not granted).
+**`list_user_privileges`** — List privileges for a user
 
-```jsonc
-// Request:  {}
-// Response: { "waiting_locks": [{ "pid": 12345, "user": "postgres", "lock_type": "ExclusiveLock", "query_start": "2026-06-13 10:00:00", "query": "UPDATE ..." }, ...] }
+```json
+{ "username": "alice" }
+→ { "privileges": [{"schema": "public", "table": "users", "privilege": "SELECT"}, ...] }
 ```
 
-#### `begin_transaction`
-Begin a new transaction with optional isolation level.
+**`show_session_info`** — Show current session details
 
-| Param | Type | Required | Default |
-|-------|------|----------|---------|
-| `isolation_level` | string | no | `"READ COMMITTED"` |
-
-Valid levels: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, `READ UNCOMMITTED`.
-
-```jsonc
-// Request:  { "isolation_level": "SERIALIZABLE" }
-// Response: { "status": "success", "action": "BEGIN", "isolation_level": "SERIALIZABLE" }
+```json
+{}
+→ { "current_user": "postgres", "current_database": "mydb", "client_address": "127.0.0.1", ... }
 ```
 
-#### `commit_transaction`
-Commit the current transaction.
+---
 
-```jsonc
-// Request:  {}
-// Response: { "status": "success", "action": "COMMIT" }
+### Configuration (2 tools)
+
+**`show_all_settings`** — List all PostgreSQL settings
+
+```json
+{}
+→ { "settings": [{"name": "work_mem", "value": "4096", "unit": "kB", ...}, ...] }
 ```
 
-#### `rollback_transaction`
-Roll back the current transaction.
+**`get_setting`** — Get a specific setting
 
-```jsonc
-// Request:  {}
-// Response: { "status": "success", "action": "ROLLBACK" }
-```
-
-#### `show_transaction_isolation`
-Show current transaction isolation level.
-
-```jsonc
-// Request:  {}
-// Response: { "isolation_level": "read committed", "available_levels": ["serializable", "repeatable read", "read committed", "read uncommitted"] }
-```
-
-#### `show_deadlocks`
-Detect potential deadlock situations.
-
-```jsonc
-// Request:  {}
-// Response: { "potential_deadlocks": [{ "pid": 12345, "user": "postgres", "application": "psql", "state": "active", "query_start": "2026-06-13 10:00:00", "query": "UPDATE ..." }, ...] }
-```
-
-#### `show_autocommit_status`
-Show whether autocommit is enabled.
-
-```jsonc
-// Request:  {}
-// Response: { "autocommit": true, "value": "on" }
-```
-
-#### `show_transaction_timeout`
-Show current `statement_timeout` setting.
-
-```jsonc
-// Request:  {}
-// Response: { "statement_timeout": "30s" }
+```json
+{ "setting": "work_mem" }
+→ { "name": "work_mem", "value": "4096", "unit": "kB", "description": "...", ... }
 ```
 
 ---
 
 ## Architecture
 
-```
-                   ┌──────────────────┐
-                   │   MCP Client      │
-                   │ (Claude Desktop)  │
-                   └────────┬─────────┘
-                            │
-              ┌─────────────┴─────────────┐
-              │       stdio / TCP         │
-              │    (JSON-RPC 2.0)         │
-              └─────────────┬─────────────┘
-                            │
-                   ┌────────┴────────┐
-                   │   MCPServer      │
-                   │  (tokio/TCP)     │
-                   │  (tokio/stdio)   │
-                   └────────┬────────┘
-                            │
-                   ┌────────┴────────┐
-                   │  ConnectionPool  │
-                   │ (deadpool-      │
-                   │  postgres)       │
-                   │  ┌──┐ ┌──┐ ┌──┐ │
-                   │  │C1│ │C2│ │C3│ │
-                   │  └──┘ └──┘ └──┘ │
-                   └────────┬────────┘
-                            │
-                   ┌────────┴────────┐
-                   │   PostgreSQL     │
-                   └─────────────────┘
-```
-
-### Performance Design
-
-- **Production-grade connection pool** — deadpool-postgres handles connection lifecycle, health checks, idle timeout, and recycling
-- **Minimal per-connection overhead** — 4KB message buffers, no unnecessary buffering or allocations
-- **Thread-local sharded metrics** — request counting uses per-CPU `AtomicU64` shards instead of a synchronized queue (single `fetch_add(Relaxed)` per request)
-- **Mimalloc** — fast allocation/deallocation with tuned page reset and eager commit
-- **Fat LTO + panic=abort** — release profile optimizes aggressively
-
-## Benchmark
-
-```bash
-# Terminal 1: Start server
-mcp-postgres --database-url "host=127.0.0.1 dbname=mydb" --log-level error &
-
-# Terminal 2: Run benchmark (10 concurrent clients, 10 seconds)
-cargo run --release --bin benchmark
-```
+### Dual-Protocol Design
 
 ```
-=== Results ===
-Concurrency: 10
-Duration: 10.0s
-Total Requests: 208,333
-Requests/sec: ~20,800
-Avg Latency: ~48µs
+┌─────────────────┐         ┌─────────────────┐
+│   TCP Client    │         │   HTTP Client   │
+│  (port 3000)    │         │  (port 3001)    │
+└────────┬────────┘         └────────┬────────┘
+         │                           │
+         └─────────────┬─────────────┘
+                       │
+              ┌────────┴────────┐
+              │   JSON-RPC 2.0   │
+              │  (MCP Protocol)  │
+              └────────┬────────┘
+                       │
+          ┌────────────┴────────────┐
+          │   Tool Dispatcher       │
+          │   (46 tools)            │
+          └────────────┬────────────┘
+                       │
+        ┌──────────────┴──────────────┐
+        │   Connection Pool           │
+        │   (deadpool-postgres)       │
+        │   Min: 5, Max: 20           │
+        └────────────┬────────────────┘
+                     │
+            ┌────────┴────────┐
+            │  PostgreSQL DB  │
+            └─────────────────┘
 ```
 
-## Test Suite
+### Key Design Decisions
 
-```bash
-# Unit tests (144 tests, no DB required)
-cargo test
+- **Stateless HTTP** — Each request is independent. Transaction tools (BEGIN, COMMIT, ROLLBACK) not available over HTTP.
+- **Connection pooling** — Deadpool maintains 5-20 connections with health checks and idle timeouts.
+- **Sub-10ms latency** — Optimized for interactive AI workflows. TCP: < 10ms, HTTP: < 10ms (> 20ms is unacceptable).
+- **Input validation** — All parameters validated at system boundary:
+  - SQL statements: max 10,000 characters
+  - Identifiers: max 255 characters
+  - Batch rows: max 1,000 per request
+  - SQL injection prevention via identifier validation
 
-# Integration tests (25 tool tests, requires running server on localhost:3000)
-# Terminal 1: 
-mcp-postgres --database-url "postgres://..." --log-level error
-
-# Terminal 2:
-cargo test --test integration_all_tools -- --nocapture
-```
+---
 
 ## Development
 
-```bash
-# Clone and build
-git clone https://github.com/corporatepiyush/mcp-pg-rust.git
-cd mcp-pg-rust
-cargo build --release
+### Testing
 
-# Test schema (optional)
-psql -d mydb -f test/schema.sql
+See [SKILLS.md](./SKILLS.md) for comprehensive testing procedures:
+
+```bash
+# Unit tests
+cargo test --lib
+
+# Integration tests (requires server running)
+cargo test --test integration_all_tools
+
+# Dual-protocol parity tests
+cargo test --test integration_dual_protocol
+
+# Load tests
+cargo test --test load_test
 ```
+
+### Project Structure
+
+```
+src/
+├── main.rs              Server setup, CLI parsing
+├── validation.rs        Input validation, identifier checks
+├── protocol/
+│   ├── tcp.rs          TCP server implementation
+│   └── http.rs         HTTP/2 server implementation
+├── actions/
+│   ├── query.rs        execute_query, execute_insert, etc.
+│   ├── schema.rs       DDL tools (create_table, drop_table, etc.)
+│   ├── batch.rs        Batch operations
+│   └── utility.rs      Utility functions
+└── errors.rs           Error handling
+
+tests/
+├── integration_all_tools.rs      All 46 tools
+├── integration_dual_protocol.rs  TCP vs HTTP parity
+└── load_test.rs                  Concurrent load testing
+
+SKILLS.md                         SDLC procedures, constraints, testing guide
+CLAUDE.md                         Agent responsibilities, release workflow
+```
+
+---
+
+## Contributing
+
+Follow the procedures in [SKILLS.md](./SKILLS.md):
+
+1. **Before committing**: Run `cargo test --lib` (100% pass required)
+2. **Before release**: Run full integration test suite
+3. **Latency requirement**: < 10ms (> 20ms is deal breaker)
+4. **Code quality**: Zero clippy warnings, input validation at boundaries
+
+---
 
 ## License
 
 Apache-2.0
+
+## Support
+
+For issues, questions, or tool requests: [GitHub Issues](https://github.com/corporatepiyush/mcp-pg-rust/issues)
