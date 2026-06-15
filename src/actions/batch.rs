@@ -357,9 +357,11 @@ pub async fn async_batch_insert_copy(client: &Client, params: &Option<&Value>) -
         total_affected += rows_affected;
     }
 
+    #[allow(clippy::cast_precision_loss)]
+    let batches = (rows.len() as f64 / batch_size as f64).ceil() as u32;
     Ok(json!({
         "rows_affected": total_affected,
-        "batches": (rows.len() as f64 / batch_size as f64).ceil() as u32
+        "batches": batches,
     }))
 }
 

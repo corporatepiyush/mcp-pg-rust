@@ -1,6 +1,6 @@
 [package]
 name = "mcp-postgres"
-version = "4.0.2"
+version = "4.0.3"
 edition = "2024"
 authors = ["Piyush"]
 description = "High-performance MCP server for PostgreSQL with CPU-aware connection pooling and optimized buffers"
@@ -83,17 +83,25 @@ criterion = "0.5"
 large_stack_frames = "warn"        # >2KB stack frames → L1 cache pressure
 large_enum_variant = "warn"        # oversized enum variants → wasteful layout
 boxed_local = "warn"               # fn(Box<T>) forces heap alloc on caller
+box_collection = "warn"            # Box<Vec<T>> → double indirection, collections heap-allocate
 
 # Clone / copy overhead
 redundant_clone = "warn"           # unnecessary .clone() on hot path
 needless_pass_by_value = "warn"    # large types passed by value → memcpy
 trivially_copy_pass_by_ref = "warn" # &u32 vs u32 (extra indirection)
+unnecessary_to_owned = "warn"      # .into_owned() forces heap alloc when borrow suffices
+implicit_clone = "warn"            # fn(&str) → fn(String) invisible clone at call site
+iter_overeager_cloned = "warn"     # .cloned() on &T: Copy → dead work
+
+# Pointers / references
+ptr_arg = "warn"                   # &Vec<T> → &[T], &String → &str (less indirection, better LLVM)
 
 # Const / compile-time evaluation
 missing_const_for_fn = "warn"      # missed const → runtime eval instead of compile-time
 
-# Integer conversion waste
+# Integer / float conversion
 cast_lossless = "warn"             # i64 → i32 loses precision without cast
+cast_precision_loss = "warn"       # u64 as f32 → silent precision loss (complement to cast_lossless)
 unnecessary_cast = "warn"          # u32 as u32 → dead instruction
 
 # Collection / string inefficiency
@@ -101,6 +109,15 @@ vec_init_then_push = "warn"        # Vec::new() + push → use with_capacity
 string_add_assign = "warn"         # s = s + x → s.push_str(x) (reallocation)
 inefficient_to_string = "warn"     # .to_string() on &str → redundant alloc
 manual_memcpy = "warn"             # manual copy loop → use copy_from_slice
+useless_vec = "warn"               # vec![x] when &[x] suffices (heap alloc for nothing)
+slow_vector_initialization = "warn" # vec![0; n] zero-init when immediately overwritten
+
+# Iterator adapter overhead
+manual_find_map = "warn"           # .find() + .map() → single .find_map() pass
+manual_filter_map = "warn"         # .filter() + .map() → single .filter_map() pass
+
+# Synchronization
+mutex_atomic = "warn"              # Mutex<bool> → AtomicBool, Mutex<u32> → AtomicU32
 
 # Drop / semantics
 # let_underscore_drop — renamed from clippy to rustc; handled via #[allow()] per-site

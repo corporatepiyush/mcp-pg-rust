@@ -62,8 +62,10 @@ pub async fn suggest_indexes(client: &Client, params: &Option<&Value>) -> MCPRes
         let rationale = if existing_count == 0 {
             format!("No indexes exist ({} seq scans)", seq_scan)
         } else {
+            #[allow(clippy::cast_precision_loss)]
+            let size_mb = total_size as f64 / 1048576.0;
             format!("High seq scan count ({} scans, {} rows read) on a {:.1} MB table with {} existing index(es)",
-                seq_scan, seq_tup_read, total_size as f64 / 1048576.0, existing_count)
+                seq_scan, seq_tup_read, size_mb, existing_count)
         };
 
         suggestions.push(json!({
