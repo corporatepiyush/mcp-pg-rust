@@ -13,7 +13,7 @@ async fn main() -> Result<()> {
     // SAFETY: set_var is unsafe in Rust 2024 due to potential data races,
     // but this runs in single-threaded context before any threads are spawned.
     unsafe { std::env::set_var("MIMALLOC_PAGE_RESET", "0") };           // Don't reset pages (reuse faster)
-    unsafe { std::env::set_var("MIMALLOC_DECOMMIT_DELAY", "500") };     // Decommit unused pages after 500ms
+    unsafe { std::env::set_var("MIMALLOC_DECOMMIT_DELAY", "1000") };    // Decommit unused pages after 1s
     unsafe { std::env::set_var("MIMALLOC_ARENA_EAGER_COMMIT", "1") };   // Eager commit for predictable latency
     unsafe { std::env::set_var("MIMALLOC_LARGE_OS_PAGES", "1") };       // Use large pages (2MB) to reduce TLB misses
     unsafe { std::env::set_var("MIMALLOC_EAGER_REGION_COMMIT", "1") };  // Eagerly commit regions for fast allocation
