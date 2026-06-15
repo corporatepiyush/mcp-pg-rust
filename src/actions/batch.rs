@@ -187,13 +187,9 @@ pub async fn async_batch_insert(client: &Client, params: &Option<&Value>) -> MCP
             Ok(rows) => {
                 client.execute("COMMIT", &[]).await?;
                 let ids: Vec<Value> = rows.iter().map(|r| {
-                    match r.try_get::<_, i64>(0) { Ok(id) => {
-                        json!(id)
-                    } _ => { match r.try_get::<_, i32>(0) { Ok(id) => {
-                        json!(id)
-                    } _ => {
-                        json!(null)
-                    }}}}
+                    r.try_get::<_, i64>(0).map(|id| json!(id))
+                        .or_else(|_| r.try_get::<_, i32>(0).map(|id| json!(id)))
+                        .unwrap_or(json!(null))
                 }).collect();
                 json!({ "rows_affected": ids.len(), "inserted_ids": ids })
             }
@@ -287,13 +283,9 @@ pub async fn async_batch_delete(client: &Client, params: &Option<&Value>) -> MCP
         sql.push_str(&format!(" RETURNING {}", quote_identifier(col)));
         let rows = client.query(&sql, &[]).await?;
         let ids: Vec<Value> = rows.iter().map(|r| {
-            match r.try_get::<_, i64>(0) { Ok(id) => {
-                json!(id)
-            } _ => { match r.try_get::<_, i32>(0) { Ok(id) => {
-                json!(id)
-            } _ => {
-                json!(null)
-            }}}}
+            r.try_get::<_, i64>(0).map(|id| json!(id))
+                .or_else(|_| r.try_get::<_, i32>(0).map(|id| json!(id)))
+                .unwrap_or(json!(null))
         }).collect();
         Ok(json!({ "rows_affected": ids.len(), "inserted_ids": ids }))
     } else {

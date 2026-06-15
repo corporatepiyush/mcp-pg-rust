@@ -719,11 +719,11 @@ fn test_tool_38_create_partition() {
         "values": "FROM (1) TO (100)"
     })) {
         Ok(response) => {
-            if let Some(result) = response.get("result") {
-                if result.get("action").and_then(|v| v.as_str()) == Some("CREATE TABLE PARTITION") {
-                    println!("✓ create_partition: test_parts_38_1 created (test table was partitioned)");
-                    return;
-                }
+            if let Some(result) = response.get("result")
+                && result.get("action").and_then(|v| v.as_str()) == Some("CREATE TABLE PARTITION")
+            {
+                println!("✓ create_partition: test_parts_38_1 created (test table was partitioned)");
+                return;
             }
             println!("✓ create_partition: response validated (table may not be partitioned — no DDL tool supports PARTITION BY)");
         }

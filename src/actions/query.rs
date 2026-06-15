@@ -55,23 +55,14 @@ pub async fn execute_query(client: &Client, params: &Option<&Value>) -> MCPResul
             let values: Vec<Value> = (0..row.len())
                 .map(|i| {
                     // Try type inference: prefer native JSON types over raw strings
-                    match row.try_get::<_, bool>(i) { Ok(v) => {
-                        json!(v)
-                    } _ => { match row.try_get::<_, i32>(i) { Ok(v) => {
-                        json!(v)
-                    } _ => { match row.try_get::<_, i64>(i) { Ok(v) => {
-                        json!(v)
-                    } _ => { match row.try_get::<_, f32>(i) { Ok(v) => {
-                        json!(v)
-                    } _ => { match row.try_get::<_, f64>(i) { Ok(v) => {
-                        json!(v)
-                    } _ => { match row.try_get::<_, String>(i) { Ok(v) => {
-                        Value::String(v)
-                    } _ => { match row.try_get::<_, Option<String>>(i) { Ok(v) => {
-                        v.map(Value::String).unwrap_or(Value::Null)
-                    } _ => {
-                        Value::Null
-                    }}}}}}}}}}}}}}
+                    row.try_get::<_, bool>(i).map(|v| json!(v))
+                        .or_else(|_| row.try_get::<_, i32>(i).map(|v| json!(v)))
+                        .or_else(|_| row.try_get::<_, i64>(i).map(|v| json!(v)))
+                        .or_else(|_| row.try_get::<_, f32>(i).map(|v| json!(v)))
+                        .or_else(|_| row.try_get::<_, f64>(i).map(|v| json!(v)))
+                        .or_else(|_| row.try_get::<_, String>(i).map(Value::String))
+                        .or_else(|_| row.try_get::<_, Option<String>>(i).map(|v| v.map(Value::String).unwrap_or(Value::Null)))
+                        .unwrap_or(Value::Null)
                 })
                 .collect();
             Value::Array(values)

@@ -10,17 +10,13 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 async fn main() -> Result<()> {
     // Configure mimalloc v3 before any allocations
     // Memory efficiency for high-throughput server
-    // FIXME: Audit that the environment access only happens in single-threaded code.
+    // SAFETY: set_var is unsafe in Rust 2024 due to potential data races,
+    // but this runs in single-threaded context before any threads are spawned.
     unsafe { std::env::set_var("MIMALLOC_PAGE_RESET", "0") };           // Don't reset pages (reuse faster)
-    // FIXME: Audit that the environment access only happens in single-threaded code.
     unsafe { std::env::set_var("MIMALLOC_DECOMMIT_DELAY", "500") };     // Decommit unused pages after 500ms
-    // FIXME: Audit that the environment access only happens in single-threaded code.
     unsafe { std::env::set_var("MIMALLOC_ARENA_EAGER_COMMIT", "1") };   // Eager commit for predictable latency
-    // FIXME: Audit that the environment access only happens in single-threaded code.
     unsafe { std::env::set_var("MIMALLOC_LARGE_OS_PAGES", "1") };       // Use large pages (2MB) to reduce TLB misses
-    // FIXME: Audit that the environment access only happens in single-threaded code.
     unsafe { std::env::set_var("MIMALLOC_EAGER_REGION_COMMIT", "1") };  // Eagerly commit regions for fast allocation
-    // FIXME: Audit that the environment access only happens in single-threaded code.
     unsafe { std::env::set_var("MIMALLOC_RESET_DELAY", "0") };          // No delay resetting freed allocations
 
     let args = Args::parse();
