@@ -8,13 +8,31 @@
 
 ## Quick Start
 
+### Install
+
 ```bash
-# Install
+# From crates.io
 cargo install mcp-postgres
 
-# Run (stdio mode for Claude Desktop)
-mcp-postgres --database-url "postgres://user:pass@localhost:5432/mydb" --stdio
+# Or from Homebrew (macOS)
+brew tap corporatepiyush/mcp-postgres
+brew install mcp-postgres
 ```
+
+### Run
+
+```bash
+# Stdio mode (for Claude Desktop)
+mcp-postgres --database-url "postgres://user:pass@localhost:5432/mydb" --stdio
+
+# TCP server (port 3000)
+mcp-postgres --database-url "postgres://user:pass@localhost:5432/mydb"
+
+# HTTP/2 server (port 3001)
+mcp-postgres --database-url "postgres://user:pass@localhost:5432/mydb" --http-port 3001
+```
+
+### Claude Desktop
 
 Add to `claude_desktop_config.json`:
 
