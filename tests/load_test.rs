@@ -1,3 +1,5 @@
+#![allow(clippy::cast_precision_loss)]
+
 /// HTTP Black Box Load Test for MCP PostgreSQL
 /// Measures real throughput with concurrent requests and connection pooling
 use std::sync::Arc;
@@ -6,7 +8,7 @@ use std::time::Instant;
 use tokio::task::JoinSet;
 
 #[tokio::test]
-#[ignore]  // Run with: cargo test --test load_test -- --ignored --nocapture
+#[ignore] // Run with: cargo test --test load_test -- --ignored --nocapture
 async fn load_test_concurrent_requests() {
     let base_url = "http://127.0.0.1:3001/rpc";
 
@@ -98,8 +100,16 @@ async fn load_test_concurrent_requests() {
     println!("===========");
     println!("Duration: {:.2}s", elapsed_secs);
     println!("Total requests: {}", total_requests);
-    println!("Successful: {} ({:.1}%)", success, (success as f64 / total_requests as f64) * 100.0);
-    println!("Failed: {} ({:.1}%)", errors, (errors as f64 / total_requests as f64) * 100.0);
+    println!(
+        "Successful: {} ({:.1}%)",
+        success,
+        (success as f64 / f64::from(total_requests)) * 100.0
+    );
+    println!(
+        "Failed: {} ({:.1}%)",
+        errors,
+        (errors as f64 / f64::from(total_requests)) * 100.0
+    );
     println!();
     println!("Throughput: {:.0} req/sec", throughput);
     println!("Baseline: 17,713 req/sec");
@@ -123,7 +133,7 @@ async fn load_test_concurrent_requests() {
 }
 
 #[tokio::test]
-#[ignore]  // Run with: cargo test --test load_test -- --ignored --nocapture
+#[ignore] // Run with: cargo test --test load_test -- --ignored --nocapture
 async fn load_test_sequential_baseline() {
     let base_url = "http://127.0.0.1:3001/rpc";
     let client = reqwest::Client::new();
@@ -148,12 +158,7 @@ async fn load_test_sequential_baseline() {
             "id": i
         });
 
-        match client
-            .post(base_url)
-            .json(&payload)
-            .send()
-            .await
-        {
+        match client.post(base_url).json(&payload).send().await {
             Ok(resp) => {
                 if resp.status().is_success() {
                     success += 1;
@@ -180,10 +185,12 @@ async fn load_test_sequential_baseline() {
 #[ignore]
 async fn load_test_tool_variations() {
     let base_url = "http://127.0.0.1:3001/rpc";
-    let client = Arc::new(reqwest::Client::builder()
-        .pool_max_idle_per_host(20)
-        .build()
-        .expect("Failed to create client"));
+    let client = Arc::new(
+        reqwest::Client::builder()
+            .pool_max_idle_per_host(20)
+            .build()
+            .expect("Failed to create client"),
+    );
 
     let tools = vec![
         ("show_current_user", serde_json::json!({})),

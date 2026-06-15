@@ -1,6 +1,6 @@
-use serde_json::{json, Value};
-use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
+use serde_json::{Value, json};
+use tokio_postgres::Client;
 
 /// 11. Get table stats
 pub async fn get_table_stats(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {

@@ -1,15 +1,15 @@
-use tokio::net::{TcpListener, TcpStream};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use serde_json::{json, Value};
-use tracing::{error, warn};
+use serde_json::{Value, json};
 use std::sync::Arc;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::{TcpListener, TcpStream};
+use tracing::{error, warn};
 
+use crate::actions;
 use crate::config::Config;
 use crate::errors::{MCPError, Result as MCPResult};
 use crate::metrics;
 use crate::pool::ConnectionPool;
 use crate::protocol::{JsonRpcRequest, JsonRpcResponse};
-use crate::actions;
 use once_cell::sync::Lazy;
 
 /// Pre-serialized response bytes for `tools/list`.  Built once at startup;
@@ -17,8 +17,7 @@ use once_cell::sync::Lazy;
 /// entire 135-tool Value tree (~50 KB).
 static TOOLS_LIST_RESPONSE: Lazy<Vec<u8>> = Lazy::new(|| {
     let tools_json = include_str!("../tools.json");
-    let tools: Vec<Value> = serde_json::from_str(tools_json)
-        .expect("Failed to parse tools.json");
+    let tools: Vec<Value> = serde_json::from_str(tools_json).expect("Failed to parse tools.json");
     let resp = json!({ "tools": tools });
     serde_json::to_vec(&resp).expect("Failed to serialize tools/list response")
 });
@@ -39,8 +38,7 @@ fn parse_request(line: &str) -> Result<JsonRpcRequest, String> {
     if trimmed.is_empty() {
         return Err("Empty request".to_string());
     }
-    serde_json::from_str::<JsonRpcRequest>(trimmed)
-        .map_err(|e| e.to_string())
+    serde_json::from_str::<JsonRpcRequest>(trimmed).map_err(|e| e.to_string())
 }
 
 pub struct MCPServer {
@@ -59,25 +57,32 @@ impl MCPServer {
         let mut reader = BufReader::with_capacity(BUFFER_CAPACITY, stdin);
         let mut stdout = tokio::io::stdout();
         let mut line = String::with_capacity(512);
-    // 4 KB initial — handles >95% of responses without resizing.
-    // Tools like `list_tables` or `execute_query` may exceed this,
-    // but Vec grows geometrically so the amortized cost is negligible.
-    let mut response_buf = Vec::with_capacity(4096);
+        // 4 KB initial — handles >95% of responses without resizing.
+        // Tools like `list_tables` or `execute_query` may exceed this,
+        // but Vec grows geometrically so the amortized cost is negligible.
+        let mut response_buf = Vec::with_capacity(4096);
 
-    loop {
-        line.clear();
-        match reader.read_line(&mut line).await {
-            Ok(0) => break,
-            Ok(_) => {
-                process_one_line(&line, &self.pool, &self.config, &mut response_buf, &mut stdout).await?;
-            }
-            Err(e) => {
-                error!("IO error: {}", e);
-                break;
+        loop {
+            line.clear();
+            match reader.read_line(&mut line).await {
+                Ok(0) => break,
+                Ok(_) => {
+                    process_one_line(
+                        &line,
+                        &self.pool,
+                        &self.config,
+                        &mut response_buf,
+                        &mut stdout,
+                    )
+                    .await?;
+                }
+                Err(e) => {
+                    error!("IO error: {}", e);
+                    break;
+                }
             }
         }
-    }
-    Ok(())
+        Ok(())
     }
 
     pub async fn run(&self) -> MCPResult<()> {
@@ -106,7 +111,11 @@ impl MCPServer {
 }
 
 #[inline(never)]
-async fn handle_client(socket: TcpStream, pool: Arc<ConnectionPool>, config: Config) -> MCPResult<()> {
+async fn handle_client(
+    socket: TcpStream,
+    pool: Arc<ConnectionPool>,
+    config: Config,
+) -> MCPResult<()> {
     let (reader, mut writer) = socket.into_split();
     let mut reader = BufReader::with_capacity(BUFFER_CAPACITY, reader);
     let mut line = String::with_capacity(512);
@@ -149,7 +158,10 @@ async fn process_one_line<W: AsyncWriteExt + Unpin>(
                 Ok(result) => (JsonRpcResponse::success(req.id, result), is_notif),
                 Err(e) => {
                     metrics::inc_errors();
-                    (JsonRpcResponse::error(req.id, e.error_code(), e.to_string()), is_notif)
+                    (
+                        JsonRpcResponse::error(req.id, e.error_code(), e.to_string()),
+                        is_notif,
+                    )
                 }
             }
         }
@@ -313,55 +325,93 @@ async fn handle_tools_call(
         "async_batch_insert" => actions::batch::async_batch_insert(&client, &tool_args).await,
         "async_batch_update" => actions::batch::async_batch_update(&client, &tool_args).await,
         "async_batch_delete" => actions::batch::async_batch_delete(&client, &tool_args).await,
-        "async_batch_insert_copy" => actions::batch::async_batch_insert_copy(&client, &tool_args).await,
+        "async_batch_insert_copy" => {
+            actions::batch::async_batch_insert_copy(&client, &tool_args).await
+        }
         // Monitoring actions
         "get_table_stats" => actions::monitoring::get_table_stats(&client, &tool_args).await,
         "get_index_stats" => actions::monitoring::get_index_stats(&client, &tool_args).await,
         "show_database_size" => actions::monitoring::show_database_size(&client, &tool_args).await,
         "show_table_size" => actions::monitoring::show_table_size(&client, &tool_args).await,
-        "get_cache_hit_ratio" => actions::monitoring::get_cache_hit_ratio(&client, &tool_args).await,
+        "get_cache_hit_ratio" => {
+            actions::monitoring::get_cache_hit_ratio(&client, &tool_args).await
+        }
         // Connection actions
         "list_connections" => actions::connections::list_connections(&client, &tool_args).await,
         "show_current_user" => actions::connections::show_current_user(&client, &tool_args).await,
-        "show_running_queries" => actions::connections::show_running_queries(&client, &tool_args).await,
-        "show_connection_summary" => actions::connections::show_connection_summary(&client, &tool_args).await,
+        "show_running_queries" => {
+            actions::connections::show_running_queries(&client, &tool_args).await
+        }
+        "show_connection_summary" => {
+            actions::connections::show_connection_summary(&client, &tool_args).await
+        }
         // Maintenance actions
         "vacuum_analyze" => actions::maintenance::vacuum_analyze(&client, &tool_args).await,
         "analyze_table" => actions::maintenance::analyze_table(&client, &tool_args).await,
         "reindex_table" => actions::maintenance::reindex_table(&client, &tool_args).await,
-        "get_pg_stat_statements" => actions::maintenance::get_pg_stat_statements(&client, &tool_args).await,
+        "get_pg_stat_statements" => {
+            actions::maintenance::get_pg_stat_statements(&client, &tool_args).await
+        }
         "reset_statistics" => actions::maintenance::reset_statistics(&client, &tool_args).await,
         "truncate_table" => actions::maintenance::truncate_table(&client, &tool_args).await,
         // Security actions
         "list_users" => actions::security::list_users(&client, &tool_args).await,
-        "list_user_privileges" => actions::security::list_user_privileges(&client, &tool_args).await,
-        "list_role_memberships" => actions::security::list_role_memberships(&client, &tool_args).await,
-        "list_database_privileges" => actions::security::list_database_privileges(&client, &tool_args).await,
+        "list_user_privileges" => {
+            actions::security::list_user_privileges(&client, &tool_args).await
+        }
+        "list_role_memberships" => {
+            actions::security::list_role_memberships(&client, &tool_args).await
+        }
+        "list_database_privileges" => {
+            actions::security::list_database_privileges(&client, &tool_args).await
+        }
         "show_session_info" => actions::security::show_session_info(&client, &tool_args).await,
         // Config actions
         "show_all_settings" => actions::config::show_all_settings(&client, &tool_args).await,
         "get_setting" => actions::config::get_setting(&client, &tool_args).await,
         "show_memory_settings" => actions::config::show_memory_settings(&client, &tool_args).await,
-        "show_performance_settings" => actions::config::show_performance_settings(&client, &tool_args).await,
+        "show_performance_settings" => {
+            actions::config::show_performance_settings(&client, &tool_args).await
+        }
         "show_log_settings" => actions::config::show_log_settings(&client, &tool_args).await,
         // Replication actions
-        "show_replication_status" => actions::replication::show_replication_status(&client, &tool_args).await,
-        "list_replication_slots" => actions::replication::list_replication_slots(&client, &tool_args).await,
-        "list_standby_servers" => actions::replication::list_standby_servers(&client, &tool_args).await,
+        "show_replication_status" => {
+            actions::replication::show_replication_status(&client, &tool_args).await
+        }
+        "list_replication_slots" => {
+            actions::replication::list_replication_slots(&client, &tool_args).await
+        }
+        "list_standby_servers" => {
+            actions::replication::list_standby_servers(&client, &tool_args).await
+        }
         "show_wal_info" => actions::replication::show_wal_info(&client, &tool_args).await,
-        "show_base_backup_progress" => actions::replication::show_base_backup_progress(&client, &tool_args).await,
+        "show_base_backup_progress" => {
+            actions::replication::show_base_backup_progress(&client, &tool_args).await
+        }
         // Transaction actions
-        "show_active_transactions" => actions::transactions::show_active_transactions(&client, &tool_args).await,
+        "show_active_transactions" => {
+            actions::transactions::show_active_transactions(&client, &tool_args).await
+        }
         "show_locks" => actions::transactions::show_locks(&client, &tool_args).await,
-        "show_waiting_locks" => actions::transactions::show_waiting_locks(&client, &tool_args).await,
-        "show_transaction_isolation" => actions::transactions::show_transaction_isolation(&client, &tool_args).await,
+        "show_waiting_locks" => {
+            actions::transactions::show_waiting_locks(&client, &tool_args).await
+        }
+        "show_transaction_isolation" => {
+            actions::transactions::show_transaction_isolation(&client, &tool_args).await
+        }
         "show_deadlocks" => actions::transactions::show_deadlocks(&client, &tool_args).await,
-        "show_autocommit_status" => actions::transactions::show_autocommit_status(&client, &tool_args).await,
-        "show_transaction_timeout" => actions::transactions::show_transaction_timeout(&client, &tool_args).await,
+        "show_autocommit_status" => {
+            actions::transactions::show_autocommit_status(&client, &tool_args).await
+        }
+        "show_transaction_timeout" => {
+            actions::transactions::show_transaction_timeout(&client, &tool_args).await
+        }
         // Health actions
         "analyze_db_health" => actions::health::analyze_db_health(&client, &tool_args).await,
         "list_unused_indexes" => actions::health::list_unused_indexes(&client, &tool_args).await,
-        "list_duplicate_indexes" => actions::health::list_duplicate_indexes(&client, &tool_args).await,
+        "list_duplicate_indexes" => {
+            actions::health::list_duplicate_indexes(&client, &tool_args).await
+        }
         "show_vacuum_progress" => actions::health::show_vacuum_progress(&client, &tool_args).await,
         // Enhanced schema
         "get_object_details" => actions::schema::get_object_details(&client, &tool_args).await,
@@ -384,12 +434,18 @@ async fn handle_tools_call(
         "rename_schema" => actions::schema_alter::rename_schema(&client, &tool_args).await,
         "add_foreign_key" => actions::schema_alter::add_foreign_key(&client, &tool_args).await,
         "drop_foreign_key" => actions::schema_alter::drop_foreign_key(&client, &tool_args).await,
-        "add_unique_constraint" => actions::schema_alter::add_unique_constraint(&client, &tool_args).await,
+        "add_unique_constraint" => {
+            actions::schema_alter::add_unique_constraint(&client, &tool_args).await
+        }
         "drop_constraint" => actions::schema_alter::drop_constraint(&client, &tool_args).await,
         // Session management
         "cancel_query" => actions::session_mgmt::cancel_query(&client, &tool_args).await,
-        "terminate_connection" => actions::session_mgmt::terminate_connection(&client, &tool_args).await,
-        "show_blocked_queries" => actions::session_mgmt::show_blocked_queries(&client, &tool_args).await,
+        "terminate_connection" => {
+            actions::session_mgmt::terminate_connection(&client, &tool_args).await
+        }
+        "show_blocked_queries" => {
+            actions::session_mgmt::show_blocked_queries(&client, &tool_args).await
+        }
         // Extension management
         "list_extensions" => actions::ext_mgmt::list_extensions(&client, &tool_args).await,
         "create_extension" => actions::ext_mgmt::create_extension(&client, &tool_args).await,
@@ -402,21 +458,35 @@ async fn handle_tools_call(
         "vacuum_full" => actions::maint_ext::vacuum_full(&client, &tool_args).await,
         "reindex_database" => actions::maint_ext::reindex_database(&client, &tool_args).await,
         // Migration helpers
-        "generate_create_table_ddl" => actions::migration_helpers::generate_create_table_ddl(&client, &tool_args).await,
-        "generate_create_index_ddl" => actions::migration_helpers::generate_create_index_ddl(&client, &tool_args).await,
-        "table_dependencies" => actions::migration_helpers::table_dependencies(&client, &tool_args).await,
+        "generate_create_table_ddl" => {
+            actions::migration_helpers::generate_create_table_ddl(&client, &tool_args).await
+        }
+        "generate_create_index_ddl" => {
+            actions::migration_helpers::generate_create_index_ddl(&client, &tool_args).await
+        }
+        "table_dependencies" => {
+            actions::migration_helpers::table_dependencies(&client, &tool_args).await
+        }
         // pgvector
         "list_vector_columns" => actions::pgvector::list_vector_columns(&client, &tool_args).await,
         "vector_search" => actions::pgvector::vector_search(&client, &tool_args).await,
         "create_vector_index" => actions::pgvector::create_vector_index(&client, &tool_args).await,
         // TimescaleDB
         "create_hypertable" => actions::timescaledb::create_hypertable(&client, &tool_args).await,
-        "show_hypertable_details" => actions::timescaledb::show_hypertable_details(&client, &tool_args).await,
+        "show_hypertable_details" => {
+            actions::timescaledb::show_hypertable_details(&client, &tool_args).await
+        }
         "show_chunks" => actions::timescaledb::show_chunks(&client, &tool_args).await,
-        "add_retention_policy" => actions::timescaledb::add_retention_policy(&client, &tool_args).await,
-        "add_compression_policy" => actions::timescaledb::add_compression_policy(&client, &tool_args).await,
+        "add_retention_policy" => {
+            actions::timescaledb::add_retention_policy(&client, &tool_args).await
+        }
+        "add_compression_policy" => {
+            actions::timescaledb::add_compression_policy(&client, &tool_args).await
+        }
         "compress_chunk" => actions::timescaledb::compress_chunk(&client, &tool_args).await,
-        "add_continuous_aggregate" => actions::timescaledb::add_continuous_aggregate(&client, &tool_args).await,
+        "add_continuous_aggregate" => {
+            actions::timescaledb::add_continuous_aggregate(&client, &tool_args).await
+        }
         // pg_textsearch (BM25)
         "list_bm25_indexes" => actions::pg_textsearch::list_bm25_indexes(&client, &tool_args).await,
         "search_bm25" => actions::pg_textsearch::search_bm25(&client, &tool_args).await,
@@ -430,10 +500,18 @@ async fn handle_tools_call(
         // v4.0: Index Advisor
         "suggest_indexes" => actions::index_advisor::suggest_indexes(&client, &tool_args).await,
         // v4.0: Schema Health
-        "find_tables_without_pk" => actions::schema_health::find_tables_without_pk(&client, &tool_args).await,
-        "find_missing_fk_indexes" => actions::schema_health::find_missing_fk_indexes(&client, &tool_args).await,
-        "analyze_table_bloat" => actions::schema_health::analyze_table_bloat(&client, &tool_args).await,
-        "clone_table_schema" => actions::schema_health::clone_table_schema(&client, &tool_args).await,
+        "find_tables_without_pk" => {
+            actions::schema_health::find_tables_without_pk(&client, &tool_args).await
+        }
+        "find_missing_fk_indexes" => {
+            actions::schema_health::find_missing_fk_indexes(&client, &tool_args).await
+        }
+        "analyze_table_bloat" => {
+            actions::schema_health::analyze_table_bloat(&client, &tool_args).await
+        }
+        "clone_table_schema" => {
+            actions::schema_health::clone_table_schema(&client, &tool_args).await
+        }
         // v4.0: Security Audit
         "security_audit" => actions::security_audit::security_audit(&client, &tool_args).await,
         "audit_role_usage" => actions::security_audit::audit_role_usage(&client, &tool_args).await,
@@ -496,7 +574,10 @@ mod tests {
     #[test]
     fn test_parse_invalid_json() {
         let err = parse_request("{invalid}").unwrap_err();
-        assert!(!err.is_empty(), "Invalid JSON should produce an error message");
+        assert!(
+            !err.is_empty(),
+            "Invalid JSON should produce an error message"
+        );
     }
 
     #[test]
@@ -522,7 +603,10 @@ mod tests {
     fn test_tools_list_static() {
         let list: Value = serde_json::from_slice(&TOOLS_LIST_RESPONSE).unwrap();
         let tools = list.get("tools").and_then(|v| v.as_array());
-        assert!(tools.is_some(), "TOOLS_LIST_RESPONSE should contain a tools array");
+        assert!(
+            tools.is_some(),
+            "TOOLS_LIST_RESPONSE should contain a tools array"
+        );
         assert!(!tools.unwrap().is_empty(), "Tools list should not be empty");
     }
 
@@ -567,7 +651,10 @@ mod tests {
             for (line_no, line) in source.lines().enumerate() {
                 let trimmed = line.trim();
                 // Skip comments, UPDATE SET, string literals
-                if trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with("*") {
+                if trimmed.starts_with("//")
+                    || trimmed.starts_with("/*")
+                    || trimmed.starts_with("*")
+                {
                     continue;
                 }
                 if trimmed.contains("UPDATE ") && trimmed.contains("SET ") {
@@ -583,7 +670,9 @@ mod tests {
                         "Phase 1.5 violation: bare `SET` (not SET LOCAL) found in {}:{} — \
                          use BEGIN + SET LOCAL + COMMIT pattern to avoid session leakage.\n\
                          Line: {}",
-                        names[idx], line_no + 1, trimmed
+                        names[idx],
+                        line_no + 1,
+                        trimmed
                     );
                 }
             }

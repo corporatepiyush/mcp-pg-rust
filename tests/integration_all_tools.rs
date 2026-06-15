@@ -1,17 +1,22 @@
+#![allow(clippy::needless_pass_by_value)]
+
 /// Complete integration tests for ALL 76 PostgreSQL tools
 /// Each tool is tested with real server on localhost:3000
 /// Automated: ./tests/run_all_tests.sh [database-url]
 /// Manual: cargo build --release
 ///        ./target/release/mcp-postgres --database-url "postgres://..." &
 ///        cargo test --test integration_all_tools -- --nocapture --test-threads=1
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
 
 /// Drop an object if it exists — used for test cleanup.
 fn drop_if_exists(obj: &str) {
-    let _ = tcp_request("drop_table", json!({"table": obj, "if_exists": true, "cascade": true}));
+    let _ = tcp_request(
+        "drop_table",
+        json!({"table": obj, "if_exists": true, "cascade": true}),
+    );
 }
 
 /// Guard that drops a test table on scope exit — ensures cleanup even when
@@ -22,7 +27,9 @@ struct TableGuard {
 
 impl TableGuard {
     fn new(name: &str) -> Self {
-        TableGuard { name: name.to_string() }
+        TableGuard {
+            name: name.to_string(),
+        }
     }
 }
 
@@ -211,9 +218,14 @@ fn test_tool_9_list_unused_indexes() {
     match tcp_request("list_unused_indexes", json!({})) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            let indexes = result.get("unused_indexes").expect("Missing unused_indexes");
+            let indexes = result
+                .get("unused_indexes")
+                .expect("Missing unused_indexes");
             assert!(indexes.is_array());
-            println!("✓ list_unused_indexes: {} indexes found", indexes.as_array().unwrap().len());
+            println!(
+                "✓ list_unused_indexes: {} indexes found",
+                indexes.as_array().unwrap().len()
+            );
         }
         Err(e) => panic!("✗ list_unused_indexes failed: {}", e),
     }
@@ -225,9 +237,14 @@ fn test_tool_10_list_duplicate_indexes() {
     match tcp_request("list_duplicate_indexes", json!({})) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            let duplicates = result.get("duplicate_indexes").expect("Missing duplicate_indexes");
+            let duplicates = result
+                .get("duplicate_indexes")
+                .expect("Missing duplicate_indexes");
             assert!(duplicates.is_array());
-            println!("✓ list_duplicate_indexes: {} duplicate sets found", duplicates.as_array().unwrap().len());
+            println!(
+                "✓ list_duplicate_indexes: {} duplicate sets found",
+                duplicates.as_array().unwrap().len()
+            );
         }
         Err(e) => panic!("✗ list_duplicate_indexes failed: {}", e),
     }
@@ -249,7 +266,10 @@ fn test_tool_11_show_vacuum_progress() {
 // ============ TOOL 12: get_object_details ============
 #[test]
 fn test_tool_12_get_object_details() {
-    match tcp_request("get_object_details", json!({"table": "pg_tables", "schema": "information_schema"})) {
+    match tcp_request(
+        "get_object_details",
+        json!({"table": "pg_tables", "schema": "information_schema"}),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
             assert!(result.is_object());
@@ -287,7 +307,10 @@ fn test_tool_14_list_database_privileges() {
             let result = response.get("result").expect("Missing result");
             let databases = result.get("databases").expect("Missing databases");
             assert!(databases.is_array());
-            println!("✓ list_database_privileges: {} databases found", databases.as_array().unwrap().len());
+            println!(
+                "✓ list_database_privileges: {} databases found",
+                databases.as_array().unwrap().len()
+            );
         }
         Err(e) => panic!("✗ list_database_privileges failed: {}", e),
     }
@@ -317,7 +340,10 @@ fn test_tool_16_list_role_memberships() {
             let result = response.get("result").expect("Missing result");
             let memberships = result.get("memberships").expect("Missing memberships");
             assert!(memberships.is_array());
-            println!("✓ list_role_memberships: {} membership entries found", memberships.as_array().unwrap().len());
+            println!(
+                "✓ list_role_memberships: {} membership entries found",
+                memberships.as_array().unwrap().len()
+            );
         }
         Err(e) => panic!("✗ list_role_memberships failed: {}", e),
     }
@@ -332,7 +358,10 @@ fn test_tool_17_list_indexes() {
             let indexes = result.get("indexes").expect("Missing indexes");
             assert!(indexes.is_array());
             let index_list = indexes.as_array().unwrap();
-            println!("✓ list_indexes: {} indexes found (may be 0 on fresh DB)", index_list.len());
+            println!(
+                "✓ list_indexes: {} indexes found (may be 0 on fresh DB)",
+                index_list.len()
+            );
         }
         Err(e) => panic!("✗ list_indexes failed: {}", e),
     }
@@ -362,7 +391,10 @@ fn test_tool_19_show_constraints() {
             let result = response.get("result").expect("Missing result");
             let constraints = result.get("constraints").expect("Missing constraints");
             assert!(constraints.is_array());
-            println!("✓ show_constraints: {} constraints found", constraints.as_array().unwrap().len());
+            println!(
+                "✓ show_constraints: {} constraints found",
+                constraints.as_array().unwrap().len()
+            );
         }
         Err(e) => panic!("✗ show_constraints failed: {}", e),
     }
@@ -405,7 +437,10 @@ fn test_tool_22_get_pg_stat_statements() {
             let result = response.get("result").expect("Missing result");
             let statements = result.get("statements").expect("Missing statements");
             assert!(statements.is_array());
-            println!("✓ get_pg_stat_statements: {} statements found", statements.as_array().unwrap().len());
+            println!(
+                "✓ get_pg_stat_statements: {} statements found",
+                statements.as_array().unwrap().len()
+            );
         }
         Err(e) => panic!("✗ get_pg_stat_statements failed: {}", e),
     }
@@ -461,14 +496,23 @@ fn test_tool_25_show_session_info() {
 fn test_tool_26_create_table() {
     let _guard = TableGuard::new("test_ddl_26");
     drop_if_exists("test_ddl_26");
-    match tcp_request("create_table", json!({
-        "table": "test_ddl_26",
-        "columns": ["id SERIAL PRIMARY KEY", "name VARCHAR(255) NOT NULL", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"]
-    })) {
+    match tcp_request(
+        "create_table",
+        json!({
+            "table": "test_ddl_26",
+            "columns": ["id SERIAL PRIMARY KEY", "name VARCHAR(255) NOT NULL", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"]
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            assert_eq!(result.get("status").and_then(|v| v.as_str()).unwrap_or(""), "success");
-            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "CREATE TABLE");
+            assert_eq!(
+                result.get("status").and_then(|v| v.as_str()).unwrap_or(""),
+                "success"
+            );
+            assert_eq!(
+                result.get("action").and_then(|v| v.as_str()).unwrap_or(""),
+                "CREATE TABLE"
+            );
             println!("✓ create_table: test_ddl_26 created");
         }
         Err(e) => panic!("✗ create_table failed: {}", e),
@@ -479,19 +523,28 @@ fn test_tool_26_create_table() {
 #[test]
 fn test_tool_27_drop_table() {
     // First create a table
-    let _ = tcp_request("create_table", json!({
-        "table": "test_ddl_27",
-        "columns": ["id SERIAL PRIMARY KEY"]
-    }));
+    let _ = tcp_request(
+        "create_table",
+        json!({
+            "table": "test_ddl_27",
+            "columns": ["id SERIAL PRIMARY KEY"]
+        }),
+    );
 
-    match tcp_request("drop_table", json!({
-        "table": "test_ddl_27",
-        "if_exists": false,
-        "cascade": false
-    })) {
+    match tcp_request(
+        "drop_table",
+        json!({
+            "table": "test_ddl_27",
+            "if_exists": false,
+            "cascade": false
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "DROP TABLE");
+            assert_eq!(
+                result.get("action").and_then(|v| v.as_str()).unwrap_or(""),
+                "DROP TABLE"
+            );
             println!("✓ drop_table: test_ddl_27 dropped");
         }
         Err(e) => panic!("✗ drop_table failed: {}", e),
@@ -504,20 +557,29 @@ fn test_tool_28_create_view() {
     // Create base table first
     drop_if_exists("test_base_28");
     let _guard = TableGuard::new("test_base_28");
-    let _ = tcp_request("create_table", json!({
-        "table": "test_base_28",
-        "columns": ["id SERIAL PRIMARY KEY", "val INT"]
-    }));
+    let _ = tcp_request(
+        "create_table",
+        json!({
+            "table": "test_base_28",
+            "columns": ["id SERIAL PRIMARY KEY", "val INT"]
+        }),
+    );
 
-    match tcp_request("create_view", json!({
-        "view_name": "test_view_28",
-        "query": "SELECT id, val FROM test_base_28",
-        "materialized": false,
-        "or_replace": false
-    })) {
+    match tcp_request(
+        "create_view",
+        json!({
+            "view_name": "test_view_28",
+            "query": "SELECT id, val FROM test_base_28",
+            "materialized": false,
+            "or_replace": false
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "CREATE VIEW");
+            assert_eq!(
+                result.get("action").and_then(|v| v.as_str()).unwrap_or(""),
+                "CREATE VIEW"
+            );
             println!("✓ create_view: test_view_28 created");
         }
         Err(e) => panic!("✗ create_view failed: {}", e),
@@ -527,14 +589,20 @@ fn test_tool_28_create_view() {
 // ============ TOOL 29: drop_view ============
 #[test]
 fn test_tool_29_drop_view() {
-    match tcp_request("drop_view", json!({
-        "view_name": "test_view_28",
-        "if_exists": true,
-        "cascade": false
-    })) {
+    match tcp_request(
+        "drop_view",
+        json!({
+            "view_name": "test_view_28",
+            "if_exists": true,
+            "cascade": false
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "DROP VIEW");
+            assert_eq!(
+                result.get("action").and_then(|v| v.as_str()).unwrap_or(""),
+                "DROP VIEW"
+            );
             println!("✓ drop_view: test_view_28 dropped");
         }
         Err(e) => panic!("✗ drop_view failed: {}", e),
@@ -545,20 +613,35 @@ fn test_tool_29_drop_view() {
 #[test]
 fn test_tool_30_alter_view() {
     // Create a view first (clean up any stale views)
-    let _ = tcp_request("drop_view", json!({"view_name": "test_view_rename_30", "if_exists": true}));
-    let _ = tcp_request("drop_view", json!({"view_name": "test_view_renamed_30", "if_exists": true}));
-    let _ = tcp_request("create_view", json!({
-        "view_name": "test_view_rename_30",
-        "query": "SELECT 1 as id"
-    }));
+    let _ = tcp_request(
+        "drop_view",
+        json!({"view_name": "test_view_rename_30", "if_exists": true}),
+    );
+    let _ = tcp_request(
+        "drop_view",
+        json!({"view_name": "test_view_renamed_30", "if_exists": true}),
+    );
+    let _ = tcp_request(
+        "create_view",
+        json!({
+            "view_name": "test_view_rename_30",
+            "query": "SELECT 1 as id"
+        }),
+    );
 
-    match tcp_request("alter_view", json!({
-        "view_name": "test_view_rename_30",
-        "rename_to": "test_view_renamed_30"
-    })) {
+    match tcp_request(
+        "alter_view",
+        json!({
+            "view_name": "test_view_rename_30",
+            "rename_to": "test_view_renamed_30"
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "ALTER VIEW");
+            assert_eq!(
+                result.get("action").and_then(|v| v.as_str()).unwrap_or(""),
+                "ALTER VIEW"
+            );
             println!("✓ alter_view: test_view_rename_30 renamed");
         }
         Err(e) => panic!("✗ alter_view failed: {}", e),
@@ -568,13 +651,19 @@ fn test_tool_30_alter_view() {
 // ============ TOOL 31: create_schema ============
 #[test]
 fn test_tool_31_create_schema() {
-    match tcp_request("create_schema", json!({
-        "schema_name": "test_schema_31",
-        "if_not_exists": true
-    })) {
+    match tcp_request(
+        "create_schema",
+        json!({
+            "schema_name": "test_schema_31",
+            "if_not_exists": true
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "CREATE SCHEMA");
+            assert_eq!(
+                result.get("action").and_then(|v| v.as_str()).unwrap_or(""),
+                "CREATE SCHEMA"
+            );
             println!("✓ create_schema: test_schema_31 created");
         }
         Err(e) => panic!("✗ create_schema failed: {}", e),
@@ -584,14 +673,20 @@ fn test_tool_31_create_schema() {
 // ============ TOOL 32: drop_schema ============
 #[test]
 fn test_tool_32_drop_schema() {
-    match tcp_request("drop_schema", json!({
-        "schema_name": "test_schema_31",
-        "if_exists": true,
-        "cascade": false
-    })) {
+    match tcp_request(
+        "drop_schema",
+        json!({
+            "schema_name": "test_schema_31",
+            "if_exists": true,
+            "cascade": false
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "DROP SCHEMA");
+            assert_eq!(
+                result.get("action").and_then(|v| v.as_str()).unwrap_or(""),
+                "DROP SCHEMA"
+            );
             println!("✓ drop_schema: test_schema_31 dropped");
         }
         Err(e) => panic!("✗ drop_schema failed: {}", e),
@@ -603,21 +698,30 @@ fn test_tool_32_drop_schema() {
 fn test_tool_33_create_index() {
     // Create table first (shared with tests 34-35 — no TableGuard to avoid drops)
     drop_if_exists("test_idx_33");
-    let _ = tcp_request("create_table", json!({
-        "table": "test_idx_33",
-        "columns": ["id SERIAL PRIMARY KEY", "email VARCHAR(255)"]
-    }));
+    let _ = tcp_request(
+        "create_table",
+        json!({
+            "table": "test_idx_33",
+            "columns": ["id SERIAL PRIMARY KEY", "email VARCHAR(255)"]
+        }),
+    );
 
-    match tcp_request("create_index", json!({
-        "index_name": "idx_test_email_33",
-        "table": "test_idx_33",
-        "columns": ["email"],
-        "unique": false,
-        "concurrent": false
-    })) {
+    match tcp_request(
+        "create_index",
+        json!({
+            "index_name": "idx_test_email_33",
+            "table": "test_idx_33",
+            "columns": ["email"],
+            "unique": false,
+            "concurrent": false
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "CREATE INDEX");
+            assert_eq!(
+                result.get("action").and_then(|v| v.as_str()).unwrap_or(""),
+                "CREATE INDEX"
+            );
             println!("✓ create_index: idx_test_email_33 created");
         }
         Err(e) => panic!("✗ create_index failed: {}", e),
@@ -627,14 +731,20 @@ fn test_tool_33_create_index() {
 // ============ TOOL 34: drop_index ============
 #[test]
 fn test_tool_34_drop_index() {
-    match tcp_request("drop_index", json!({
-        "index_name": "idx_test_email_33",
-        "if_exists": true,
-        "concurrent": false
-    })) {
+    match tcp_request(
+        "drop_index",
+        json!({
+            "index_name": "idx_test_email_33",
+            "if_exists": true,
+            "concurrent": false
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "DROP INDEX");
+            assert_eq!(
+                result.get("action").and_then(|v| v.as_str()).unwrap_or(""),
+                "DROP INDEX"
+            );
             println!("✓ drop_index: idx_test_email_33 dropped");
         }
         Err(e) => panic!("✗ drop_index failed: {}", e),
@@ -645,20 +755,32 @@ fn test_tool_34_drop_index() {
 #[test]
 fn test_tool_35_alter_index() {
     // Create index first (clean up any stale one)
-    let _ = tcp_request("drop_index", json!({"index_name": "idx_test_rename_35", "if_exists": true}));
-    let _ = tcp_request("create_index", json!({
-        "index_name": "idx_test_rename_35",
-        "table": "test_idx_33",
-        "columns": ["id"]
-    }));
+    let _ = tcp_request(
+        "drop_index",
+        json!({"index_name": "idx_test_rename_35", "if_exists": true}),
+    );
+    let _ = tcp_request(
+        "create_index",
+        json!({
+            "index_name": "idx_test_rename_35",
+            "table": "test_idx_33",
+            "columns": ["id"]
+        }),
+    );
 
-    match tcp_request("alter_index", json!({
-        "index_name": "idx_test_rename_35",
-        "rename_to": "idx_test_renamed_35"
-    })) {
+    match tcp_request(
+        "alter_index",
+        json!({
+            "index_name": "idx_test_rename_35",
+            "rename_to": "idx_test_renamed_35"
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "ALTER INDEX");
+            assert_eq!(
+                result.get("action").and_then(|v| v.as_str()).unwrap_or(""),
+                "ALTER INDEX"
+            );
             println!("✓ alter_index: idx_test_rename_35 renamed");
         }
         Err(e) => panic!("✗ alter_index failed: {}", e),
@@ -668,16 +790,25 @@ fn test_tool_35_alter_index() {
 // ============ TOOL 36: create_sequence ============
 #[test]
 fn test_tool_36_create_sequence() {
-    let _ = tcp_request("drop_sequence", json!({"sequence_name": "test_seq_36", "if_exists": true}));
-    match tcp_request("create_sequence", json!({
-        "sequence_name": "test_seq_36",
-        "start": 100,
-        "increment": 1,
-        "if_not_exists": true
-    })) {
+    let _ = tcp_request(
+        "drop_sequence",
+        json!({"sequence_name": "test_seq_36", "if_exists": true}),
+    );
+    match tcp_request(
+        "create_sequence",
+        json!({
+            "sequence_name": "test_seq_36",
+            "start": 100,
+            "increment": 1,
+            "if_not_exists": true
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "CREATE SEQUENCE");
+            assert_eq!(
+                result.get("action").and_then(|v| v.as_str()).unwrap_or(""),
+                "CREATE SEQUENCE"
+            );
             println!("✓ create_sequence: test_seq_36 created");
         }
         Err(e) => panic!("✗ create_sequence failed: {}", e),
@@ -687,13 +818,19 @@ fn test_tool_36_create_sequence() {
 // ============ TOOL 37: drop_sequence ============
 #[test]
 fn test_tool_37_drop_sequence() {
-    match tcp_request("drop_sequence", json!({
-        "sequence_name": "test_seq_36",
-        "if_exists": true
-    })) {
+    match tcp_request(
+        "drop_sequence",
+        json!({
+            "sequence_name": "test_seq_36",
+            "if_exists": true
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "DROP SEQUENCE");
+            assert_eq!(
+                result.get("action").and_then(|v| v.as_str()).unwrap_or(""),
+                "DROP SEQUENCE"
+            );
             println!("✓ drop_sequence: test_seq_36 dropped");
         }
         Err(e) => panic!("✗ drop_sequence failed: {}", e),
@@ -706,29 +843,41 @@ fn test_tool_38_create_partition() {
     // Create partitioned table first (clean up any stale leftovers)
     drop_if_exists("test_parts_38");
     let _guard = TableGuard::new("test_parts_38");
-    let _ = tcp_request("create_table", json!({
-        "table": "test_parts_38",
-        "columns": ["id INT", "data TEXT"]
-    }));
+    let _ = tcp_request(
+        "create_table",
+        json!({
+            "table": "test_parts_38",
+            "columns": ["id INT", "data TEXT"]
+        }),
+    );
 
-    match tcp_request("create_partition", json!({
-        "table": "test_parts_38",
-        "partition_name": "test_parts_38_1",
-        "partition_type": "RANGE",
-        "column": "id",
-        "values": "FROM (1) TO (100)"
-    })) {
+    match tcp_request(
+        "create_partition",
+        json!({
+            "table": "test_parts_38",
+            "partition_name": "test_parts_38_1",
+            "partition_type": "RANGE",
+            "column": "id",
+            "values": "FROM (1) TO (100)"
+        }),
+    ) {
         Ok(response) => {
             if let Some(result) = response.get("result")
                 && result.get("action").and_then(|v| v.as_str()) == Some("CREATE TABLE PARTITION")
             {
-                println!("✓ create_partition: test_parts_38_1 created (test table was partitioned)");
+                println!(
+                    "✓ create_partition: test_parts_38_1 created (test table was partitioned)"
+                );
                 return;
             }
-            println!("✓ create_partition: response validated (table may not be partitioned — no DDL tool supports PARTITION BY)");
+            println!(
+                "✓ create_partition: response validated (table may not be partitioned — no DDL tool supports PARTITION BY)"
+            );
         }
         Err(_e) => {
-            println!("✓ create_partition: expected error (table must be partitioned for this tool; no MCP tool can create PARTITION BY tables)");
+            println!(
+                "✓ create_partition: expected error (table must be partitioned for this tool; no MCP tool can create PARTITION BY tables)"
+            );
         }
     }
 }
@@ -741,14 +890,20 @@ fn test_tool_39_list_partitions() {
     // First ensure it exists (create as regular table — won't have partitions)
     drop_if_exists("test_parts_38");
     let _guard = TableGuard::new("test_parts_38");
-    let _ = tcp_request("create_table", json!({
-        "table": "test_parts_38",
-        "columns": ["id INT", "data TEXT"]
-    }));
+    let _ = tcp_request(
+        "create_table",
+        json!({
+            "table": "test_parts_38",
+            "columns": ["id INT", "data TEXT"]
+        }),
+    );
 
-    match tcp_request("list_partitions", json!({
-        "table": "test_parts_38"
-    })) {
+    match tcp_request(
+        "list_partitions",
+        json!({
+            "table": "test_parts_38"
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
             assert!(result.get("partitions").is_some());
@@ -764,9 +919,12 @@ fn test_tool_39_list_partitions() {
 // ============ ERROR: create_table - missing required parameters ============
 #[test]
 fn test_error_create_table_missing_table_name() {
-    match tcp_request("create_table", json!({
-        "columns": ["id SERIAL PRIMARY KEY"]
-    })) {
+    match tcp_request(
+        "create_table",
+        json!({
+            "columns": ["id SERIAL PRIMARY KEY"]
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ create_table error handling: correctly rejected missing table_name");
@@ -783,9 +941,12 @@ fn test_error_create_table_missing_table_name() {
 // ============ ERROR: create_table - missing columns ============
 #[test]
 fn test_error_create_table_missing_columns() {
-    match tcp_request("create_table", json!({
-        "table": "test_table"
-    })) {
+    match tcp_request(
+        "create_table",
+        json!({
+            "table": "test_table"
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ create_table error handling: correctly rejected missing columns");
@@ -802,10 +963,13 @@ fn test_error_create_table_missing_columns() {
 // ============ ERROR: create_table - empty columns array ============
 #[test]
 fn test_error_create_table_empty_columns() {
-    match tcp_request("create_table", json!({
-        "table": "test_table_empty",
-        "columns": []
-    })) {
+    match tcp_request(
+        "create_table",
+        json!({
+            "table": "test_table_empty",
+            "columns": []
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ create_table error handling: correctly rejected empty columns");
@@ -822,10 +986,13 @@ fn test_error_create_table_empty_columns() {
 // ============ ERROR: drop_table - nonexistent table without if_exists ============
 #[test]
 fn test_error_drop_table_not_exists() {
-    match tcp_request("drop_table", json!({
-        "table": "nonexistent_table_xyz_999",
-        "if_exists": false
-    })) {
+    match tcp_request(
+        "drop_table",
+        json!({
+            "table": "nonexistent_table_xyz_999",
+            "if_exists": false
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ drop_table error handling: correctly rejected nonexistent table");
@@ -842,13 +1009,19 @@ fn test_error_drop_table_not_exists() {
 // ============ SUCCESS: drop_table - nonexistent table with if_exists ============
 #[test]
 fn test_success_drop_table_if_exists() {
-    match tcp_request("drop_table", json!({
-        "table": "nonexistent_table_xyz_998",
-        "if_exists": true
-    })) {
+    match tcp_request(
+        "drop_table",
+        json!({
+            "table": "nonexistent_table_xyz_998",
+            "if_exists": true
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            assert_eq!(result.get("status").and_then(|v| v.as_str()).unwrap_or(""), "success");
+            assert_eq!(
+                result.get("status").and_then(|v| v.as_str()).unwrap_or(""),
+                "success"
+            );
             println!("✓ drop_table: if_exists=true allowed drop of nonexistent table");
         }
         Err(e) => panic!("✗ drop_table with if_exists=true should succeed: {}", e),
@@ -858,10 +1031,13 @@ fn test_success_drop_table_if_exists() {
 // ============ ERROR: create_view - missing required parameters ============
 #[test]
 fn test_error_create_view_missing_params() {
-    match tcp_request("create_view", json!({
-        "view_name": "test_view"
-        // missing query
-    })) {
+    match tcp_request(
+        "create_view",
+        json!({
+            "view_name": "test_view"
+            // missing query
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ create_view error handling: correctly rejected missing query");
@@ -878,15 +1054,21 @@ fn test_error_create_view_missing_params() {
 // ============ ERROR: alter_view - missing both rename_to and set_schema ============
 #[test]
 fn test_error_alter_view_missing_both_params() {
-    let _ = tcp_request("create_view", json!({
-        "view_name": "test_view_alter_err",
-        "query": "SELECT 1"
-    }));
+    let _ = tcp_request(
+        "create_view",
+        json!({
+            "view_name": "test_view_alter_err",
+            "query": "SELECT 1"
+        }),
+    );
 
-    match tcp_request("alter_view", json!({
-        "view_name": "test_view_alter_err"
-        // missing both rename_to and set_schema
-    })) {
+    match tcp_request(
+        "alter_view",
+        json!({
+            "view_name": "test_view_alter_err"
+            // missing both rename_to and set_schema
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ alter_view error handling: correctly rejected missing parameters");
@@ -903,10 +1085,13 @@ fn test_error_alter_view_missing_both_params() {
 // ============ ERROR: drop_view - nonexistent view without if_exists ============
 #[test]
 fn test_error_drop_view_not_exists() {
-    match tcp_request("drop_view", json!({
-        "view_name": "nonexistent_view_xyz_999",
-        "if_exists": false
-    })) {
+    match tcp_request(
+        "drop_view",
+        json!({
+            "view_name": "nonexistent_view_xyz_999",
+            "if_exists": false
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ drop_view error handling: correctly rejected nonexistent view");
@@ -940,10 +1125,13 @@ fn test_error_create_schema_missing_name() {
 // ============ ERROR: drop_schema - nonexistent schema without if_exists ============
 #[test]
 fn test_error_drop_schema_not_exists() {
-    match tcp_request("drop_schema", json!({
-        "schema_name": "nonexistent_schema_xyz_999",
-        "if_exists": false
-    })) {
+    match tcp_request(
+        "drop_schema",
+        json!({
+            "schema_name": "nonexistent_schema_xyz_999",
+            "if_exists": false
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ drop_schema error handling: correctly rejected nonexistent schema");
@@ -960,10 +1148,13 @@ fn test_error_drop_schema_not_exists() {
 // ============ ERROR: create_index - missing required parameters ============
 #[test]
 fn test_error_create_index_missing_params() {
-    match tcp_request("create_index", json!({
-        "index_name": "idx_test",
-        // missing table and columns
-    })) {
+    match tcp_request(
+        "create_index",
+        json!({
+            "index_name": "idx_test",
+            // missing table and columns
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ create_index error handling: correctly rejected missing parameters");
@@ -980,11 +1171,14 @@ fn test_error_create_index_missing_params() {
 // ============ ERROR: create_index - empty columns array ============
 #[test]
 fn test_error_create_index_empty_columns() {
-    match tcp_request("create_index", json!({
-        "index_name": "idx_empty",
-        "table": "test_table",
-        "columns": []
-    })) {
+    match tcp_request(
+        "create_index",
+        json!({
+            "index_name": "idx_empty",
+            "table": "test_table",
+            "columns": []
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ create_index error handling: correctly rejected empty columns");
@@ -1001,10 +1195,13 @@ fn test_error_create_index_empty_columns() {
 // ============ ERROR: drop_index - nonexistent index without if_exists ============
 #[test]
 fn test_error_drop_index_not_exists() {
-    match tcp_request("drop_index", json!({
-        "index_name": "nonexistent_idx_xyz_999",
-        "if_exists": false
-    })) {
+    match tcp_request(
+        "drop_index",
+        json!({
+            "index_name": "nonexistent_idx_xyz_999",
+            "if_exists": false
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ drop_index error handling: correctly rejected nonexistent index");
@@ -1021,12 +1218,17 @@ fn test_error_drop_index_not_exists() {
 // ============ ERROR: create_sequence - missing sequence_name ============
 #[test]
 fn test_error_create_sequence_missing_name() {
-    match tcp_request("create_sequence", json!({
-        "start": 1
-    })) {
+    match tcp_request(
+        "create_sequence",
+        json!({
+            "start": 1
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
-                println!("✓ create_sequence error handling: correctly rejected missing sequence_name");
+                println!(
+                    "✓ create_sequence error handling: correctly rejected missing sequence_name"
+                );
             } else {
                 panic!("✗ create_sequence should fail when sequence_name missing");
             }
@@ -1040,10 +1242,13 @@ fn test_error_create_sequence_missing_name() {
 // ============ ERROR: drop_sequence - nonexistent sequence without if_exists ============
 #[test]
 fn test_error_drop_sequence_not_exists() {
-    match tcp_request("drop_sequence", json!({
-        "sequence_name": "nonexistent_seq_xyz_999",
-        "if_exists": false
-    })) {
+    match tcp_request(
+        "drop_sequence",
+        json!({
+            "sequence_name": "nonexistent_seq_xyz_999",
+            "if_exists": false
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ drop_sequence error handling: correctly rejected nonexistent sequence");
@@ -1060,22 +1265,29 @@ fn test_error_drop_sequence_not_exists() {
 // ============ ERROR: create_partition - invalid partition_type ============
 #[test]
 fn test_error_create_partition_invalid_type() {
-    match tcp_request("create_partition", json!({
-        "table": "test_parts",
-        "partition_name": "part_1",
-        "partition_type": "INVALID_TYPE",
-        "column": "id",
-        "values": "FROM (1) TO (100)"
-    })) {
+    match tcp_request(
+        "create_partition",
+        json!({
+            "table": "test_parts",
+            "partition_name": "part_1",
+            "partition_type": "INVALID_TYPE",
+            "column": "id",
+            "values": "FROM (1) TO (100)"
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
-                println!("✓ create_partition error handling: correctly rejected invalid partition_type");
+                println!(
+                    "✓ create_partition error handling: correctly rejected invalid partition_type"
+                );
             } else {
                 panic!("✗ create_partition should fail with invalid partition_type");
             }
         }
         Err(_) => {
-            println!("✓ create_partition error handling: correctly rejected invalid partition_type");
+            println!(
+                "✓ create_partition error handling: correctly rejected invalid partition_type"
+            );
         }
     }
 }
@@ -1083,13 +1295,16 @@ fn test_error_create_partition_invalid_type() {
 // ============ ERROR: create_partition - SQL injection in values parameter ============
 #[test]
 fn test_error_create_partition_sql_injection() {
-    match tcp_request("create_partition", json!({
-        "table": "test_parts",
-        "partition_name": "part_bad",
-        "partition_type": "RANGE",
-        "column": "id",
-        "values": "FROM (1) TO (100); DROP TABLE test_parts; --"
-    })) {
+    match tcp_request(
+        "create_partition",
+        json!({
+            "table": "test_parts",
+            "partition_name": "part_bad",
+            "partition_type": "RANGE",
+            "column": "id",
+            "values": "FROM (1) TO (100); DROP TABLE test_parts; --"
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ create_partition security: correctly rejected SQL injection attempt");
@@ -1124,10 +1339,13 @@ fn test_error_list_partitions_missing_table() {
 #[test]
 fn test_edge_case_very_long_identifier() {
     let long_name = "a".repeat(300);
-    match tcp_request("create_table", json!({
-        "table": long_name,
-        "columns": ["id SERIAL PRIMARY KEY"]
-    })) {
+    match tcp_request(
+        "create_table",
+        json!({
+            "table": long_name,
+            "columns": ["id SERIAL PRIMARY KEY"]
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ Identifier validation: correctly rejected overly long name");
@@ -1144,10 +1362,13 @@ fn test_edge_case_very_long_identifier() {
 // ============ EDGE CASE: SQL injection via identifier (should fail) ============
 #[test]
 fn test_edge_case_sql_injection_in_identifier() {
-    match tcp_request("create_table", json!({
-        "table": "test; DROP TABLE test; --",
-        "columns": ["id SERIAL PRIMARY KEY"]
-    })) {
+    match tcp_request(
+        "create_table",
+        json!({
+            "table": "test; DROP TABLE test; --",
+            "columns": ["id SERIAL PRIMARY KEY"]
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ Identifier validation: correctly rejected SQL injection");
@@ -1168,26 +1389,47 @@ fn test_tool_40_backup_table_happy_path() {
     drop_if_exists("backup_test_backup_source_40");
     drop_if_exists("test_backup_source_40");
     let _guard = TableGuard::new("test_backup_source_40");
-    let _ = tcp_request("create_table", json!({
-        "table": "test_backup_source_40",
-        "columns": ["id SERIAL PRIMARY KEY", "name VARCHAR(255)", "value INT"]
-    }));
+    let _ = tcp_request(
+        "create_table",
+        json!({
+            "table": "test_backup_source_40",
+            "columns": ["id SERIAL PRIMARY KEY", "name VARCHAR(255)", "value INT"]
+        }),
+    );
 
     // Insert some data
-    let _ = tcp_request("execute_insert", json!({
-        "sql": "INSERT INTO test_backup_source_40 (name, value) VALUES ('Alice', 100), ('Bob', 200), ('Charlie', 300)"
-    }));
+    let _ = tcp_request(
+        "execute_insert",
+        json!({
+            "sql": "INSERT INTO test_backup_source_40 (name, value) VALUES ('Alice', 100), ('Bob', 200), ('Charlie', 300)"
+        }),
+    );
 
     // Create backup
-    match tcp_request("backup_table", json!({
-        "table": "test_backup_source_40"
-    })) {
+    match tcp_request(
+        "backup_table",
+        json!({
+            "table": "test_backup_source_40"
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            assert_eq!(result.get("action").and_then(|v| v.as_str()).unwrap_or(""), "BACKUP TABLE");
-            assert_eq!(result.get("status").and_then(|v| v.as_str()).unwrap_or(""), "success");
+            assert_eq!(
+                result.get("action").and_then(|v| v.as_str()).unwrap_or(""),
+                "BACKUP TABLE"
+            );
+            assert_eq!(
+                result.get("status").and_then(|v| v.as_str()).unwrap_or(""),
+                "success"
+            );
             assert!(result.get("rows_copied").is_some());
-            assert_eq!(result.get("rows_copied").and_then(|v| v.as_i64()).unwrap_or(0), 3);
+            assert_eq!(
+                result
+                    .get("rows_copied")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0),
+                3
+            );
             println!("✓ backup_table: test_backup_source_40 backed up with 3 rows");
         }
         Err(e) => panic!("✗ backup_table failed: {}", e),
@@ -1214,9 +1456,12 @@ fn test_error_backup_table_missing_table() {
 // ============ ERROR: backup_table - nonexistent table ============
 #[test]
 fn test_error_backup_table_nonexistent() {
-    match tcp_request("backup_table", json!({
-        "table": "nonexistent_table_xyz_999"
-    })) {
+    match tcp_request(
+        "backup_table",
+        json!({
+            "table": "nonexistent_table_xyz_999"
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ backup_table error handling: correctly rejected nonexistent table");
@@ -1234,20 +1479,29 @@ fn test_error_backup_table_nonexistent() {
 #[test]
 fn test_error_backup_table_already_exists() {
     let _guard = TableGuard::new("test_backup_dup_41");
-    let _ = tcp_request("create_table", json!({
-        "table": "test_backup_dup_41",
-        "columns": ["id SERIAL PRIMARY KEY"]
-    }));
+    let _ = tcp_request(
+        "create_table",
+        json!({
+            "table": "test_backup_dup_41",
+            "columns": ["id SERIAL PRIMARY KEY"]
+        }),
+    );
 
     // First backup should succeed
-    let _ = tcp_request("backup_table", json!({
-        "table": "test_backup_dup_41"
-    }));
+    let _ = tcp_request(
+        "backup_table",
+        json!({
+            "table": "test_backup_dup_41"
+        }),
+    );
 
     // Second backup should fail (backup table already exists)
-    match tcp_request("backup_table", json!({
-        "table": "test_backup_dup_41"
-    })) {
+    match tcp_request(
+        "backup_table",
+        json!({
+            "table": "test_backup_dup_41"
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ backup_table error handling: correctly rejected duplicate backup");
@@ -1266,52 +1520,79 @@ fn test_error_backup_table_already_exists() {
 #[test]
 fn test_edge_case_backup_empty_table() {
     let _guard = TableGuard::new("test_backup_empty_42");
-    let _ = tcp_request("create_table", json!({
-        "table": "test_backup_empty_42",
-        "columns": ["id SERIAL PRIMARY KEY", "data TEXT"]
-    }));
+    let _ = tcp_request(
+        "create_table",
+        json!({
+            "table": "test_backup_empty_42",
+            "columns": ["id SERIAL PRIMARY KEY", "data TEXT"]
+        }),
+    );
 
-    match tcp_request("backup_table", json!({
-        "table": "test_backup_empty_42"
-    })) {
+    match tcp_request(
+        "backup_table",
+        json!({
+            "table": "test_backup_empty_42"
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            assert_eq!(result.get("rows_copied").and_then(|v| v.as_i64()).unwrap_or(-1), 0);
+            assert_eq!(
+                result
+                    .get("rows_copied")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(-1),
+                0
+            );
             println!("✓ backup_table: correctly backed up empty table with 0 rows");
         }
         Err(e) => panic!("✗ backup_table should handle empty tables: {}", e),
     }
     // Also clean up the backup table
-    let _ = tcp_request("drop_table", json!({"table": "backup_test_backup_empty_42"}));
+    let _ = tcp_request(
+        "drop_table",
+        json!({"table": "backup_test_backup_empty_42"}),
+    );
 }
 
 // ============ EDGE CASE: backup_table - large table with many columns ============
 #[test]
 fn test_edge_case_backup_many_columns() {
     let _guard = TableGuard::new("test_backup_wide_43");
-    let _ = tcp_request("create_table", json!({
-        "table": "test_backup_wide_43",
-        "columns": [
-            "id SERIAL PRIMARY KEY",
-            "col1 VARCHAR(50)",
-            "col2 VARCHAR(50)",
-            "col3 INT",
-            "col4 INT",
-            "col5 BOOLEAN",
-            "col6 TIMESTAMP",
-            "col7 TEXT",
-            "col8 NUMERIC",
-            "col9 VARCHAR(100)",
-            "col10 VARCHAR(100)"
-        ]
-    }));
+    let _ = tcp_request(
+        "create_table",
+        json!({
+            "table": "test_backup_wide_43",
+            "columns": [
+                "id SERIAL PRIMARY KEY",
+                "col1 VARCHAR(50)",
+                "col2 VARCHAR(50)",
+                "col3 INT",
+                "col4 INT",
+                "col5 BOOLEAN",
+                "col6 TIMESTAMP",
+                "col7 TEXT",
+                "col8 NUMERIC",
+                "col9 VARCHAR(100)",
+                "col10 VARCHAR(100)"
+            ]
+        }),
+    );
 
-    match tcp_request("backup_table", json!({
-        "table": "test_backup_wide_43"
-    })) {
+    match tcp_request(
+        "backup_table",
+        json!({
+            "table": "test_backup_wide_43"
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            assert_eq!(result.get("columns_copied").and_then(|v| v.as_i64()).unwrap_or(0), 11);
+            assert_eq!(
+                result
+                    .get("columns_copied")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0),
+                11
+            );
             println!("✓ backup_table: correctly backed up table with 11 columns");
         }
         Err(e) => panic!("✗ backup_table should handle many columns: {}", e),
@@ -1323,21 +1604,30 @@ fn test_edge_case_backup_many_columns() {
 #[test]
 fn test_edge_case_backup_with_indexes() {
     let _guard = TableGuard::new("test_backup_idx_44");
-    let _ = tcp_request("create_table", json!({
-        "table": "test_backup_idx_44",
-        "columns": ["id SERIAL PRIMARY KEY", "email VARCHAR(255)"]
-    }));
+    let _ = tcp_request(
+        "create_table",
+        json!({
+            "table": "test_backup_idx_44",
+            "columns": ["id SERIAL PRIMARY KEY", "email VARCHAR(255)"]
+        }),
+    );
 
     // Create index
-    let _ = tcp_request("create_index", json!({
-        "index_name": "idx_backup_email_44",
-        "table": "test_backup_idx_44",
-        "columns": ["email"]
-    }));
+    let _ = tcp_request(
+        "create_index",
+        json!({
+            "index_name": "idx_backup_email_44",
+            "table": "test_backup_idx_44",
+            "columns": ["email"]
+        }),
+    );
 
-    match tcp_request("backup_table", json!({
-        "table": "test_backup_idx_44"
-    })) {
+    match tcp_request(
+        "backup_table",
+        json!({
+            "table": "test_backup_idx_44"
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
             assert!(result.get("indexes_created").is_some());
@@ -1351,9 +1641,12 @@ fn test_edge_case_backup_with_indexes() {
 // ============ SECURITY: backup_table - SQL injection in table name (should fail) ============
 #[test]
 fn test_security_backup_table_sql_injection() {
-    match tcp_request("backup_table", json!({
-        "table": "test; DROP TABLE test; --"
-    })) {
+    match tcp_request(
+        "backup_table",
+        json!({
+            "table": "test; DROP TABLE test; --"
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ backup_table security: correctly rejected SQL injection");
@@ -1374,35 +1667,53 @@ fn test_recovery_backup_before_drop() {
     drop_if_exists("backup_test_recovery_45");
     drop_if_exists("test_recovery_45");
     let _guard = TableGuard::new("test_recovery_45");
-    let _ = tcp_request("create_table", json!({
-        "table": "test_recovery_45",
-        "columns": ["id SERIAL PRIMARY KEY", "important_data TEXT"]
-    }));
+    let _ = tcp_request(
+        "create_table",
+        json!({
+            "table": "test_recovery_45",
+            "columns": ["id SERIAL PRIMARY KEY", "important_data TEXT"]
+        }),
+    );
 
-    let _ = tcp_request("execute_insert", json!({
-        "sql": "INSERT INTO test_recovery_45 (important_data) VALUES ('critical data'), ('more critical data')"
-    }));
+    let _ = tcp_request(
+        "execute_insert",
+        json!({
+            "sql": "INSERT INTO test_recovery_45 (important_data) VALUES ('critical data'), ('more critical data')"
+        }),
+    );
 
     // Create backup first (safety measure)
-    let backup_result = tcp_request("backup_table", json!({
-        "table": "test_recovery_45"
-    }));
+    let backup_result = tcp_request(
+        "backup_table",
+        json!({
+            "table": "test_recovery_45"
+        }),
+    );
 
     assert!(backup_result.is_ok(), "Backup should succeed");
 
     // Now drop the original (simulating accidental deletion)
-    let _ = tcp_request("drop_table", json!({
-        "table": "test_recovery_45"
-    }));
+    let _ = tcp_request(
+        "drop_table",
+        json!({
+            "table": "test_recovery_45"
+        }),
+    );
 
     // Verify backup still exists with data
-    match tcp_request("execute_query", json!({
-        "sql": "SELECT COUNT(*) as row_count FROM backup_test_recovery_45"
-    })) {
+    match tcp_request(
+        "execute_query",
+        json!({
+            "sql": "SELECT COUNT(*) as row_count FROM backup_test_recovery_45"
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
             let empty: Vec<Value> = vec![];
-            let rows = result.get("rows").and_then(|v| v.as_array()).unwrap_or(&empty);
+            let rows = result
+                .get("rows")
+                .and_then(|v| v.as_array())
+                .unwrap_or(&empty);
             assert!(!rows.is_empty(), "Backup table should have data");
             println!("✓ backup_table: recovery successful - backup preserved after original drop");
         }
@@ -1416,16 +1727,22 @@ fn test_recovery_backup_before_drop() {
 #[test]
 fn test_tool_46_async_execute_insert_happy_path() {
     let _guard = TableGuard::new("test_async_insert_46");
-    let _ = tcp_request("create_table", json!({
-        "table": "test_async_insert_46",
-        "columns": ["id SERIAL PRIMARY KEY", "label TEXT", "value INT"]
-    }));
+    let _ = tcp_request(
+        "create_table",
+        json!({
+            "table": "test_async_insert_46",
+            "columns": ["id SERIAL PRIMARY KEY", "label TEXT", "value INT"]
+        }),
+    );
 
     let insert_sql = "INSERT INTO test_async_insert_46 (label, value) VALUES ('alpha', 10), ('beta', 20), ('gamma', 30)";
     match tcp_request("async_execute_insert", json!({"sql": insert_sql})) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            let rows = result.get("rows_affected").and_then(|v| v.as_u64()).unwrap_or(0);
+            let rows = result
+                .get("rows_affected")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
             assert_eq!(rows, 3, "Should report 3 rows affected");
             println!("✓ async_execute_insert: inserted 3 rows into test_async_insert_46");
         }
@@ -1437,18 +1754,27 @@ fn test_tool_46_async_execute_insert_happy_path() {
 #[test]
 fn test_tool_46b_async_execute_insert_verify_data() {
     let _guard = TableGuard::new("test_async_insert_46b");
-    let _ = tcp_request("create_table", json!({
-        "table": "test_async_insert_46b",
-        "columns": ["id SERIAL PRIMARY KEY", "name VARCHAR(100)", "score INT"]
-    }));
+    let _ = tcp_request(
+        "create_table",
+        json!({
+            "table": "test_async_insert_46b",
+            "columns": ["id SERIAL PRIMARY KEY", "name VARCHAR(100)", "score INT"]
+        }),
+    );
 
-    let _ = tcp_request("async_execute_insert", json!({
-        "sql": "INSERT INTO test_async_insert_46b (name, score) VALUES ('alice', 95), ('bob', 87), ('carol', 92)"
-    }));
+    let _ = tcp_request(
+        "async_execute_insert",
+        json!({
+            "sql": "INSERT INTO test_async_insert_46b (name, score) VALUES ('alice', 95), ('bob', 87), ('carol', 92)"
+        }),
+    );
 
-    match tcp_request("execute_query", json!({
-        "sql": "SELECT COUNT(*) as cnt FROM test_async_insert_46b"
-    })) {
+    match tcp_request(
+        "execute_query",
+        json!({
+            "sql": "SELECT COUNT(*) as cnt FROM test_async_insert_46b"
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
             let rows = result.get("rows").and_then(|v| v.as_array()).unwrap();
@@ -1465,9 +1791,12 @@ fn test_tool_46b_async_execute_insert_verify_data() {
 // ============ TOOL 46c: async_execute_insert - SQL injection rejected ============
 #[test]
 fn test_tool_46c_async_execute_insert_sql_injection() {
-    match tcp_request("async_execute_insert", json!({
-        "sql": "INSERT INTO test VALUES (1); DROP TABLE test; --"
-    })) {
+    match tcp_request(
+        "async_execute_insert",
+        json!({
+            "sql": "INSERT INTO test VALUES (1); DROP TABLE test; --"
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ async_execute_insert security: multi-statement correctly rejected");
@@ -1502,21 +1831,33 @@ fn test_tool_46d_async_execute_insert_missing_sql() {
 #[test]
 fn test_tool_47_async_execute_update_happy_path() {
     let _guard = TableGuard::new("test_async_update_47");
-    let _ = tcp_request("create_table", json!({
-        "table": "test_async_update_47",
-        "columns": ["id SERIAL PRIMARY KEY", "status VARCHAR(20) DEFAULT 'pending'", "score INT"]
-    }));
+    let _ = tcp_request(
+        "create_table",
+        json!({
+            "table": "test_async_update_47",
+            "columns": ["id SERIAL PRIMARY KEY", "status VARCHAR(20) DEFAULT 'pending'", "score INT"]
+        }),
+    );
 
-    let _ = tcp_request("async_execute_insert", json!({
-        "sql": "INSERT INTO test_async_update_47 (status, score) VALUES ('pending', 10), ('pending', 20), ('active', 30)"
-    }));
+    let _ = tcp_request(
+        "async_execute_insert",
+        json!({
+            "sql": "INSERT INTO test_async_update_47 (status, score) VALUES ('pending', 10), ('pending', 20), ('active', 30)"
+        }),
+    );
 
-    match tcp_request("async_execute_update", json!({
-        "sql": "UPDATE test_async_update_47 SET status = 'processed' WHERE status = 'pending'"
-    })) {
+    match tcp_request(
+        "async_execute_update",
+        json!({
+            "sql": "UPDATE test_async_update_47 SET status = 'processed' WHERE status = 'pending'"
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            let rows = result.get("rows_affected").and_then(|v| v.as_u64()).unwrap_or(0);
+            let rows = result
+                .get("rows_affected")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
             assert_eq!(rows, 2, "Should update 2 rows (status='pending')");
             println!("✓ async_execute_update: updated 2 rows from pending→processed");
         }
@@ -1528,23 +1869,35 @@ fn test_tool_47_async_execute_update_happy_path() {
 #[test]
 fn test_tool_47b_async_execute_update_verify_data() {
     let _guard = TableGuard::new("test_async_update_47b");
-    let _ = tcp_request("create_table", json!({
-        "table": "test_async_update_47b",
-        "columns": ["id SERIAL PRIMARY KEY", "category VARCHAR(20)", "val INT"]
-    }));
+    let _ = tcp_request(
+        "create_table",
+        json!({
+            "table": "test_async_update_47b",
+            "columns": ["id SERIAL PRIMARY KEY", "category VARCHAR(20)", "val INT"]
+        }),
+    );
 
-    let _ = tcp_request("async_execute_insert", json!({
-        "sql": "INSERT INTO test_async_update_47b (category, val) VALUES ('a', 1), ('a', 2), ('b', 3), ('b', 4), ('c', 5)"
-    }));
+    let _ = tcp_request(
+        "async_execute_insert",
+        json!({
+            "sql": "INSERT INTO test_async_update_47b (category, val) VALUES ('a', 1), ('a', 2), ('b', 3), ('b', 4), ('c', 5)"
+        }),
+    );
 
-    let _ = tcp_request("async_execute_update", json!({
-        "sql": "UPDATE test_async_update_47b SET val = val + 10 WHERE category IN ('a', 'c')"
-    }));
+    let _ = tcp_request(
+        "async_execute_update",
+        json!({
+            "sql": "UPDATE test_async_update_47b SET val = val + 10 WHERE category IN ('a', 'c')"
+        }),
+    );
 
     // Verify 'a' rows updated (1→11, 2→12)
-    match tcp_request("execute_query", json!({
-        "sql": "SELECT category, val FROM test_async_update_47b WHERE category = 'a' ORDER BY id"
-    })) {
+    match tcp_request(
+        "execute_query",
+        json!({
+            "sql": "SELECT category, val FROM test_async_update_47b WHERE category = 'a' ORDER BY id"
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
             let rows = result.get("rows").and_then(|v| v.as_array()).unwrap();
@@ -1559,9 +1912,12 @@ fn test_tool_47b_async_execute_update_verify_data() {
     }
 
     // Verify 'b' rows NOT updated (3→3, 4→4)
-    match tcp_request("execute_query", json!({
-        "sql": "SELECT category, val FROM test_async_update_47b WHERE category = 'b' ORDER BY id"
-    })) {
+    match tcp_request(
+        "execute_query",
+        json!({
+            "sql": "SELECT category, val FROM test_async_update_47b WHERE category = 'b' ORDER BY id"
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
             let rows = result.get("rows").and_then(|v| v.as_array()).unwrap();
@@ -1578,9 +1934,12 @@ fn test_tool_47b_async_execute_update_verify_data() {
 // ============ TOOL 47c: async_execute_update - Multi-statement injection rejected ============
 #[test]
 fn test_tool_47c_async_execute_update_sql_injection() {
-    match tcp_request("async_execute_update", json!({
-        "sql": "UPDATE test SET x = 1; DROP TABLE test; --"
-    })) {
+    match tcp_request(
+        "async_execute_update",
+        json!({
+            "sql": "UPDATE test SET x = 1; DROP TABLE test; --"
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ async_execute_update security: multi-statement correctly rejected");
@@ -1615,21 +1974,33 @@ fn test_tool_47d_async_execute_update_missing_sql() {
 #[test]
 fn test_tool_48_async_execute_delete_happy_path() {
     let _guard = TableGuard::new("test_async_delete_48");
-    let _ = tcp_request("create_table", json!({
-        "table": "test_async_delete_48",
-        "columns": ["id SERIAL PRIMARY KEY", "status VARCHAR(20) DEFAULT 'active'"]
-    }));
+    let _ = tcp_request(
+        "create_table",
+        json!({
+            "table": "test_async_delete_48",
+            "columns": ["id SERIAL PRIMARY KEY", "status VARCHAR(20) DEFAULT 'active'"]
+        }),
+    );
 
-    let _ = tcp_request("async_execute_insert", json!({
-        "sql": "INSERT INTO test_async_delete_48 (status) VALUES ('active'), ('active'), ('archived'), ('archived'), ('active')"
-    }));
+    let _ = tcp_request(
+        "async_execute_insert",
+        json!({
+            "sql": "INSERT INTO test_async_delete_48 (status) VALUES ('active'), ('active'), ('archived'), ('archived'), ('active')"
+        }),
+    );
 
-    match tcp_request("async_execute_delete", json!({
-        "sql": "DELETE FROM test_async_delete_48 WHERE status = 'archived'"
-    })) {
+    match tcp_request(
+        "async_execute_delete",
+        json!({
+            "sql": "DELETE FROM test_async_delete_48 WHERE status = 'archived'"
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            let rows = result.get("rows_affected").and_then(|v| v.as_u64()).unwrap_or(0);
+            let rows = result
+                .get("rows_affected")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
             assert_eq!(rows, 2, "Should delete 2 archived rows");
             println!("✓ async_execute_delete: deleted 2 archived rows");
         }
@@ -1641,23 +2012,35 @@ fn test_tool_48_async_execute_delete_happy_path() {
 #[test]
 fn test_tool_48b_async_execute_delete_verify_data() {
     let _guard = TableGuard::new("test_async_delete_48b");
-    let _ = tcp_request("create_table", json!({
-        "table": "test_async_delete_48b",
-        "columns": ["id SERIAL PRIMARY KEY", "tier VARCHAR(10)"]
-    }));
+    let _ = tcp_request(
+        "create_table",
+        json!({
+            "table": "test_async_delete_48b",
+            "columns": ["id SERIAL PRIMARY KEY", "tier VARCHAR(10)"]
+        }),
+    );
 
-    let _ = tcp_request("async_execute_insert", json!({
-        "sql": "INSERT INTO test_async_delete_48b (tier) VALUES ('gold'), ('silver'), ('gold'), ('bronze'), ('gold')"
-    }));
+    let _ = tcp_request(
+        "async_execute_insert",
+        json!({
+            "sql": "INSERT INTO test_async_delete_48b (tier) VALUES ('gold'), ('silver'), ('gold'), ('bronze'), ('gold')"
+        }),
+    );
 
     // Delete only silver and bronze
-    let _ = tcp_request("async_execute_delete", json!({
-        "sql": "DELETE FROM test_async_delete_48b WHERE tier IN ('silver', 'bronze')"
-    }));
+    let _ = tcp_request(
+        "async_execute_delete",
+        json!({
+            "sql": "DELETE FROM test_async_delete_48b WHERE tier IN ('silver', 'bronze')"
+        }),
+    );
 
-    match tcp_request("execute_query", json!({
-        "sql": "SELECT COUNT(*) as cnt FROM test_async_delete_48b"
-    })) {
+    match tcp_request(
+        "execute_query",
+        json!({
+            "sql": "SELECT COUNT(*) as cnt FROM test_async_delete_48b"
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
             let rows = result.get("rows").and_then(|v| v.as_array()).unwrap();
@@ -1669,9 +2052,12 @@ fn test_tool_48b_async_execute_delete_verify_data() {
     }
 
     // Verify no silver or bronze remain
-    match tcp_request("execute_query", json!({
-        "sql": "SELECT COUNT(*) as cnt FROM test_async_delete_48b WHERE tier IN ('silver', 'bronze')"
-    })) {
+    match tcp_request(
+        "execute_query",
+        json!({
+            "sql": "SELECT COUNT(*) as cnt FROM test_async_delete_48b WHERE tier IN ('silver', 'bronze')"
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
             let rows = result.get("rows").and_then(|v| v.as_array()).unwrap();
@@ -1686,9 +2072,12 @@ fn test_tool_48b_async_execute_delete_verify_data() {
 // ============ TOOL 48c: async_execute_delete - Multi-statement injection rejected ============
 #[test]
 fn test_tool_48c_async_execute_delete_sql_injection() {
-    match tcp_request("async_execute_delete", json!({
-        "sql": "DELETE FROM test WHERE x = 1; DROP TABLE test; --"
-    })) {
+    match tcp_request(
+        "async_execute_delete",
+        json!({
+            "sql": "DELETE FROM test WHERE x = 1; DROP TABLE test; --"
+        }),
+    ) {
         Ok(response) => {
             if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
                 println!("✓ async_execute_delete security: multi-statement correctly rejected");

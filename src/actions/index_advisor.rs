@@ -1,11 +1,19 @@
-use serde_json::{json, Value};
-use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
+use serde_json::{Value, json};
+use tokio_postgres::Client;
 
 pub async fn suggest_indexes(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let schema = params.as_ref().and_then(|p| p.get("schema").and_then(|v| v.as_str()));
-    let min_scan_threshold = params.as_ref().and_then(|p| p.get("min_scan_threshold").and_then(|v| v.as_i64())).unwrap_or(100);
-    let min_table_size_mb = params.as_ref().and_then(|p| p.get("min_table_size_mb").and_then(|v| v.as_i64())).unwrap_or(10);
+    let schema = params
+        .as_ref()
+        .and_then(|p| p.get("schema").and_then(|v| v.as_str()));
+    let min_scan_threshold = params
+        .as_ref()
+        .and_then(|p| p.get("min_scan_threshold").and_then(|v| v.as_i64()))
+        .unwrap_or(100);
+    let min_table_size_mb = params
+        .as_ref()
+        .and_then(|p| p.get("min_table_size_mb").and_then(|v| v.as_i64()))
+        .unwrap_or(10);
 
     let schema_filter = match schema {
         Some(s) => format!("AND n.nspname = '{}'", s.replace('\'', "''")),
@@ -64,8 +72,10 @@ pub async fn suggest_indexes(client: &Client, params: &Option<&Value>) -> MCPRes
         } else {
             #[allow(clippy::cast_precision_loss)]
             let size_mb = total_size as f64 / 1048576.0;
-            format!("High seq scan count ({} scans, {} rows read) on a {:.1} MB table with {} existing index(es)",
-                seq_scan, seq_tup_read, size_mb, existing_count)
+            format!(
+                "High seq scan count ({} scans, {} rows read) on a {:.1} MB table with {} existing index(es)",
+                seq_scan, seq_tup_read, size_mb, existing_count
+            )
         };
 
         suggestions.push(json!({

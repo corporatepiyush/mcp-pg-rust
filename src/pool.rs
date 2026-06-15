@@ -13,7 +13,10 @@ use tracing::debug;
 
 use crate::config::PoolConfig;
 use crate::errors::{MCPError, Result as MCPResult};
-use crate::lockfree_pool::{BoxFuture, CreateFn, LockFreePool, PoolConfig as LFPoolConfig, PooledConnection, PoolError, ValidateFn};
+use crate::lockfree_pool::{
+    BoxFuture, CreateFn, LockFreePool, PoolConfig as LFPoolConfig, PoolError, PooledConnection,
+    ValidateFn,
+};
 
 /// Wrapper around the lock-free connection pool.
 pub struct ConnectionPool {
@@ -23,7 +26,10 @@ pub struct ConnectionPool {
 
 impl ConnectionPool {
     pub async fn new(connection_string: &str, config: PoolConfig) -> anyhow::Result<Self> {
-        debug!("Creating lock-free connection pool: max_size={}", config.max_size);
+        debug!(
+            "Creating lock-free connection pool: max_size={}",
+            config.max_size
+        );
 
         let conn_string = connection_string.to_string();
         let create_timeout = Duration::from_secs(5);
@@ -42,9 +48,7 @@ impl ConnectionPool {
             }) as CreateFn<Client>
         };
 
-        let validate = Box::new(|client: &Client| {
-            !client.is_closed()
-        }) as ValidateFn<Client>;
+        let validate = Box::new(|client: &Client| !client.is_closed()) as ValidateFn<Client>;
 
         let lf_config = LFPoolConfig {
             max_size: config.max_size,
@@ -55,9 +59,10 @@ impl ConnectionPool {
         let pool = LockFreePool::new(create, validate, &lf_config);
 
         // Test the pool by acquiring a connection
-        let test_conn = pool.acquire().await.map_err(|e| {
-            anyhow::anyhow!("Failed to establish database connection: {e}")
-        })?;
+        let test_conn = pool
+            .acquire()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to establish database connection: {e}"))?;
         drop(test_conn);
 
         Ok(Self {
@@ -75,9 +80,7 @@ impl ConnectionPool {
             PoolError::Timeout => {
                 MCPError::PoolError("Connection pool timeout: no connection available".into())
             }
-            PoolError::Closed => {
-                MCPError::PoolError("Connection pool is closed".into())
-            }
+            PoolError::Closed => MCPError::PoolError("Connection pool is closed".into()),
             PoolError::CreateFailed(msg) => {
                 MCPError::PoolError(format!("Failed to create connection: {msg}"))
             }

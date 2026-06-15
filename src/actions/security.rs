@@ -1,6 +1,6 @@
-use serde_json::{json, Value};
-use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
+use serde_json::{Value, json};
+use tokio_postgres::Client;
 
 const MAX_IDENTIFIER_LEN: usize = 255;
 
@@ -37,12 +37,14 @@ pub async fn list_user_privileges(client: &Client, params: &Option<&Value>) -> M
     let username = params
         .as_ref()
         .and_then(|p| p.get("username").and_then(|v| v.as_str()))
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'username' parameter".into()))?;
+        .ok_or_else(|| {
+            crate::errors::MCPError::InvalidParams("Missing 'username' parameter".into())
+        })?;
 
     if username.is_empty() || username.len() > MAX_IDENTIFIER_LEN {
-        return Err(crate::errors::MCPError::InvalidParams(
-            format!("'username' must be 1-{MAX_IDENTIFIER_LEN} characters")
-        ));
+        return Err(crate::errors::MCPError::InvalidParams(format!(
+            "'username' must be 1-{MAX_IDENTIFIER_LEN} characters"
+        )));
     }
 
     let rows = client
@@ -98,7 +100,10 @@ pub async fn list_role_memberships(client: &Client, _params: &Option<&Value>) ->
 }
 
 /// 29. List database privileges
-pub async fn list_database_privileges(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
+pub async fn list_database_privileges(
+    client: &Client,
+    _params: &Option<&Value>,
+) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT datname, datacl::text

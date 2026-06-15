@@ -1,6 +1,6 @@
-use serde_json::{json, Value};
-use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
+use serde_json::{Value, json};
+use tokio_postgres::Client;
 
 pub async fn list_vector_columns(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     let rows = client
@@ -17,29 +17,54 @@ pub async fn list_vector_columns(client: &Client, _params: &Option<&Value>) -> M
         .await
         ?;
 
-    let columns: Vec<Value> = rows.iter().map(|row| {
-        json!({
-            "schema": row.get::<_, String>(0),
-            "table": row.get::<_, String>(1),
-            "column": row.get::<_, String>(2),
-            "type": "vector",
+    let columns: Vec<Value> = rows
+        .iter()
+        .map(|row| {
+            json!({
+                "schema": row.get::<_, String>(0),
+                "table": row.get::<_, String>(1),
+                "column": row.get::<_, String>(2),
+                "type": "vector",
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(json!({ "vector_columns": columns }))
 }
 
 pub async fn vector_search(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let table = params.as_ref().and_then(|p| p.get("table").and_then(|v| v.as_str()))
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table'".into()))?;
-    let column = params.as_ref().and_then(|p| p.get("column").and_then(|v| v.as_str()))
+    let column = params
+        .as_ref()
+        .and_then(|p| p.get("column").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'column'".into()))?;
-    let vector = params.as_ref().and_then(|p| p.get("vector").and_then(|v| v.as_str()))
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'vector' parameter (e.g. '[0.1,0.2,0.3]')".into()))?;
-    let limit = params.as_ref().and_then(|p| p.get("limit").and_then(|v| v.as_i64())).unwrap_or(10);
-    let schema = params.as_ref().and_then(|p| p.get("schema").and_then(|v| v.as_str())).unwrap_or("public");
-    let select_cols = params.as_ref().and_then(|p| p.get("select").and_then(|v| v.as_str())).unwrap_or("*");
-    let distance = params.as_ref().and_then(|p| p.get("distance").and_then(|v| v.as_str())).unwrap_or("cosine");
+    let vector = params
+        .as_ref()
+        .and_then(|p| p.get("vector").and_then(|v| v.as_str()))
+        .ok_or_else(|| {
+            crate::errors::MCPError::InvalidParams(
+                "Missing 'vector' parameter (e.g. '[0.1,0.2,0.3]')".into(),
+            )
+        })?;
+    let limit = params
+        .as_ref()
+        .and_then(|p| p.get("limit").and_then(|v| v.as_i64()))
+        .unwrap_or(10);
+    let schema = params
+        .as_ref()
+        .and_then(|p| p.get("schema").and_then(|v| v.as_str()))
+        .unwrap_or("public");
+    let select_cols = params
+        .as_ref()
+        .and_then(|p| p.get("select").and_then(|v| v.as_str()))
+        .unwrap_or("*");
+    let distance = params
+        .as_ref()
+        .and_then(|p| p.get("distance").and_then(|v| v.as_str()))
+        .unwrap_or("cosine");
 
     let operator = match distance {
         "l2" | "euclidean" => "<->",
@@ -48,7 +73,11 @@ pub async fn vector_search(client: &Client, params: &Option<&Value>) -> MCPResul
     };
 
     let qcol = crate::validation::quote_ident(column);
-    let qual = format!("{}.{}", crate::validation::quote_ident(schema), crate::validation::quote_ident(table));
+    let qual = format!(
+        "{}.{}",
+        crate::validation::quote_ident(schema),
+        crate::validation::quote_ident(table)
+    );
     let sql = format!(
         "SELECT {}, {qcol} {operator} '{vector}' AS distance
          FROM {qual}
@@ -76,7 +105,10 @@ pub async fn vector_search(client: &Client, params: &Option<&Value>) -> MCPResul
             } else if let Ok(v) = row.try_get::<_, bool>(i) {
                 obj.insert(name.to_string(), json!(v));
             } else if let Ok(v) = row.try_get::<_, Option<String>>(i) {
-                obj.insert(name.to_string(), v.map(Value::String).unwrap_or(Value::Null));
+                obj.insert(
+                    name.to_string(),
+                    v.map(Value::String).unwrap_or(Value::Null),
+                );
             }
         }
         results.push(Value::Object(obj));
@@ -90,13 +122,26 @@ pub async fn vector_search(client: &Client, params: &Option<&Value>) -> MCPResul
 }
 
 pub async fn create_vector_index(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let table = params.as_ref().and_then(|p| p.get("table").and_then(|v| v.as_str()))
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table'".into()))?;
-    let column = params.as_ref().and_then(|p| p.get("column").and_then(|v| v.as_str()))
+    let column = params
+        .as_ref()
+        .and_then(|p| p.get("column").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'column'".into()))?;
-    let index_type = params.as_ref().and_then(|p| p.get("index_type").and_then(|v| v.as_str())).unwrap_or("hnsw");
-    let distance = params.as_ref().and_then(|p| p.get("distance").and_then(|v| v.as_str())).unwrap_or("cosine");
-    let schema = params.as_ref().and_then(|p| p.get("schema").and_then(|v| v.as_str())).unwrap_or("public");
+    let index_type = params
+        .as_ref()
+        .and_then(|p| p.get("index_type").and_then(|v| v.as_str()))
+        .unwrap_or("hnsw");
+    let distance = params
+        .as_ref()
+        .and_then(|p| p.get("distance").and_then(|v| v.as_str()))
+        .unwrap_or("cosine");
+    let schema = params
+        .as_ref()
+        .and_then(|p| p.get("schema").and_then(|v| v.as_str()))
+        .unwrap_or("public");
 
     let distance_op = match distance {
         "l2" | "euclidean" => "vector_l2_ops",
@@ -111,7 +156,10 @@ pub async fn create_vector_index(client: &Client, params: &Option<&Value>) -> MC
     let q_column = crate::validation::quote_ident(column);
     let sql = match index_type {
         "ivfflat" => {
-            let lists = params.as_ref().and_then(|p| p.get("lists").and_then(|v| v.as_i64())).unwrap_or(100);
+            let lists = params
+                .as_ref()
+                .and_then(|p| p.get("lists").and_then(|v| v.as_i64()))
+                .unwrap_or(100);
             format!(
                 "CREATE INDEX \"{index_name}\" ON {q_schema}.{q_table} USING ivfflat ({q_column} {distance_op}) WITH (lists = {lists})"
             )

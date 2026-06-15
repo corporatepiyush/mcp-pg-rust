@@ -1,7 +1,7 @@
-use serde_json::{json, Value};
-use tokio_postgres::Client;
 use crate::errors::{MCPError, Result as MCPResult};
 use crate::validation::validate_identifier;
+use serde_json::{Value, json};
+use tokio_postgres::Client;
 
 /// 1. List all tables
 pub async fn list_tables(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
@@ -35,7 +35,9 @@ pub async fn describe_table(client: &Client, params: &Option<&Value>) -> MCPResu
         .as_ref()
         .and_then(|p| p.get("table"))
         .and_then(|v| v.as_str())
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table' parameter".into()))?;
+        .ok_or_else(|| {
+            crate::errors::MCPError::InvalidParams("Missing 'table' parameter".into())
+        })?;
 
     validate_identifier(table_name, "table")?;
 
@@ -200,18 +202,21 @@ pub async fn get_object_details(client: &Client, params: &Option<&Value>) -> MCP
         )
         .await?;
 
-    let cols: Vec<Value> = columns.iter().map(|row| {
-        json!({
-            "name": row.get::<_, String>(0),
-            "type": row.get::<_, String>(1),
-            "nullable": row.get::<_, String>(2) == "YES",
-            "default": row.get::<_, Option<String>>(3),
-            "position": row.get::<_, i32>(4),
-            "description": row.get::<_, String>(5),
-            "is_primary_key": row.get::<_, bool>(6),
-            "is_unique": row.get::<_, bool>(7),
+    let cols: Vec<Value> = columns
+        .iter()
+        .map(|row| {
+            json!({
+                "name": row.get::<_, String>(0),
+                "type": row.get::<_, String>(1),
+                "nullable": row.get::<_, String>(2) == "YES",
+                "default": row.get::<_, Option<String>>(3),
+                "position": row.get::<_, i32>(4),
+                "description": row.get::<_, String>(5),
+                "is_primary_key": row.get::<_, bool>(6),
+                "is_unique": row.get::<_, bool>(7),
+            })
         })
-    }).collect();
+        .collect();
 
     let indexes = client
         .query(
@@ -223,12 +228,15 @@ pub async fn get_object_details(client: &Client, params: &Option<&Value>) -> MCP
         )
         .await?;
 
-    let idxs: Vec<Value> = indexes.iter().map(|row| {
-        json!({
-            "name": row.get::<_, String>(0),
-            "definition": row.get::<_, String>(1),
+    let idxs: Vec<Value> = indexes
+        .iter()
+        .map(|row| {
+            json!({
+                "name": row.get::<_, String>(0),
+                "definition": row.get::<_, String>(1),
+            })
         })
-    }).collect();
+        .collect();
 
     let foreign_keys = client
         .query(
@@ -254,16 +262,19 @@ pub async fn get_object_details(client: &Client, params: &Option<&Value>) -> MCP
         )
         .await?;
 
-    let fks: Vec<Value> = foreign_keys.iter().map(|row| {
-        json!({
-            "column": row.get::<_, String>(0),
-            "references_schema": row.get::<_, String>(1),
-            "references_table": row.get::<_, String>(2),
-            "references_column": row.get::<_, String>(3),
-            "on_update": row.get::<_, String>(4),
-            "on_delete": row.get::<_, String>(5),
+    let fks: Vec<Value> = foreign_keys
+        .iter()
+        .map(|row| {
+            json!({
+                "column": row.get::<_, String>(0),
+                "references_schema": row.get::<_, String>(1),
+                "references_table": row.get::<_, String>(2),
+                "references_column": row.get::<_, String>(3),
+                "on_update": row.get::<_, String>(4),
+                "on_delete": row.get::<_, String>(5),
+            })
         })
-    }).collect();
+        .collect();
 
     let constraints = client
         .query(
@@ -275,12 +286,15 @@ pub async fn get_object_details(client: &Client, params: &Option<&Value>) -> MCP
         )
         .await?;
 
-    let cons: Vec<Value> = constraints.iter().map(|row| {
-        json!({
-            "name": row.get::<_, String>(0),
-            "type": row.get::<_, String>(1),
+    let cons: Vec<Value> = constraints
+        .iter()
+        .map(|row| {
+            json!({
+                "name": row.get::<_, String>(0),
+                "type": row.get::<_, String>(1),
+            })
         })
-    }).collect();
+        .collect();
 
     let row_estimate = client
         .query_one(
@@ -334,9 +348,10 @@ pub async fn list_triggers(client: &Client, params: &Option<&Value>) -> MCPResul
     validate_identifier(schema, "schema")?;
 
     if !((1..=10000).contains(&limit)) {
-        return Err(MCPError::InvalidParams(
-            format!("'limit' must be between 1 and 10000 (got {})", limit)
-        ));
+        return Err(MCPError::InvalidParams(format!(
+            "'limit' must be between 1 and 10000 (got {})",
+            limit
+        )));
     }
 
     let rows = client
@@ -391,7 +406,9 @@ pub async fn create_index(client: &Client, params: &Option<&Value>) -> MCPResult
         .ok_or_else(|| MCPError::InvalidParams("Missing 'columns' parameter (array)".into()))?;
 
     if columns.is_empty() {
-        return Err(MCPError::InvalidParams("'columns' array must not be empty".into()));
+        return Err(MCPError::InvalidParams(
+            "'columns' array must not be empty".into(),
+        ));
     }
 
     validate_identifier(index_name, "index_name")?;
@@ -399,7 +416,8 @@ pub async fn create_index(client: &Client, params: &Option<&Value>) -> MCPResult
 
     let mut column_list = Vec::new();
     for col in columns {
-        let col_name = col.as_str()
+        let col_name = col
+            .as_str()
             .ok_or_else(|| MCPError::InvalidParams("Column names must be strings".into()))?;
         validate_identifier(col_name, "column")?;
         column_list.push(col_name.to_string());
@@ -421,11 +439,7 @@ pub async fn create_index(client: &Client, params: &Option<&Value>) -> MCPResult
 
     let sql = format!(
         "CREATE {}INDEX {} {} ON {}({})",
-        unique_str,
-        concurrent_str,
-        index_name,
-        table,
-        columns_str
+        unique_str, concurrent_str, index_name, table, columns_str
     );
 
     client.execute(&sql, &[]).await?;
@@ -465,9 +479,7 @@ pub async fn drop_index(client: &Client, params: &Option<&Value>) -> MCPResult<V
 
     let sql = format!(
         "DROP INDEX {}{}{}",
-        if_exists_str,
-        concurrent_str,
-        index_name
+        if_exists_str, concurrent_str, index_name
     );
 
     client.execute(&sql, &[]).await?;
@@ -496,16 +508,19 @@ pub async fn create_partition(client: &Client, params: &Option<&Value>) -> MCPRe
     let partition_type = params
         .as_ref()
         .and_then(|p| p.get("partition_type").and_then(|v| v.as_str()))
-        .ok_or_else(|| MCPError::InvalidParams("Missing 'partition_type' parameter (RANGE/LIST/HASH)".into()))?;
+        .ok_or_else(|| {
+            MCPError::InvalidParams("Missing 'partition_type' parameter (RANGE/LIST/HASH)".into())
+        })?;
 
     validate_identifier(table, "table")?;
     validate_identifier(partition_name, "partition_name")?;
 
     let partition_type_upper = partition_type.to_uppercase();
     if !["RANGE", "LIST", "HASH"].contains(&partition_type_upper.as_str()) {
-        return Err(MCPError::InvalidParams(
-            format!("'partition_type' must be RANGE, LIST, or HASH (got {})", partition_type)
-        ));
+        return Err(MCPError::InvalidParams(format!(
+            "'partition_type' must be RANGE, LIST, or HASH (got {})",
+            partition_type
+        )));
     }
 
     let column = params
@@ -524,15 +539,13 @@ pub async fn create_partition(client: &Client, params: &Option<&Value>) -> MCPRe
 
     if values.contains(';') || values.contains("--") {
         return Err(MCPError::InvalidParams(
-            "Invalid 'values' parameter: semicolons and SQL comments not allowed".into()
+            "Invalid 'values' parameter: semicolons and SQL comments not allowed".into(),
         ));
     }
 
     let sql = format!(
         "CREATE TABLE {} PARTITION OF {} FOR VALUES {}",
-        partition_name,
-        table,
-        values
+        partition_name, table, values
     );
 
     client.execute(&sql, &[]).await?;
@@ -568,11 +581,7 @@ pub async fn drop_partition(client: &Client, params: &Option<&Value>) -> MCPResu
 
     let if_exists_str = if if_exists { "IF EXISTS " } else { "" };
 
-    let sql = format!(
-        "DROP TABLE {}{}",
-        if_exists_str,
-        partition_name
-    );
+    let sql = format!("DROP TABLE {}{}", if_exists_str, partition_name);
 
     client.execute(&sql, &[]).await?;
 
@@ -598,24 +607,34 @@ pub async fn create_table(client: &Client, params: &Option<&Value>) -> MCPResult
         .ok_or_else(|| MCPError::InvalidParams("Missing 'columns' parameter (array)".into()))?;
 
     if columns.is_empty() {
-        return Err(MCPError::InvalidParams("'columns' array must not be empty".into()));
+        return Err(MCPError::InvalidParams(
+            "'columns' array must not be empty".into(),
+        ));
     }
 
     validate_identifier(table, "table")?;
 
     let mut column_defs = Vec::new();
     for (idx, col) in columns.iter().enumerate() {
-        let col_def = col.as_str()
-            .ok_or_else(|| MCPError::InvalidParams(format!("Column {} must be a string with format: 'name TYPE [constraints]'", idx)))?;
+        let col_def = col.as_str().ok_or_else(|| {
+            MCPError::InvalidParams(format!(
+                "Column {} must be a string with format: 'name TYPE [constraints]'",
+                idx
+            ))
+        })?;
 
         if col_def.is_empty() {
-            return Err(MCPError::InvalidParams(format!("Column {} definition cannot be empty", idx)));
+            return Err(MCPError::InvalidParams(format!(
+                "Column {} definition cannot be empty",
+                idx
+            )));
         }
 
         if col_def.contains(';') || col_def.contains("--") {
-            return Err(MCPError::InvalidParams(
-                format!("Column {} definition contains dangerous SQL patterns", idx)
-            ));
+            return Err(MCPError::InvalidParams(format!(
+                "Column {} definition contains dangerous SQL patterns",
+                idx
+            )));
         }
 
         column_defs.push(col_def.to_string());
@@ -700,7 +719,10 @@ pub async fn create_view(client: &Client, params: &Option<&Value>) -> MCPResult<
     let materialized_str = if materialized { "MATERIALIZED " } else { "" };
     let or_replace_str = if or_replace { "OR REPLACE " } else { "" };
 
-    let sql = format!("CREATE {}{}VIEW {} AS {}", or_replace_str, materialized_str, view_name, query);
+    let sql = format!(
+        "CREATE {}{}VIEW {} AS {}",
+        or_replace_str, materialized_str, view_name, query
+    );
 
     client.execute(&sql, &[]).await?;
 
@@ -767,7 +789,7 @@ pub async fn alter_view(client: &Client, params: &Option<&Value>) -> MCPResult<V
 
     if rename_to.is_none() && set_schema.is_none() {
         return Err(MCPError::InvalidParams(
-            "Must provide either 'rename_to' or 'set_schema' parameter".into()
+            "Must provide either 'rename_to' or 'set_schema' parameter".into(),
         ));
     }
 
@@ -845,7 +867,10 @@ pub async fn drop_schema(client: &Client, params: &Option<&Value>) -> MCPResult<
     let if_exists_str = if if_exists { "IF EXISTS " } else { "" };
     let cascade_str = if cascade { " CASCADE" } else { "" };
 
-    let sql = format!("DROP SCHEMA {}{}{}", if_exists_str, schema_name, cascade_str);
+    let sql = format!(
+        "DROP SCHEMA {}{}{}",
+        if_exists_str, schema_name, cascade_str
+    );
 
     client.execute(&sql, &[]).await?;
 
@@ -886,10 +911,7 @@ pub async fn create_sequence(client: &Client, params: &Option<&Value>) -> MCPRes
 
     let sql = format!(
         "CREATE SEQUENCE {}{} START {} INCREMENT {}",
-        if_not_exists_str,
-        sequence_name,
-        start,
-        increment
+        if_not_exists_str, sequence_name, start, increment
     );
 
     client.execute(&sql, &[]).await?;
@@ -951,7 +973,7 @@ pub async fn alter_index(client: &Client, params: &Option<&Value>) -> MCPResult<
 
     if rename_to.is_none() && set_schema.is_none() {
         return Err(MCPError::InvalidParams(
-            "Must provide either 'rename_to' or 'set_schema' parameter".into()
+            "Must provide either 'rename_to' or 'set_schema' parameter".into(),
         ));
     }
 
@@ -1053,9 +1075,10 @@ pub async fn backup_table(client: &Client, params: &Option<&Value>) -> MCPResult
         .is_some();
 
     if backup_exists {
-        return Err(MCPError::InvalidParams(
-            format!("Backup table '{}' already exists. Drop it first or use a different table.", backup_name)
-        ));
+        return Err(MCPError::InvalidParams(format!(
+            "Backup table '{}' already exists. Drop it first or use a different table.",
+            backup_name
+        )));
     }
 
     // Create backup table with all columns and structure

@@ -1,7 +1,9 @@
+#![allow(clippy::needless_pass_by_value)]
+
 /// Integration tests for all tools using generated test data
 /// Requires running: cargo run --release --bin load_test_data
 /// Then: cargo test --test integration_test_data_tools -- --nocapture
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
@@ -45,7 +47,8 @@ fn tcp_request(tool_name: &str, arguments: Value) -> Result<Value, Box<dyn std::
 fn test_list_tables_returns_12_tables() {
     match tcp_request("list_tables", json!({})) {
         Ok(response) => {
-            let tables = response.get("result")
+            let tables = response
+                .get("result")
                 .and_then(|r| r.get("tables"))
                 .expect("Missing tables");
 
@@ -53,14 +56,31 @@ fn test_list_tables_returns_12_tables() {
             assert!(table_list.len() >= 12, "Should have at least 12 tables");
 
             // Check for specific tables
-            let names: Vec<String> = table_list.iter()
-                .filter_map(|t| t.get("name").and_then(|n| n.as_str()).map(|s| s.to_string()))
+            let names: Vec<String> = table_list
+                .iter()
+                .filter_map(|t| {
+                    t.get("name")
+                        .and_then(|n| n.as_str())
+                        .map(|s| s.to_string())
+                })
                 .collect();
 
-            assert!(names.contains(&"customers".to_string()), "Missing customers table");
-            assert!(names.contains(&"orders".to_string()), "Missing orders table");
-            assert!(names.contains(&"products".to_string()), "Missing products table");
-            println!("✓ list_tables: {} tables found (expected 12+)", table_list.len());
+            assert!(
+                names.contains(&"customers".to_string()),
+                "Missing customers table"
+            );
+            assert!(
+                names.contains(&"orders".to_string()),
+                "Missing orders table"
+            );
+            assert!(
+                names.contains(&"products".to_string()),
+                "Missing products table"
+            );
+            println!(
+                "✓ list_tables: {} tables found (expected 12+)",
+                table_list.len()
+            );
         }
         Err(e) => panic!("✗ list_tables failed: {}", e),
     }
@@ -70,15 +90,21 @@ fn test_list_tables_returns_12_tables() {
 fn test_describe_customers_table() {
     match tcp_request("describe_table", json!({"table": "customers"})) {
         Ok(response) => {
-            let columns = response.get("result")
+            let columns = response
+                .get("result")
                 .and_then(|r| r.get("columns"))
                 .expect("Missing columns");
 
             let col_list = columns.as_array().unwrap();
             assert!(!col_list.is_empty(), "customers should have columns");
 
-            let col_names: Vec<String> = col_list.iter()
-                .filter_map(|c| c.get("name").and_then(|n| n.as_str()).map(|s| s.to_string()))
+            let col_names: Vec<String> = col_list
+                .iter()
+                .filter_map(|c| {
+                    c.get("name")
+                        .and_then(|n| n.as_str())
+                        .map(|s| s.to_string())
+                })
                 .collect();
 
             assert!(col_names.contains(&"id".to_string()));
@@ -94,7 +120,8 @@ fn test_describe_customers_table() {
 fn test_list_indexes_on_orders_table() {
     match tcp_request("list_indexes", json!({})) {
         Ok(response) => {
-            let indexes = response.get("result")
+            let indexes = response
+                .get("result")
                 .and_then(|r| r.get("indexes"))
                 .expect("Missing indexes");
 
@@ -102,15 +129,25 @@ fn test_list_indexes_on_orders_table() {
             assert!(!idx_list.is_empty(), "Should have indexes");
 
             // Look for orders-related indexes
-            let orders_indexes = idx_list.iter()
-                .filter(|idx| idx.get("table")
-                    .and_then(|t| t.as_str())
-                    .map(|s| s.contains("order"))
-                    .unwrap_or(false))
+            let orders_indexes = idx_list
+                .iter()
+                .filter(|idx| {
+                    idx.get("table")
+                        .and_then(|t| t.as_str())
+                        .map(|s| s.contains("order"))
+                        .unwrap_or(false)
+                })
                 .collect::<Vec<_>>();
 
-            assert!(!orders_indexes.is_empty(), "Should have indexes on orders table");
-            println!("✓ list_indexes: {} total indexes, {} on orders", idx_list.len(), orders_indexes.len());
+            assert!(
+                !orders_indexes.is_empty(),
+                "Should have indexes on orders table"
+            );
+            println!(
+                "✓ list_indexes: {} total indexes, {} on orders",
+                idx_list.len(),
+                orders_indexes.len()
+            );
         }
         Err(e) => panic!("✗ list_indexes failed: {}", e),
     }
@@ -120,13 +157,18 @@ fn test_list_indexes_on_orders_table() {
 fn test_list_schemas_contains_public() {
     match tcp_request("list_schemas", json!({})) {
         Ok(response) => {
-            let schemas = response.get("result")
+            let schemas = response
+                .get("result")
                 .and_then(|r| r.get("schemas"))
                 .expect("Missing schemas");
 
             let schema_list = schemas.as_array().unwrap();
-            let has_public = schema_list.iter()
-                .any(|s| s.get("name").and_then(|n| n.as_str()).map(|s| s == "public").unwrap_or(false));
+            let has_public = schema_list.iter().any(|s| {
+                s.get("name")
+                    .and_then(|n| n.as_str())
+                    .map(|s| s == "public")
+                    .unwrap_or(false)
+            });
 
             assert!(has_public, "Should have public schema");
             println!("✓ list_schemas: found public schema");
@@ -139,9 +181,13 @@ fn test_list_schemas_contains_public() {
 
 #[test]
 fn test_execute_query_count_customers() {
-    match tcp_request("execute_query", json!({"sql": "SELECT COUNT(*) as count FROM customers"})) {
+    match tcp_request(
+        "execute_query",
+        json!({"sql": "SELECT COUNT(*) as count FROM customers"}),
+    ) {
         Ok(response) => {
-            let rows = response.get("result")
+            let rows = response
+                .get("result")
                 .and_then(|r| r.get("rows"))
                 .expect("Missing rows");
 
@@ -157,11 +203,15 @@ fn test_execute_query_count_customers() {
 
 #[test]
 fn test_execute_query_join_orders_and_customers() {
-    match tcp_request("execute_query", json!({
-        "sql": "SELECT c.email, COUNT(o.id) as order_count FROM customers c LEFT JOIN orders o ON c.id = o.customer_id WHERE c.email LIKE '%example%' GROUP BY c.email LIMIT 10"
-    })) {
+    match tcp_request(
+        "execute_query",
+        json!({
+            "sql": "SELECT c.email, COUNT(o.id) as order_count FROM customers c LEFT JOIN orders o ON c.id = o.customer_id WHERE c.email LIKE '%example%' GROUP BY c.email LIMIT 10"
+        }),
+    ) {
         Ok(response) => {
-            let rows = response.get("result")
+            let rows = response
+                .get("result")
                 .and_then(|r| r.get("rows"))
                 .expect("Missing rows");
 
@@ -175,17 +225,24 @@ fn test_execute_query_join_orders_and_customers() {
 
 #[test]
 fn test_execute_query_aggregation() {
-    match tcp_request("execute_query", json!({
-        "sql": "SELECT category_id, COUNT(*) as product_count, AVG(price) as avg_price FROM products GROUP BY category_id ORDER BY product_count DESC LIMIT 5"
-    })) {
+    match tcp_request(
+        "execute_query",
+        json!({
+            "sql": "SELECT category_id, COUNT(*) as product_count, AVG(price) as avg_price FROM products GROUP BY category_id ORDER BY product_count DESC LIMIT 5"
+        }),
+    ) {
         Ok(response) => {
-            let rows = response.get("result")
+            let rows = response
+                .get("result")
                 .and_then(|r| r.get("rows"))
                 .expect("Missing rows");
 
             let row_list = rows.as_array().unwrap();
             assert!(!row_list.is_empty(), "Should return aggregated results");
-            println!("✓ execute_query: Aggregation returned {} rows", row_list.len());
+            println!(
+                "✓ execute_query: Aggregation returned {} rows",
+                row_list.len()
+            );
         }
         Err(e) => panic!("✗ execute_query aggregation failed: {}", e),
     }
@@ -202,8 +259,7 @@ fn test_analyze_db_health() {
 
             // Check for health metrics
             if let Some(buffer) = result.get("buffer_cache") {
-                assert!(buffer.get("hit_ratio_pct").is_some() ||
-                       buffer.get("status").is_some());
+                assert!(buffer.get("hit_ratio_pct").is_some() || buffer.get("status").is_some());
             }
             println!("✓ analyze_db_health: health metrics obtained");
         }
@@ -219,7 +275,10 @@ fn test_list_unused_indexes() {
             let indexes = result.get("indexes").expect("Missing indexes");
 
             assert!(indexes.is_array(), "indexes should be array");
-            println!("✓ list_unused_indexes: {} indexes checked", indexes.as_array().unwrap().len());
+            println!(
+                "✓ list_unused_indexes: {} indexes checked",
+                indexes.as_array().unwrap().len()
+            );
         }
         Err(e) => panic!("✗ list_unused_indexes failed: {}", e),
     }
@@ -228,8 +287,14 @@ fn test_list_unused_indexes() {
 #[test]
 fn test_get_cache_hit_ratio_with_queries() {
     // First, run some queries to populate cache
-    let _ = tcp_request("execute_query", json!({"sql": "SELECT * FROM customers LIMIT 10"}));
-    let _ = tcp_request("execute_query", json!({"sql": "SELECT * FROM orders LIMIT 10"}));
+    let _ = tcp_request(
+        "execute_query",
+        json!({"sql": "SELECT * FROM customers LIMIT 10"}),
+    );
+    let _ = tcp_request(
+        "execute_query",
+        json!({"sql": "SELECT * FROM orders LIMIT 10"}),
+    );
 
     match tcp_request("get_cache_hit_ratio", json!({})) {
         Ok(response) => {
@@ -245,12 +310,15 @@ fn test_get_cache_hit_ratio_with_queries() {
 
 #[test]
 fn test_explain_query_performance() {
-    match tcp_request("explain_query", json!({
-        "sql": "SELECT c.email, COUNT(o.id) FROM customers c LEFT JOIN orders o ON c.id = o.customer_id GROUP BY c.email",
-        "analyze": false,
-        "buffers": false,
-        "format": "json"
-    })) {
+    match tcp_request(
+        "explain_query",
+        json!({
+            "sql": "SELECT c.email, COUNT(o.id) FROM customers c LEFT JOIN orders o ON c.id = o.customer_id GROUP BY c.email",
+            "analyze": false,
+            "buffers": false,
+            "format": "json"
+        }),
+    ) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
             assert!(result.is_object(), "Result should be object");
@@ -268,7 +336,10 @@ fn test_get_pg_stat_statements() {
             let statements = result.get("statements").expect("Missing statements");
 
             let stmt_list = statements.as_array().unwrap();
-            println!("✓ get_pg_stat_statements: {} statements tracked", stmt_list.len());
+            println!(
+                "✓ get_pg_stat_statements: {} statements tracked",
+                stmt_list.len()
+            );
         }
         Err(_e) => {
             // Extension might not be installed
@@ -328,7 +399,10 @@ fn test_show_current_user() {
     match tcp_request("show_current_user", json!({})) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            let user = result.get("user").or_else(|| result.get("current_user")).expect("Missing user info");
+            let user = result
+                .get("user")
+                .or_else(|| result.get("current_user"))
+                .expect("Missing user info");
 
             println!("✓ show_current_user: logged in as {}", user);
         }

@@ -1,7 +1,7 @@
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::hash::{DefaultHasher, Hash, Hasher};
 use anyhow::Result;
 use once_cell::sync::Lazy;
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Per-CPU-shard counters (data-oriented: no queue allocations on hot path).
 /// Each shard is on its own cache line to prevent false sharing.
@@ -60,9 +60,9 @@ pub fn drain_counters() -> (u64, u64) {
 
 pub fn init_metrics(port: u16) -> Result<()> {
     use prometheus::{Encoder, IntCounter, Registry, TextEncoder};
+    use std::net::SocketAddr;
     use std::sync::Arc;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use std::net::SocketAddr;
 
     let addr: SocketAddr = format!("127.0.0.1:{}", port).parse()?;
 

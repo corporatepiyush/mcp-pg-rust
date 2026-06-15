@@ -35,8 +35,8 @@
 use std::future::Future;
 use std::ops::Deref;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Duration;
 
 use crossbeam::queue::ArrayQueue;
@@ -231,7 +231,6 @@ struct PoolInner<T: Send + 'static> {
     // ═══════════════════════════════════════════════════════════════════════
     // Cache line 2+ (offsets 128+): cold / read-only after construction.
     // ═══════════════════════════════════════════════════════════════════════
-
     /// Factory for creating connections (boxed closure, set once)
     create: CreateFn<T>,
 
@@ -264,11 +263,7 @@ impl<T: Send + 'static> LockFreePool<T> {
     ///
     /// All memory for the idle queue is pre-allocated at construction
     /// (`max_size` slots).  No heap allocation occurs on the hot path.
-    pub fn new(
-        create: CreateFn<T>,
-        validate: ValidateFn<T>,
-        config: &PoolConfig,
-    ) -> Self {
+    pub fn new(create: CreateFn<T>, validate: ValidateFn<T>, config: &PoolConfig) -> Self {
         // Pre-allocate exactly max_size slots — never grows, never shrinks
         let idle = ArrayQueue::new(config.max_size as usize);
         Self {
@@ -340,12 +335,18 @@ impl<T: Send + 'static> LockFreePool<T> {
                 // CAS: reserve a slot atomically
                 // This prevents two concurrent tasks from both trying to
                 // create beyond max_size.
-                if self.inner.size.0.compare_exchange_weak(
-                    current,
-                    current + 1,
-                    Ordering::AcqRel,
-                    Ordering::Relaxed,
-                ).is_ok() {
+                if self
+                    .inner
+                    .size
+                    .0
+                    .compare_exchange_weak(
+                        current,
+                        current + 1,
+                        Ordering::AcqRel,
+                        Ordering::Relaxed,
+                    )
+                    .is_ok()
+                {
                     // Slot reserved — create the connection
                     return match self.create_one().await {
                         Ok(item) => Ok(PooledConnection {
@@ -525,7 +526,7 @@ pub(crate) mod test_helpers {
         let create_count = Arc::new(AtomicU32::new(0));
 
         let create = {
-            let cc = create_count.clone();
+            let cc = create_count;
             Box::new(move || {
                 let count = cc.fetch_add(1, AtomicOrdering::Relaxed);
                 Box::pin(async move {
@@ -541,7 +542,8 @@ pub(crate) mod test_helpers {
             }) as CreateFn<TestConnection>
         };
 
-        let validate = Box::new(move |conn: &TestConnection| conn.valid) as ValidateFn<TestConnection>;
+        let validate =
+            Box::new(move |conn: &TestConnection| conn.valid) as ValidateFn<TestConnection>;
 
         let config = PoolConfig {
             max_size,
@@ -561,8 +563,8 @@ pub(crate) mod test_helpers {
 mod tests {
     use super::test_helpers::*;
     use super::*;
-    use std::sync::atomic::{AtomicU32, Ordering as AtomicOrdering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicU32, Ordering as AtomicOrdering};
     use std::time::Duration;
     use tokio::time::sleep;
 
@@ -684,9 +686,7 @@ mod tests {
         let conn1 = pool.acquire().await.unwrap();
         let pool_clone = pool.clone();
 
-        let handle = tokio::spawn(async move {
-            pool_clone.acquire().await
-        });
+        let handle = tokio::spawn(async move { pool_clone.acquire().await });
 
         sleep(Duration::from_millis(50)).await;
         drop(conn1);
@@ -708,9 +708,8 @@ mod tests {
             let cc = create_count.clone();
             Box::new(move || {
                 let id = cc.fetch_add(1, AtomicOrdering::Relaxed);
-                Box::pin(async move {
-                    Ok(TestConnection { id, valid: true })
-                }) as BoxFuture<'static, Result<TestConnection, String>>
+                Box::pin(async move { Ok(TestConnection { id, valid: true }) })
+                    as BoxFuture<'static, Result<TestConnection, String>>
             }) as CreateFn<TestConnection>
         };
 
@@ -781,9 +780,7 @@ mod tests {
         let pool_clone = pool.clone();
 
         // Spawn a waiter that will be waiting for a connection
-        let handle = tokio::spawn(async move {
-            pool_clone.acquire().await
-        });
+        let handle = tokio::spawn(async move { pool_clone.acquire().await });
 
         // Give the spawned task time to start waiting
         sleep(Duration::from_millis(50)).await;

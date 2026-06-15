@@ -1,6 +1,6 @@
-use serde_json::{json, Value};
-use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
+use serde_json::{Value, json};
+use tokio_postgres::Client;
 
 pub async fn list_bm25_indexes(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     let rows = client
@@ -14,34 +14,58 @@ pub async fn list_bm25_indexes(client: &Client, _params: &Option<&Value>) -> MCP
         )
         .await?;
 
-    let indexes: Vec<Value> = rows.iter().map(|row| {
-        json!({
-            "schema": row.get::<_, String>(0),
-            "table": row.get::<_, String>(1),
-            "index": row.get::<_, String>(2),
-            "definition": row.get::<_, String>(3),
-            "scans": row.get::<_, i64>(4),
-            "tuples_read": row.get::<_, i64>(5),
-            "tuples_fetched": row.get::<_, i64>(6),
+    let indexes: Vec<Value> = rows
+        .iter()
+        .map(|row| {
+            json!({
+                "schema": row.get::<_, String>(0),
+                "table": row.get::<_, String>(1),
+                "index": row.get::<_, String>(2),
+                "definition": row.get::<_, String>(3),
+                "scans": row.get::<_, i64>(4),
+                "tuples_read": row.get::<_, i64>(5),
+                "tuples_fetched": row.get::<_, i64>(6),
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(json!({ "bm25_indexes": indexes }))
 }
 
 pub async fn search_bm25(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let table = params.as_ref().and_then(|p| p.get("table").and_then(|v| v.as_str()))
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table'".into()))?;
-    let query = params.as_ref().and_then(|p| p.get("query").and_then(|v| v.as_str()))
+    let query = params
+        .as_ref()
+        .and_then(|p| p.get("query").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'query'".into()))?;
-    let schema = params.as_ref().and_then(|p| p.get("schema").and_then(|v| v.as_str())).unwrap_or("public");
-    let index_name = params.as_ref().and_then(|p| p.get("index_name").and_then(|v| v.as_str()));
-    let limit = params.as_ref().and_then(|p| p.get("limit").and_then(|v| v.as_i64())).unwrap_or(10);
-    let select_cols = params.as_ref().and_then(|p| p.get("select").and_then(|v| v.as_str())).unwrap_or("*");
-    let text_column = params.as_ref().and_then(|p| p.get("text_column").and_then(|v| v.as_str()))
+    let schema = params
+        .as_ref()
+        .and_then(|p| p.get("schema").and_then(|v| v.as_str()))
+        .unwrap_or("public");
+    let index_name = params
+        .as_ref()
+        .and_then(|p| p.get("index_name").and_then(|v| v.as_str()));
+    let limit = params
+        .as_ref()
+        .and_then(|p| p.get("limit").and_then(|v| v.as_i64()))
+        .unwrap_or(10);
+    let select_cols = params
+        .as_ref()
+        .and_then(|p| p.get("select").and_then(|v| v.as_str()))
+        .unwrap_or("*");
+    let text_column = params
+        .as_ref()
+        .and_then(|p| p.get("text_column").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'text_column'".into()))?;
 
-    let qualified = format!("{}.{}", crate::validation::quote_ident(schema), crate::validation::quote_ident(table));
+    let qualified = format!(
+        "{}.{}",
+        crate::validation::quote_ident(schema),
+        crate::validation::quote_ident(table)
+    );
     let limit = limit.min(1000);
 
     let sql = if let Some(idx) = index_name {
@@ -84,7 +108,10 @@ pub async fn search_bm25(client: &Client, params: &Option<&Value>) -> MCPResult<
             } else if let Ok(v) = row.try_get::<_, bool>(i) {
                 obj.insert(name.to_string(), json!(v));
             } else if let Ok(v) = row.try_get::<_, Option<String>>(i) {
-                obj.insert(name.to_string(), v.map(Value::String).unwrap_or(Value::Null));
+                obj.insert(
+                    name.to_string(),
+                    v.map(Value::String).unwrap_or(Value::Null),
+                );
             }
         }
         results.push(Value::Object(obj));
@@ -98,17 +125,38 @@ pub async fn search_bm25(client: &Client, params: &Option<&Value>) -> MCPResult<
 }
 
 pub async fn create_bm25_index(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let table = params.as_ref().and_then(|p| p.get("table").and_then(|v| v.as_str()))
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table'".into()))?;
-    let column = params.as_ref().and_then(|p| p.get("column").and_then(|v| v.as_str()))
+    let column = params
+        .as_ref()
+        .and_then(|p| p.get("column").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'column'".into()))?;
-    let text_config = params.as_ref().and_then(|p| p.get("text_config").and_then(|v| v.as_str())).unwrap_or("english");
-    let schema = params.as_ref().and_then(|p| p.get("schema").and_then(|v| v.as_str())).unwrap_or("public");
-    let index_name = params.as_ref().and_then(|p| p.get("index_name").and_then(|v| v.as_str()));
-    let k1 = params.as_ref().and_then(|p| p.get("k1").and_then(|v| v.as_f64()));
-    let b = params.as_ref().and_then(|p| p.get("b").and_then(|v| v.as_f64()));
-    let where_clause = params.as_ref().and_then(|p| p.get("where").and_then(|v| v.as_str()));
-    let concurrently = params.as_ref().and_then(|p| p.get("concurrently").and_then(|v| v.as_bool())).unwrap_or(false);
+    let text_config = params
+        .as_ref()
+        .and_then(|p| p.get("text_config").and_then(|v| v.as_str()))
+        .unwrap_or("english");
+    let schema = params
+        .as_ref()
+        .and_then(|p| p.get("schema").and_then(|v| v.as_str()))
+        .unwrap_or("public");
+    let index_name = params
+        .as_ref()
+        .and_then(|p| p.get("index_name").and_then(|v| v.as_str()));
+    let k1 = params
+        .as_ref()
+        .and_then(|p| p.get("k1").and_then(|v| v.as_f64()));
+    let b = params
+        .as_ref()
+        .and_then(|p| p.get("b").and_then(|v| v.as_f64()));
+    let where_clause = params
+        .as_ref()
+        .and_then(|p| p.get("where").and_then(|v| v.as_str()));
+    let concurrently = params
+        .as_ref()
+        .and_then(|p| p.get("concurrently").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
 
     let idx_name = match index_name {
         Some(name) => name.to_string(),
@@ -116,11 +164,26 @@ pub async fn create_bm25_index(client: &Client, params: &Option<&Value>) -> MCPR
     };
 
     let mut sql = "CREATE INDEX".to_string();
-    if concurrently { sql.push_str(" CONCURRENTLY"); }
-    sql.push_str(&format!(" {} ON {}.{}", crate::validation::quote_ident(&idx_name), crate::validation::quote_ident(schema), crate::validation::quote_ident(table)));
-    sql.push_str(&format!(" USING bm25({}) WITH (text_config='{}'", crate::validation::quote_ident(column), text_config));
-    if let Some(k) = k1 { sql.push_str(&format!(", k1={}", k)); }
-    if let Some(b_val) = b { sql.push_str(&format!(", b={}", b_val)); }
+    if concurrently {
+        sql.push_str(" CONCURRENTLY");
+    }
+    sql.push_str(&format!(
+        " {} ON {}.{}",
+        crate::validation::quote_ident(&idx_name),
+        crate::validation::quote_ident(schema),
+        crate::validation::quote_ident(table)
+    ));
+    sql.push_str(&format!(
+        " USING bm25({}) WITH (text_config='{}'",
+        crate::validation::quote_ident(column),
+        text_config
+    ));
+    if let Some(k) = k1 {
+        sql.push_str(&format!(", k1={}", k));
+    }
+    if let Some(b_val) = b {
+        sql.push_str(&format!(", b={}", b_val));
+    }
     sql.push(')');
 
     if let Some(w) = where_clause {
@@ -132,26 +195,49 @@ pub async fn create_bm25_index(client: &Client, params: &Option<&Value>) -> MCPR
 }
 
 pub async fn drop_bm25_index(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let index_name = params.as_ref().and_then(|p| p.get("index_name").and_then(|v| v.as_str()))
+    let index_name = params
+        .as_ref()
+        .and_then(|p| p.get("index_name").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'index_name'".into()))?;
-    let schema = params.as_ref().and_then(|p| p.get("schema").and_then(|v| v.as_str())).unwrap_or("public");
-    let if_exists = params.as_ref().and_then(|p| p.get("if_exists").and_then(|v| v.as_bool())).unwrap_or(false);
-    let concurrently = params.as_ref().and_then(|p| p.get("concurrently").and_then(|v| v.as_bool())).unwrap_or(false);
+    let schema = params
+        .as_ref()
+        .and_then(|p| p.get("schema").and_then(|v| v.as_str()))
+        .unwrap_or("public");
+    let if_exists = params
+        .as_ref()
+        .and_then(|p| p.get("if_exists").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
+    let concurrently = params
+        .as_ref()
+        .and_then(|p| p.get("concurrently").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
 
     let mut sql = "DROP INDEX".to_string();
-    if concurrently { sql.push_str(" CONCURRENTLY"); }
-    if if_exists { sql.push_str(" IF EXISTS"); }
-    sql.push_str(&format!(" {}.{}", crate::validation::quote_ident(schema), crate::validation::quote_ident(index_name)));
+    if concurrently {
+        sql.push_str(" CONCURRENTLY");
+    }
+    if if_exists {
+        sql.push_str(" IF EXISTS");
+    }
+    sql.push_str(&format!(
+        " {}.{}",
+        crate::validation::quote_ident(schema),
+        crate::validation::quote_ident(index_name)
+    ));
 
     client.execute(&sql, &[]).await?;
     Ok(json!({ "success": true, "sql": sql }))
 }
 
 pub async fn bm25_force_merge(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let index_name = params.as_ref().and_then(|p| p.get("index_name").and_then(|v| v.as_str()))
+    let index_name = params
+        .as_ref()
+        .and_then(|p| p.get("index_name").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'index_name'".into()))?;
 
-    let _rows = client.query("SELECT bm25_force_merge($1)", &[&index_name]).await?;
+    let _rows = client
+        .query("SELECT bm25_force_merge($1)", &[&index_name])
+        .await?;
 
     Ok(json!({
         "success": true,
@@ -161,10 +247,14 @@ pub async fn bm25_force_merge(client: &Client, params: &Option<&Value>) -> MCPRe
 }
 
 pub async fn bm25_index_stats(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let index_name = params.as_ref().and_then(|p| p.get("index_name").and_then(|v| v.as_str()))
+    let index_name = params
+        .as_ref()
+        .and_then(|p| p.get("index_name").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'index_name'".into()))?;
 
-    let rows = client.query("SELECT bm25_summarize_index($1)", &[&index_name]).await?;
+    let rows = client
+        .query("SELECT bm25_summarize_index($1)", &[&index_name])
+        .await?;
     let stats: String = rows[0].get(0);
 
     Ok(json!({

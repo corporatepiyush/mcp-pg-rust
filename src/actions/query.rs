@@ -1,24 +1,31 @@
-use serde_json::{json, Value};
-use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
+use serde_json::{Value, json};
+use tokio_postgres::Client;
 
 const MAX_SQL_LEN: usize = 10_000;
 
-fn validate_sql(sql: &str, allowed_prefix: &str, label: &str) -> std::result::Result<(), crate::errors::MCPError> {
+fn validate_sql(
+    sql: &str,
+    allowed_prefix: &str,
+    label: &str,
+) -> std::result::Result<(), crate::errors::MCPError> {
     if sql.is_empty() {
-        return Err(crate::errors::MCPError::InvalidParams("'sql' parameter must not be empty".into()));
+        return Err(crate::errors::MCPError::InvalidParams(
+            "'sql' parameter must not be empty".into(),
+        ));
     }
     if sql.len() > MAX_SQL_LEN {
-        return Err(crate::errors::MCPError::InvalidParams(
-            format!("SQL exceeds maximum length of {MAX_SQL_LEN} characters (got {})", sql.len())
-        ));
+        return Err(crate::errors::MCPError::InvalidParams(format!(
+            "SQL exceeds maximum length of {MAX_SQL_LEN} characters (got {})",
+            sql.len()
+        )));
     }
     let trimmed = sql.trim();
     let first_word = trimmed.split_whitespace().next().unwrap_or("");
     if !first_word.eq_ignore_ascii_case(allowed_prefix) {
-        return Err(crate::errors::MCPError::InvalidParams(
-            format!("Invalid {label} query: expected '{allowed_prefix}'")
-        ));
+        return Err(crate::errors::MCPError::InvalidParams(format!(
+            "Invalid {label} query: expected '{allowed_prefix}'"
+        )));
     }
     // Reject multi-statement: find the first unquoted ';' that is not trailing
     let body = trimmed.strip_suffix(';').unwrap_or(trimmed);
@@ -29,9 +36,10 @@ fn validate_sql(sql: &str, allowed_prefix: &str, label: &str) -> std::result::Re
         }
         if !in_string && ch == ';' {
             let ctx_end = (i + 20).min(sql.len());
-            return Err(crate::errors::MCPError::InvalidParams(
-                format!("Multi-statement queries are not allowed: {label} contained ';' at position {i} (context: ...{}...)", &sql[i..ctx_end])
-            ));
+            return Err(crate::errors::MCPError::InvalidParams(format!(
+                "Multi-statement queries are not allowed: {label} contained ';' at position {i} (context: ...{}...)",
+                &sql[i..ctx_end]
+            )));
         }
     }
     Ok(())
@@ -55,13 +63,17 @@ pub async fn execute_query(client: &Client, params: &Option<&Value>) -> MCPResul
             let values: Vec<Value> = (0..row.len())
                 .map(|i| {
                     // Try type inference: prefer native JSON types over raw strings
-                    row.try_get::<_, bool>(i).map(|v| json!(v))
+                    row.try_get::<_, bool>(i)
+                        .map(|v| json!(v))
                         .or_else(|_| row.try_get::<_, i32>(i).map(|v| json!(v)))
                         .or_else(|_| row.try_get::<_, i64>(i).map(|v| json!(v)))
                         .or_else(|_| row.try_get::<_, f32>(i).map(|v| json!(v)))
                         .or_else(|_| row.try_get::<_, f64>(i).map(|v| json!(v)))
                         .or_else(|_| row.try_get::<_, String>(i).map(Value::String))
-                        .or_else(|_| row.try_get::<_, Option<String>>(i).map(|v| v.map(Value::String).unwrap_or(Value::Null)))
+                        .or_else(|_| {
+                            row.try_get::<_, Option<String>>(i)
+                                .map(|v| v.map(Value::String).unwrap_or(Value::Null))
+                        })
                         .unwrap_or(Value::Null)
                 })
                 .collect();
@@ -150,7 +162,7 @@ pub async fn explain_query(client: &Client, params: &Option<&Value>) -> MCPResul
 
     if format.eq_ignore_ascii_case("xml") {
         return Err(crate::errors::MCPError::InvalidParams(
-            "XML format is not supported — use TEXT, YAML, or JSON".into()
+            "XML format is not supported — use TEXT, YAML, or JSON".into(),
         ));
     }
 
@@ -181,7 +193,9 @@ pub async fn explain_query(client: &Client, params: &Option<&Value>) -> MCPResul
     } else {
         let mut plan = String::new();
         for (i, row) in rows.iter().enumerate() {
-            if i > 0 { plan.push('\n'); }
+            if i > 0 {
+                plan.push('\n');
+            }
             plan.push_str(&row.get::<_, String>(0));
         }
         Ok(json!({
@@ -252,7 +266,9 @@ pub async fn async_execute_delete(client: &Client, params: &Option<&Value>) -> M
 /// preventing session-state leakage when the connection returns to the pool.
 async fn async_sync_commit_execute(client: &Client, sql: &str) -> MCPResult<Value> {
     client.execute("BEGIN", &[]).await?;
-    client.execute("SET LOCAL synchronous_commit = OFF", &[]).await?;
+    client
+        .execute("SET LOCAL synchronous_commit = OFF", &[])
+        .await?;
     match client.execute(sql, &[]).await {
         Ok(rows_affected) => {
             client.execute("COMMIT", &[]).await?;

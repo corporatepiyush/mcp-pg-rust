@@ -4,24 +4,27 @@ const MAX_IDENTIFIER_LEN: usize = 255;
 
 pub fn validate_identifier(name: &str, label: &str) -> Result<(), MCPError> {
     if name.is_empty() {
-        return Err(MCPError::InvalidParams(format!("'{label}' must not be empty")));
+        return Err(MCPError::InvalidParams(format!(
+            "'{label}' must not be empty"
+        )));
     }
     if name.len() > MAX_IDENTIFIER_LEN {
-        return Err(MCPError::InvalidParams(
-            format!("'{label}' exceeds maximum length of {MAX_IDENTIFIER_LEN} characters (got {})", name.len())
-        ));
+        return Err(MCPError::InvalidParams(format!(
+            "'{label}' exceeds maximum length of {MAX_IDENTIFIER_LEN} characters (got {})",
+            name.len()
+        )));
     }
     for ch in name.chars() {
         if !ch.is_alphanumeric() && ch != '_' {
-            return Err(MCPError::InvalidParams(
-                format!("'{label}' contains invalid character '{ch}' — only alphanumeric and underscore allowed")
-            ));
+            return Err(MCPError::InvalidParams(format!(
+                "'{label}' contains invalid character '{ch}' — only alphanumeric and underscore allowed"
+            )));
         }
     }
     if name.starts_with(|c: char| c.is_ascii_digit()) {
-        return Err(MCPError::InvalidParams(
-            format!("'{label}' must not start with a digit")
-        ));
+        return Err(MCPError::InvalidParams(format!(
+            "'{label}' must not start with a digit"
+        )));
     }
     Ok(())
 }

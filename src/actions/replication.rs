@@ -1,9 +1,12 @@
-use serde_json::{json, Value};
-use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
+use serde_json::{Value, json};
+use tokio_postgres::Client;
 
 /// 36. Show replication status
-pub async fn show_replication_status(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
+pub async fn show_replication_status(
+    client: &Client,
+    _params: &Option<&Value>,
+) -> MCPResult<Value> {
     let (in_recovery,): (bool,) = client
         .query_one("SELECT pg_is_in_recovery()", &[])
         .await
@@ -104,7 +107,9 @@ pub async fn show_wal_info(client: &Client, _params: &Option<&Value>) -> MCPResu
         .map(|r| (r.get(0),))?;
 
     let wal_replay_paused = if in_recovery {
-        let r = client.query_one("SELECT pg_is_wal_replay_paused()", &[]).await?;
+        let r = client
+            .query_one("SELECT pg_is_wal_replay_paused()", &[])
+            .await?;
         Some(r.get::<_, bool>(0))
     } else {
         None
@@ -130,12 +135,19 @@ pub async fn show_wal_info(client: &Client, _params: &Option<&Value>) -> MCPResu
 }
 
 /// 40. Show base backup progress
-pub async fn show_base_backup_progress(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
+pub async fn show_base_backup_progress(
+    client: &Client,
+    _params: &Option<&Value>,
+) -> MCPResult<Value> {
     // `pg_stat_progress_basebackup` was added in PostgreSQL 13.
     // No other view name exists for this purpose.
-    let query = match client.query_one(
-        "SELECT count(*) FROM pg_class WHERE relname = 'pg_stat_progress_basebackup'", &[]
-    ).await {
+    let query = match client
+        .query_one(
+            "SELECT count(*) FROM pg_class WHERE relname = 'pg_stat_progress_basebackup'",
+            &[],
+        )
+        .await
+    {
         Ok(r) if r.get::<_, i64>(0) > 0 => {
             "SELECT phase, backup_total, backup_streamed, tablespaces_total, tablespaces_streamed
              FROM pg_stat_progress_basebackup WHERE phase IS NOT NULL"
@@ -148,9 +160,7 @@ pub async fn show_base_backup_progress(client: &Client, _params: &Option<&Value>
             }));
         }
     };
-    let rows = client
-        .query(query, &[])
-        .await;
+    let rows = client.query(query, &[]).await;
 
     match rows {
         Ok(r) => {
@@ -171,11 +181,9 @@ pub async fn show_base_backup_progress(client: &Client, _params: &Option<&Value>
                 "tablespaces_streamed": row.get::<_, i64>(4),
             }))
         }
-        Err(_) => {
-            Ok(json!({
-                "status": "unavailable",
-                "message": "Base backup progress not available on this PostgreSQL version"
-            }))
-        }
+        Err(_) => Ok(json!({
+            "status": "unavailable",
+            "message": "Base backup progress not available on this PostgreSQL version"
+        })),
     }
 }

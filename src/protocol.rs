@@ -117,7 +117,8 @@ mod tests {
 
     #[test]
     fn test_response_error() {
-        let resp = JsonRpcResponse::error(Some(Value::Number(1.into())), -32700, "Parse error".into());
+        let resp =
+            JsonRpcResponse::error(Some(Value::Number(1.into())), -32700, "Parse error".into());
         assert_eq!(resp.jsonrpc, "2.0");
         assert!(resp.result.is_none());
         let err = resp.error.unwrap();
@@ -193,4 +194,3 @@ mod tests {
         assert_eq!(err.data, Some(json!({"detail": "something broke"})));
     }
 }
-

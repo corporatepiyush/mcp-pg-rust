@@ -1,14 +1,14 @@
+pub mod actions;
 pub mod config;
-pub mod server;
+pub mod errors;
+pub mod http;
+pub mod lockfree_pool;
+pub mod metrics;
 pub mod pool;
 pub mod protocol;
-pub mod actions;
-pub mod errors;
-pub mod metrics;
-pub mod http;
-pub mod validation;
+pub mod server;
 pub mod tools;
-pub mod lockfree_pool;
+pub mod validation;
 
 use clap::Parser;
 

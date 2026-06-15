@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
+use mcp_postgres::{Args, config, http, metrics, pool, server};
 use tracing::info;
-use mcp_postgres::{config, pool, server, metrics, http, Args};
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -12,12 +12,12 @@ async fn main() -> Result<()> {
     // Memory efficiency for high-throughput server
     // SAFETY: set_var is unsafe in Rust 2024 due to potential data races,
     // but this runs in single-threaded context before any threads are spawned.
-    unsafe { std::env::set_var("MIMALLOC_PAGE_RESET", "0") };           // Don't reset pages (reuse faster)
-    unsafe { std::env::set_var("MIMALLOC_DECOMMIT_DELAY", "1000") };    // Decommit unused pages after 1s
-    unsafe { std::env::set_var("MIMALLOC_ARENA_EAGER_COMMIT", "1") };   // Eager commit for predictable latency
-    unsafe { std::env::set_var("MIMALLOC_LARGE_OS_PAGES", "1") };       // Use large pages (2MB) to reduce TLB misses
-    unsafe { std::env::set_var("MIMALLOC_EAGER_REGION_COMMIT", "1") };  // Eagerly commit regions for fast allocation
-    unsafe { std::env::set_var("MIMALLOC_RESET_DELAY", "0") };          // No delay resetting freed allocations
+    unsafe { std::env::set_var("MIMALLOC_PAGE_RESET", "0") }; // Don't reset pages (reuse faster)
+    unsafe { std::env::set_var("MIMALLOC_DECOMMIT_DELAY", "1000") }; // Decommit unused pages after 1s
+    unsafe { std::env::set_var("MIMALLOC_ARENA_EAGER_COMMIT", "1") }; // Eager commit for predictable latency
+    unsafe { std::env::set_var("MIMALLOC_LARGE_OS_PAGES", "1") }; // Use large pages (2MB) to reduce TLB misses
+    unsafe { std::env::set_var("MIMALLOC_EAGER_REGION_COMMIT", "1") }; // Eagerly commit regions for fast allocation
+    unsafe { std::env::set_var("MIMALLOC_RESET_DELAY", "0") }; // No delay resetting freed allocations
 
     let args = Args::parse();
 
@@ -38,10 +38,12 @@ async fn main() -> Result<()> {
 
     // Create connection pool
     let pool = std::sync::Arc::new(
-        pool::ConnectionPool::new(&config.database.url, config.pool.clone()).await?
+        pool::ConnectionPool::new(&config.database.url, config.pool.clone()).await?,
     );
-    info!("Connection pool initialized: min={}, max={}",
-        config.pool.min_size, config.pool.max_size);
+    info!(
+        "Connection pool initialized: min={}, max={}",
+        config.pool.min_size, config.pool.max_size
+    );
 
     // Create server
     let mcp_server = server::MCPServer::new(config.clone(), pool.clone());
@@ -83,7 +85,7 @@ async fn main() -> Result<()> {
 }
 
 fn init_tracing(log_level: &str) -> Result<()> {
-    use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+    use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
     let env_filter = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new(log_level))

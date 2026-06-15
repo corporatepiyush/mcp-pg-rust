@@ -27,7 +27,9 @@ impl FromStr for AccessMode {
         match s.to_lowercase().as_str() {
             "unrestricted" => Ok(AccessMode::Unrestricted),
             "restricted" => Ok(AccessMode::Restricted),
-            _ => Err(format!("Invalid access mode: {s}. Use 'unrestricted' or 'restricted'")),
+            _ => Err(format!(
+                "Invalid access mode: {s}. Use 'unrestricted' or 'restricted'"
+            )),
         }
     }
 }
@@ -68,7 +70,9 @@ pub struct MetricsConfig {
 
 impl Config {
     pub fn from_args(args: &super::Args) -> Result<Self> {
-        let database_url = args.database_url.clone()
+        let database_url = args
+            .database_url
+            .clone()
             .or_else(|| std::env::var("DATABASE_URL").ok())
             .unwrap_or_else(|| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
 
@@ -76,9 +80,7 @@ impl Config {
         let max_size = args.max_connections.unwrap_or(20);
 
         Ok(Config {
-            database: DatabaseConfig {
-                url: database_url,
-            },
+            database: DatabaseConfig { url: database_url },
             server: ServerConfig {
                 host: args.host.clone(),
                 port: args.port,
@@ -138,7 +140,10 @@ mod tests {
     #[test]
     fn test_database_config_defaults() {
         let cfg = Config::default();
-        assert_eq!(cfg.database.url, "postgres://postgres:postgres@localhost:5432/postgres");
+        assert_eq!(
+            cfg.database.url,
+            "postgres://postgres:postgres@localhost:5432/postgres"
+        );
     }
 
     #[test]

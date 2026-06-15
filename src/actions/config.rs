@@ -1,6 +1,6 @@
-use serde_json::{json, Value};
-use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
+use serde_json::{Value, json};
+use tokio_postgres::Client;
 
 const MAX_SETTING_NAME_LEN: usize = 255;
 
@@ -36,13 +36,19 @@ pub async fn show_all_settings(client: &Client, _params: &Option<&Value>) -> MCP
 pub async fn get_setting(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
     let setting_name = params
         .as_ref()
-        .and_then(|p| p.get("setting").and_then(|v| v.as_str()).map(|s| s.to_string()))
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'setting' parameter".into()))?;
+        .and_then(|p| {
+            p.get("setting")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
+        .ok_or_else(|| {
+            crate::errors::MCPError::InvalidParams("Missing 'setting' parameter".into())
+        })?;
 
     if setting_name.is_empty() || setting_name.len() > MAX_SETTING_NAME_LEN {
-        return Err(crate::errors::MCPError::InvalidParams(
-            format!("'setting' must be 1-{MAX_SETTING_NAME_LEN} characters")
-        ));
+        return Err(crate::errors::MCPError::InvalidParams(format!(
+            "'setting' must be 1-{MAX_SETTING_NAME_LEN} characters"
+        )));
     }
 
     let rows = client
@@ -55,7 +61,10 @@ pub async fn get_setting(client: &Client, params: &Option<&Value>) -> MCPResult<
         .await?;
 
     if rows.is_empty() {
-        return Err(crate::errors::MCPError::InvalidParams(format!("Setting not found: {}", setting_name)));
+        return Err(crate::errors::MCPError::InvalidParams(format!(
+            "Setting not found: {}",
+            setting_name
+        )));
     }
 
     let row = &rows[0];
@@ -100,7 +109,10 @@ pub async fn show_memory_settings(client: &Client, _params: &Option<&Value>) -> 
 }
 
 /// 34. Show performance settings
-pub async fn show_performance_settings(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
+pub async fn show_performance_settings(
+    client: &Client,
+    _params: &Option<&Value>,
+) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT name, setting, unit

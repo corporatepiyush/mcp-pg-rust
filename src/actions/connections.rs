@@ -1,6 +1,6 @@
-use serde_json::{json, Value};
-use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
+use serde_json::{Value, json};
+use tokio_postgres::Client;
 
 /// 16. List connections
 pub async fn list_connections(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
@@ -78,7 +78,10 @@ pub async fn show_running_queries(client: &Client, _params: &Option<&Value>) -> 
 }
 
 /// 20. Show connection summary
-pub async fn show_connection_summary(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
+pub async fn show_connection_summary(
+    client: &Client,
+    _params: &Option<&Value>,
+) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT state, count(*) as count

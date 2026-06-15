@@ -1,10 +1,12 @@
-use serde_json::{json, Value};
-use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
 use crate::validation::quote_ident;
+use serde_json::{Value, json};
+use tokio_postgres::Client;
 
 pub async fn find_tables_without_pk(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let schema = params.as_ref().and_then(|p| p.get("schema").and_then(|v| v.as_str()));
+    let schema = params
+        .as_ref()
+        .and_then(|p| p.get("schema").and_then(|v| v.as_str()));
 
     let schema_filter = match schema {
         Some(s) => format!("AND c.table_schema = '{}'", s.replace('\'', "''")),
@@ -34,13 +36,16 @@ pub async fn find_tables_without_pk(client: &Client, params: &Option<&Value>) ->
         &[],
     ).await?;
 
-    let tables: Vec<Value> = rows.iter().map(|row| {
-        json!({
-            "schema": row.get::<_, String>(0),
-            "table": row.get::<_, String>(1),
-            "approx_size": row.get::<_, String>(2),
+    let tables: Vec<Value> = rows
+        .iter()
+        .map(|row| {
+            json!({
+                "schema": row.get::<_, String>(0),
+                "table": row.get::<_, String>(1),
+                "approx_size": row.get::<_, String>(2),
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(json!({
         "tables_without_pk": tables,
@@ -50,7 +55,9 @@ pub async fn find_tables_without_pk(client: &Client, params: &Option<&Value>) ->
 }
 
 pub async fn find_missing_fk_indexes(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let schema = params.as_ref().and_then(|p| p.get("schema").and_then(|v| v.as_str()));
+    let schema = params
+        .as_ref()
+        .and_then(|p| p.get("schema").and_then(|v| v.as_str()));
 
     let schema_filter = match schema {
         Some(s) => format!("AND ncon.nspname = '{}'", s.replace('\'', "''")),
@@ -111,8 +118,13 @@ pub async fn find_missing_fk_indexes(client: &Client, params: &Option<&Value>) -
 }
 
 pub async fn analyze_table_bloat(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let schema = params.as_ref().and_then(|p| p.get("schema").and_then(|v| v.as_str()));
-    let threshold = params.as_ref().and_then(|p| p.get("threshold").and_then(|v| v.as_f64())).unwrap_or(10.0);
+    let schema = params
+        .as_ref()
+        .and_then(|p| p.get("schema").and_then(|v| v.as_str()));
+    let threshold = params
+        .as_ref()
+        .and_then(|p| p.get("threshold").and_then(|v| v.as_f64()))
+        .unwrap_or(10.0);
 
     let schema_filter = match schema {
         Some(s) => format!("AND schemaname = '{}'", s.replace('\'', "''")),
@@ -142,17 +154,20 @@ pub async fn analyze_table_bloat(client: &Client, params: &Option<&Value>) -> MC
         &[&threshold],
     ).await?;
 
-    let bloated: Vec<Value> = rows.iter().map(|row| {
-        json!({
-            "schema": row.get::<_, String>(0),
-            "table": row.get::<_, String>(1),
-            "bloat_percentage": row.get::<_, f64>(2),
-            "dead_tuples": row.get::<_, i64>(3),
-            "live_tuples": row.get::<_, i64>(4),
-            "total_size": row.get::<_, String>(5),
-            "estimated_bloat_bytes": row.get::<_, i64>(6),
+    let bloated: Vec<Value> = rows
+        .iter()
+        .map(|row| {
+            json!({
+                "schema": row.get::<_, String>(0),
+                "table": row.get::<_, String>(1),
+                "bloat_percentage": row.get::<_, f64>(2),
+                "dead_tuples": row.get::<_, i64>(3),
+                "live_tuples": row.get::<_, i64>(4),
+                "total_size": row.get::<_, String>(5),
+                "estimated_bloat_bytes": row.get::<_, i64>(6),
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(json!({
         "tables": bloated,
@@ -162,23 +177,52 @@ pub async fn analyze_table_bloat(client: &Client, params: &Option<&Value>) -> MC
 }
 
 pub async fn clone_table_schema(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let source_table = params.as_ref().and_then(|p| p.get("source_table").and_then(|v| v.as_str()))
+    let source_table = params
+        .as_ref()
+        .and_then(|p| p.get("source_table").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'source_table'".into()))?;
-    let new_table = params.as_ref().and_then(|p| p.get("new_table").and_then(|v| v.as_str()))
+    let new_table = params
+        .as_ref()
+        .and_then(|p| p.get("new_table").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'new_table'".into()))?;
-    let source_schema = params.as_ref().and_then(|p| p.get("source_schema").and_then(|v| v.as_str())).unwrap_or("public");
-    let new_schema = params.as_ref().and_then(|p| p.get("new_schema").and_then(|v| v.as_str())).unwrap_or("public");
-    let include_indexes = params.as_ref().and_then(|p| p.get("include_indexes").and_then(|v| v.as_bool())).unwrap_or(true);
-    let include_defaults = params.as_ref().and_then(|p| p.get("include_defaults").and_then(|v| v.as_bool())).unwrap_or(true);
-    let include_constraints = params.as_ref().and_then(|p| p.get("include_constraints").and_then(|v| v.as_bool())).unwrap_or(false);
+    let source_schema = params
+        .as_ref()
+        .and_then(|p| p.get("source_schema").and_then(|v| v.as_str()))
+        .unwrap_or("public");
+    let new_schema = params
+        .as_ref()
+        .and_then(|p| p.get("new_schema").and_then(|v| v.as_str()))
+        .unwrap_or("public");
+    let include_indexes = params
+        .as_ref()
+        .and_then(|p| p.get("include_indexes").and_then(|v| v.as_bool()))
+        .unwrap_or(true);
+    let include_defaults = params
+        .as_ref()
+        .and_then(|p| p.get("include_defaults").and_then(|v| v.as_bool()))
+        .unwrap_or(true);
+    let include_constraints = params
+        .as_ref()
+        .and_then(|p| p.get("include_constraints").and_then(|v| v.as_bool()))
+        .unwrap_or(false);
 
-    let src_ident = format!("{}.{}", quote_ident(source_schema), quote_ident(source_table));
+    let src_ident = format!(
+        "{}.{}",
+        quote_ident(source_schema),
+        quote_ident(source_table)
+    );
     let dst_ident = format!("{}.{}", quote_ident(new_schema), quote_ident(new_table));
 
     let mut parts = vec!["LIKE".to_string(), src_ident];
-    if include_indexes { parts.push("INCLUDING INDEXES".to_string()); }
-    if include_defaults { parts.push("INCLUDING DEFAULTS".to_string()); }
-    if include_constraints { parts.push("INCLUDING CONSTRAINTS".to_string()); }
+    if include_indexes {
+        parts.push("INCLUDING INDEXES".to_string());
+    }
+    if include_defaults {
+        parts.push("INCLUDING DEFAULTS".to_string());
+    }
+    if include_constraints {
+        parts.push("INCLUDING CONSTRAINTS".to_string());
+    }
 
     let sql = format!("CREATE TABLE {} ({})", dst_ident, parts.join(" "));
 

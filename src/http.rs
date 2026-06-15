@@ -1,11 +1,11 @@
 use axum::{
+    Json, Router,
     extract::State,
     response::sse::{Event, Sse},
     routing::{get, post},
-    Json, Router,
 };
 use futures::stream::{self, Stream};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 use tracing::debug;
 
@@ -66,19 +66,17 @@ async fn handle_subscribe(
 
     // For now, just send a simple hello message
     // In production, this would subscribe to query results or database changes
-    let stream = stream::iter(vec![
-        Ok(Event::default()
-            .event("message")
-            .json_data(json!({
-                "jsonrpc": "2.0",
-                "result": {
-                    "type": "subscription",
-                    "message": "Connected to MCP server"
-                },
-                "id": null
-            }))
-            .expect("valid json")),
-    ]);
+    let stream = stream::iter(vec![Ok(Event::default()
+        .event("message")
+        .json_data(json!({
+            "jsonrpc": "2.0",
+            "result": {
+                "type": "subscription",
+                "message": "Connected to MCP server"
+            },
+            "id": null
+        }))
+        .expect("valid json"))]);
 
     Sse::new(stream)
 }

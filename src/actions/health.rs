@@ -1,6 +1,6 @@
-use serde_json::{json, Value};
-use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
+use serde_json::{Value, json};
+use tokio_postgres::Client;
 
 pub async fn analyze_db_health(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
     let hit_ratio = client
@@ -14,17 +14,27 @@ pub async fn analyze_db_health(client: &Client, _params: &Option<&Value>) -> MCP
         .unwrap_or(0.0);
 
     let connections = client
-        .query_one("SELECT count(*) FROM pg_stat_activity WHERE state IS NOT NULL", &[])
+        .query_one(
+            "SELECT count(*) FROM pg_stat_activity WHERE state IS NOT NULL",
+            &[],
+        )
         .await
         .map(|r| r.get::<_, i64>(0))
         .unwrap_or(0);
     let max_connections = client
-        .query_one("SELECT setting::int FROM pg_settings WHERE name = 'max_connections'", &[])
+        .query_one(
+            "SELECT setting::int FROM pg_settings WHERE name = 'max_connections'",
+            &[],
+        )
         .await
         .map(|r| r.get::<_, i32>(0))
         .unwrap_or(100);
     #[allow(clippy::cast_precision_loss)]
-    let conn_usage_pct = if max_connections > 0 { (connections as f64 / f64::from(max_connections)) * 100.0 } else { 0.0 };
+    let conn_usage_pct = if max_connections > 0 {
+        (connections as f64 / f64::from(max_connections)) * 100.0
+    } else {
+        0.0
+    };
 
     let idle_in_xact = client
         .query_one(
@@ -74,10 +84,14 @@ pub async fn analyze_db_health(client: &Client, _params: &Option<&Value>) -> MCP
         )
         .await
         .map(|r| {
-            r.iter().map(|row| json!({
-                "table": row.get::<_, String>(0),
-                "indexes": row.get::<_, Vec<String>>(1),
-            })).collect::<Vec<_>>()
+            r.iter()
+                .map(|row| {
+                    json!({
+                        "table": row.get::<_, String>(0),
+                        "indexes": row.get::<_, Vec<String>>(1),
+                    })
+                })
+                .collect::<Vec<_>>()
         })
         .unwrap_or_default();
 
@@ -96,15 +110,19 @@ pub async fn analyze_db_health(client: &Client, _params: &Option<&Value>) -> MCP
         )
         .await
         .map(|r| {
-            r.iter().map(|row| json!({
-                "schema": row.get::<_, String>(0),
-                "table": row.get::<_, String>(1),
-                "phase": row.get::<_, String>(2),
-                "blocks_total": row.get::<_, i64>(3),
-                "blocks_scanned": row.get::<_, i64>(4),
-                "blocks_vacuumed": row.get::<_, i64>(5),
-                "index_vacuum_count": row.get::<_, i64>(6),
-            })).collect::<Vec<_>>()
+            r.iter()
+                .map(|row| {
+                    json!({
+                        "schema": row.get::<_, String>(0),
+                        "table": row.get::<_, String>(1),
+                        "phase": row.get::<_, String>(2),
+                        "blocks_total": row.get::<_, i64>(3),
+                        "blocks_scanned": row.get::<_, i64>(4),
+                        "blocks_vacuumed": row.get::<_, i64>(5),
+                        "index_vacuum_count": row.get::<_, i64>(6),
+                    })
+                })
+                .collect::<Vec<_>>()
         })
         .unwrap_or_default();
 
@@ -140,13 +158,17 @@ pub async fn analyze_db_health(client: &Client, _params: &Option<&Value>) -> MCP
         )
         .await
         .map(|r| {
-            r.iter().map(|row| json!({
-                "schema": row.get::<_, String>(0),
-                "table": row.get::<_, String>(1),
-                "sequential_scans": row.get::<_, i64>(2),
-                "rows_read": row.get::<_, i64>(3),
-                "estimated_rows": row.get::<_, f64>(4),
-            })).collect::<Vec<_>>()
+            r.iter()
+                .map(|row| {
+                    json!({
+                        "schema": row.get::<_, String>(0),
+                        "table": row.get::<_, String>(1),
+                        "sequential_scans": row.get::<_, i64>(2),
+                        "rows_read": row.get::<_, i64>(3),
+                        "estimated_rows": row.get::<_, f64>(4),
+                    })
+                })
+                .collect::<Vec<_>>()
         })
         .unwrap_or_default();
 
@@ -189,16 +211,19 @@ pub async fn list_unused_indexes(client: &Client, _params: &Option<&Value>) -> M
         )
         .await?;
 
-    let indexes: Vec<Value> = rows.iter().map(|row| {
-        json!({
-            "schema": row.get::<_, String>(0),
-            "index": row.get::<_, String>(1),
-            "table": row.get::<_, String>(2),
-            "scans": row.get::<_, i64>(3),
-            "tuples_read": row.get::<_, i64>(4),
-            "tuples_fetched": row.get::<_, i64>(5),
+    let indexes: Vec<Value> = rows
+        .iter()
+        .map(|row| {
+            json!({
+                "schema": row.get::<_, String>(0),
+                "index": row.get::<_, String>(1),
+                "table": row.get::<_, String>(2),
+                "scans": row.get::<_, i64>(3),
+                "tuples_read": row.get::<_, i64>(4),
+                "tuples_fetched": row.get::<_, i64>(5),
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(json!({
         "unused_indexes": indexes,
@@ -227,15 +252,18 @@ pub async fn list_duplicate_indexes(client: &Client, _params: &Option<&Value>) -
         )
         .await?;
 
-    let duplicates: Vec<Value> = rows.iter().map(|row| {
-        json!({
-            "schema": row.get::<_, String>(0),
-            "table": row.get::<_, String>(1),
-            "index": row.get::<_, String>(2),
-            "duplicate_of": row.get::<_, String>(3),
-            "size": row.get::<_, String>(4),
+    let duplicates: Vec<Value> = rows
+        .iter()
+        .map(|row| {
+            json!({
+                "schema": row.get::<_, String>(0),
+                "table": row.get::<_, String>(1),
+                "index": row.get::<_, String>(2),
+                "duplicate_of": row.get::<_, String>(3),
+                "size": row.get::<_, String>(4),
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(json!({
         "duplicate_indexes": duplicates,
@@ -289,20 +317,23 @@ pub async fn show_vacuum_progress(client: &Client, _params: &Option<&Value>) -> 
         }));
     }
 
-    let operations: Vec<Value> = rows.iter().map(|row| {
-        json!({
-            "schema": row.get::<_, String>(0),
-            "table": row.get::<_, String>(1),
-            "phase": row.get::<_, String>(2),
-            "blocks_total": row.get::<_, i64>(3),
-            "blocks_scanned": row.get::<_, i64>(4),
-            "blocks_vacuumed": row.get::<_, i64>(5),
-            "blocks_remaining": row.get::<_, i64>(6),
-            "progress_pct": row.get::<_, f64>(7),
-            "index_vacuum_count": row.get::<_, i64>(8),
-            "max_dead_tuples": row.get::<_, Option<i64>>(9),
+    let operations: Vec<Value> = rows
+        .iter()
+        .map(|row| {
+            json!({
+                "schema": row.get::<_, String>(0),
+                "table": row.get::<_, String>(1),
+                "phase": row.get::<_, String>(2),
+                "blocks_total": row.get::<_, i64>(3),
+                "blocks_scanned": row.get::<_, i64>(4),
+                "blocks_vacuumed": row.get::<_, i64>(5),
+                "blocks_remaining": row.get::<_, i64>(6),
+                "progress_pct": row.get::<_, f64>(7),
+                "index_vacuum_count": row.get::<_, i64>(8),
+                "max_dead_tuples": row.get::<_, Option<i64>>(9),
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(json!({
         "vacuum_in_progress": true,

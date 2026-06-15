@@ -1,9 +1,11 @@
+#![allow(clippy::needless_pass_by_value, clippy::cast_precision_loss)]
+
+use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
-use std::io::{Write, Read};
-use std::time::{Instant, Duration};
-use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread;
+use std::time::{Duration, Instant};
 
 fn send_request(stream: &mut TcpStream) {
     let req: &[u8] = br#"{"jsonrpc":"2.0","method":"tools/call","params":{"name":"execute_query","arguments":{"sql":"SELECT 1"}},"id":0}"#;

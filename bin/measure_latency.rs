@@ -1,12 +1,14 @@
+#![allow(clippy::cast_precision_loss)]
+
+use reqwest::Client;
+use serde_json::json;
+use std::collections::BTreeMap;
 /// HTTP Server Latency Measurement Tool
 /// Measures end-to-end latency for all MCP tools via HTTP/2
 /// Run: cargo run --release --bin measure_latency
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::task;
-use reqwest::Client;
-use serde_json::json;
-use std::collections::BTreeMap;
 
 #[derive(Clone)]
 #[allow(dead_code)]
@@ -26,8 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🔍 MCP PostgreSQL - HTTP Server Latency Measurement");
     println!("═══════════════════════════════════════════════════\n");
 
-    let client = Client::builder()
-        .build()?;
+    let client = Client::builder().build()?;
 
     let base_url = "http://127.0.0.1:3001";
 
@@ -47,13 +48,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let test_cases = vec![
         ("tools/list", json!({}), "List all tools"),
         ("list_tables", json!({}), "List all tables"),
-        ("describe_table", json!({"table": "pg_tables"}), "Describe table"),
+        (
+            "describe_table",
+            json!({"table": "pg_tables"}),
+            "Describe table",
+        ),
         ("execute_query", json!({"sql": "SELECT 1"}), "Simple SELECT"),
-        ("execute_query", json!({"sql": "SELECT * FROM pg_tables LIMIT 100"}), "Moderate query"),
-        ("execute_query", json!({"sql": "SELECT schemaname, tablename, pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) FROM pg_tables ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC LIMIT 50"}), "Complex query"),
+        (
+            "execute_query",
+            json!({"sql": "SELECT * FROM pg_tables LIMIT 100"}),
+            "Moderate query",
+        ),
+        (
+            "execute_query",
+            json!({"sql": "SELECT schemaname, tablename, pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) FROM pg_tables ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC LIMIT 50"}),
+            "Complex query",
+        ),
         ("get_cache_hit_ratio", json!({}), "Cache metrics"),
         ("analyze_db_health", json!({}), "Health check"),
-        ("get_setting", json!({"setting_name": "max_connections"}), "Get setting"),
+        (
+            "get_setting",
+            json!({"setting_name": "max_connections"}),
+            "Get setting",
+        ),
         ("show_current_user", json!({}), "Current user"),
     ];
 
@@ -161,20 +178,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     println!("Min latency:           {:.2}ms", sorted_latencies[0]);
-    println!("Max latency:           {:.2}ms", sorted_latencies[sorted_latencies.len() - 1]);
-    println!("Avg latency:           {:.2}ms", sorted_latencies.iter().sum::<f64>() / sorted_latencies.len() as f64);
-    println!("P50 latency:           {:.2}ms", sorted_latencies[sorted_latencies.len() / 2]);
-    println!("P95 latency:           {:.2}ms", sorted_latencies[sorted_latencies.len() * 95 / 100]);
-    println!("P99 latency:           {:.2}ms", sorted_latencies[sorted_latencies.len() * 99 / 100]);
+    println!(
+        "Max latency:           {:.2}ms",
+        sorted_latencies[sorted_latencies.len() - 1]
+    );
+    println!(
+        "Avg latency:           {:.2}ms",
+        sorted_latencies.iter().sum::<f64>() / sorted_latencies.len() as f64
+    );
+    println!(
+        "P50 latency:           {:.2}ms",
+        sorted_latencies[sorted_latencies.len() / 2]
+    );
+    println!(
+        "P95 latency:           {:.2}ms",
+        sorted_latencies[sorted_latencies.len() * 95 / 100]
+    );
+    println!(
+        "P99 latency:           {:.2}ms",
+        sorted_latencies[sorted_latencies.len() * 99 / 100]
+    );
 
     // Summary table
     println!("\n📈 Summary Table");
     println!("────────────────────────────────────────────────────────────────────────────────");
-    println!("{:<25} {:>10} {:>10} {:>10} {:>10} {:>15}", "Tool", "Avg (ms)", "P95 (ms)", "P99 (ms)", "Max (ms)", "Bytes");
+    println!(
+        "{:<25} {:>10} {:>10} {:>10} {:>10} {:>15}",
+        "Tool", "Avg (ms)", "P95 (ms)", "P99 (ms)", "Max (ms)", "Bytes"
+    );
     println!("────────────────────────────────────────────────────────────────────────────────");
 
     for (tool, (_desc, stats)) in &all_results {
-        println!("{:<25} {:>10.2} {:>10.2} {:>10.2} {:>10.2} {:>15}",
+        println!(
+            "{:<25} {:>10.2} {:>10.2} {:>10.2} {:>10.2} {:>15}",
             format!("{}", tool),
             stats.avg_ms,
             stats.p95_ms,
@@ -243,11 +279,7 @@ async fn send_request(
         })
     };
 
-    let response = client
-        .post(&url)
-        .json(&request_body)
-        .send()
-        .await?;
+    let response = client.post(&url).json(&request_body).send().await?;
 
     let body = response.bytes().await?;
     Ok(body.len())

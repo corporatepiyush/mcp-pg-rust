@@ -1,17 +1,30 @@
-use serde_json::{json, Value};
-use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
+use serde_json::{Value, json};
+use tokio_postgres::Client;
 
 pub async fn create_hypertable(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let table = params.as_ref().and_then(|p| p.get("table").and_then(|v| v.as_str()))
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table'".into()))?;
-    let time_column = params.as_ref().and_then(|p| p.get("time_column").and_then(|v| v.as_str()))
+    let time_column = params
+        .as_ref()
+        .and_then(|p| p.get("time_column").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'time_column'".into()))?;
-    let schema = params.as_ref().and_then(|p| p.get("schema").and_then(|v| v.as_str())).unwrap_or("public");
-    let chunk_time = params.as_ref().and_then(|p| p.get("chunk_time_interval").and_then(|v| v.as_str()));
+    let schema = params
+        .as_ref()
+        .and_then(|p| p.get("schema").and_then(|v| v.as_str()))
+        .unwrap_or("public");
+    let chunk_time = params
+        .as_ref()
+        .and_then(|p| p.get("chunk_time_interval").and_then(|v| v.as_str()));
 
-    let mut sql = format!("SELECT create_hypertable('{}.{}', '{}'",
-        crate::validation::quote_ident(schema), crate::validation::quote_ident(table), time_column);
+    let mut sql = format!(
+        "SELECT create_hypertable('{}.{}', '{}'",
+        crate::validation::quote_ident(schema),
+        crate::validation::quote_ident(table),
+        time_column
+    );
     if let Some(ct) = chunk_time {
         sql.push_str(&format!(", chunk_time_interval => INTERVAL '{}'", ct));
     }
@@ -24,9 +37,14 @@ pub async fn create_hypertable(client: &Client, params: &Option<&Value>) -> MCPR
 }
 
 pub async fn show_hypertable_details(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let table = params.as_ref().and_then(|p| p.get("table").and_then(|v| v.as_str()))
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table'".into()))?;
-    let schema = params.as_ref().and_then(|p| p.get("schema").and_then(|v| v.as_str())).unwrap_or("public");
+    let schema = params
+        .as_ref()
+        .and_then(|p| p.get("schema").and_then(|v| v.as_str()))
+        .unwrap_or("public");
 
     let rows = client
         .query(
@@ -57,9 +75,14 @@ pub async fn show_hypertable_details(client: &Client, params: &Option<&Value>) -
 }
 
 pub async fn show_chunks(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let table = params.as_ref().and_then(|p| p.get("table").and_then(|v| v.as_str()))
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table'".into()))?;
-    let schema = params.as_ref().and_then(|p| p.get("schema").and_then(|v| v.as_str())).unwrap_or("public");
+    let schema = params
+        .as_ref()
+        .and_then(|p| p.get("schema").and_then(|v| v.as_str()))
+        .unwrap_or("public");
 
     let rows = client
         .query(
@@ -73,26 +96,38 @@ pub async fn show_chunks(client: &Client, params: &Option<&Value>) -> MCPResult<
         )
         .await?;
 
-    let chunks: Vec<Value> = rows.iter().map(|row| {
-        json!({
-            "chunk_name": row.get::<_, String>(0),
-            "chunk_schema": row.get::<_, String>(1),
-            "range_start": row.get::<_, String>(3),
-            "range_end": row.get::<_, String>(4),
-            "compressed": row.get::<_, String>(5),
-            "disk_size": row.get::<_, Option<String>>(6),
+    let chunks: Vec<Value> = rows
+        .iter()
+        .map(|row| {
+            json!({
+                "chunk_name": row.get::<_, String>(0),
+                "chunk_schema": row.get::<_, String>(1),
+                "range_start": row.get::<_, String>(3),
+                "range_end": row.get::<_, String>(4),
+                "compressed": row.get::<_, String>(5),
+                "disk_size": row.get::<_, Option<String>>(6),
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(json!({ "chunks": chunks, "count": chunks.len() }))
 }
 
 pub async fn add_retention_policy(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let table = params.as_ref().and_then(|p| p.get("table").and_then(|v| v.as_str()))
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table'".into()))?;
-    let drop_after = params.as_ref().and_then(|p| p.get("drop_after").and_then(|v| v.as_str()))
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'drop_after' (e.g. '90 days')".into()))?;
-    let schema = params.as_ref().and_then(|p| p.get("schema").and_then(|v| v.as_str())).unwrap_or("public");
+    let drop_after = params
+        .as_ref()
+        .and_then(|p| p.get("drop_after").and_then(|v| v.as_str()))
+        .ok_or_else(|| {
+            crate::errors::MCPError::InvalidParams("Missing 'drop_after' (e.g. '90 days')".into())
+        })?;
+    let schema = params
+        .as_ref()
+        .and_then(|p| p.get("schema").and_then(|v| v.as_str()))
+        .unwrap_or("public");
 
     let sql = format!(
         "SELECT add_retention_policy('{}.{}', INTERVAL '{}')",
@@ -108,11 +143,22 @@ pub async fn add_retention_policy(client: &Client, params: &Option<&Value>) -> M
 }
 
 pub async fn add_compression_policy(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let table = params.as_ref().and_then(|p| p.get("table").and_then(|v| v.as_str()))
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table'".into()))?;
-    let compress_after = params.as_ref().and_then(|p| p.get("compress_after").and_then(|v| v.as_str()))
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'compress_after' (e.g. '7 days')".into()))?;
-    let schema = params.as_ref().and_then(|p| p.get("schema").and_then(|v| v.as_str())).unwrap_or("public");
+    let compress_after = params
+        .as_ref()
+        .and_then(|p| p.get("compress_after").and_then(|v| v.as_str()))
+        .ok_or_else(|| {
+            crate::errors::MCPError::InvalidParams(
+                "Missing 'compress_after' (e.g. '7 days')".into(),
+            )
+        })?;
+    let schema = params
+        .as_ref()
+        .and_then(|p| p.get("schema").and_then(|v| v.as_str()))
+        .unwrap_or("public");
 
     let sql = format!(
         "SELECT add_compression_policy('{}.{}', INTERVAL '{}')",
@@ -128,23 +174,43 @@ pub async fn add_compression_policy(client: &Client, params: &Option<&Value>) ->
 }
 
 pub async fn compress_chunk(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let chunk_name = params.as_ref().and_then(|p| p.get("chunk_name").and_then(|v| v.as_str()))
+    let chunk_name = params
+        .as_ref()
+        .and_then(|p| p.get("chunk_name").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'chunk_name'".into()))?;
-    let chunk_schema = params.as_ref().and_then(|p| p.get("chunk_schema").and_then(|v| v.as_str())).unwrap_or("_hyper");
+    let chunk_schema = params
+        .as_ref()
+        .and_then(|p| p.get("chunk_schema").and_then(|v| v.as_str()))
+        .unwrap_or("_hyper");
 
-    let sql = format!("SELECT compress_chunk('{}.{}')", crate::validation::quote_ident(chunk_schema), crate::validation::quote_ident(chunk_name));
+    let sql = format!(
+        "SELECT compress_chunk('{}.{}')",
+        crate::validation::quote_ident(chunk_schema),
+        crate::validation::quote_ident(chunk_name)
+    );
     let rows = client.query(&sql, &[]).await?;
     let result: String = rows[0].get(0);
 
-    Ok(json!({ "success": true, "chunk": format!("{}.{}", chunk_schema, chunk_name), "result": result }))
+    Ok(
+        json!({ "success": true, "chunk": format!("{}.{}", chunk_schema, chunk_name), "result": result }),
+    )
 }
 
-pub async fn add_continuous_aggregate(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let name = params.as_ref().and_then(|p| p.get("name").and_then(|v| v.as_str()))
+pub async fn add_continuous_aggregate(
+    client: &Client,
+    params: &Option<&Value>,
+) -> MCPResult<Value> {
+    let name = params
+        .as_ref()
+        .and_then(|p| p.get("name").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'name'".into()))?;
-    let query = params.as_ref().and_then(|p| p.get("query").and_then(|v| v.as_str()))
+    let query = params
+        .as_ref()
+        .and_then(|p| p.get("query").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'query'".into()))?;
-    let refresh_interval = params.as_ref().and_then(|p| p.get("refresh_interval").and_then(|v| v.as_str()));
+    let refresh_interval = params
+        .as_ref()
+        .and_then(|p| p.get("refresh_interval").and_then(|v| v.as_str()));
 
     let q_name = crate::validation::quote_ident(name);
     let mut sql = format!("CREATE MATERIALIZED VIEW {q_name}");

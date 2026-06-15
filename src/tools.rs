@@ -290,19 +290,23 @@ pub const ALL_TOOLS: &[ToolMeta] = &[
 
 #[inline]
 pub fn tool_exists(name: &str) -> bool {
-    ALL_TOOLS.binary_search_by(|t| t.name.as_bytes().cmp(name.as_bytes())).is_ok()
+    ALL_TOOLS
+        .binary_search_by(|t| t.name.as_bytes().cmp(name.as_bytes()))
+        .is_ok()
 }
 
 #[inline]
 pub fn is_write_tool(name: &str) -> bool {
-    ALL_TOOLS.binary_search_by(|t| t.name.as_bytes().cmp(name.as_bytes()))
+    ALL_TOOLS
+        .binary_search_by(|t| t.name.as_bytes().cmp(name.as_bytes()))
         .map(|i| ALL_TOOLS[i].write)
         .unwrap_or(false)
 }
 
 #[inline]
 pub fn needs_db(name: &str) -> bool {
-    ALL_TOOLS.binary_search_by(|t| t.name.as_bytes().cmp(name.as_bytes()))
+    ALL_TOOLS
+        .binary_search_by(|t| t.name.as_bytes().cmp(name.as_bytes()))
         .map(|i| ALL_TOOLS[i].needs_db)
         .unwrap_or(false)
 }
@@ -316,7 +320,11 @@ mod tests {
         let mut names: Vec<&str> = ALL_TOOLS.iter().map(|t| t.name).collect();
         names.sort();
         names.dedup();
-        assert_eq!(names.len(), ALL_TOOLS.len(), "Duplicate tool names in ALL_TOOLS");
+        assert_eq!(
+            names.len(),
+            ALL_TOOLS.len(),
+            "Duplicate tool names in ALL_TOOLS"
+        );
     }
 
     #[test]
@@ -349,13 +357,13 @@ mod tests {
 
     #[test]
     fn test_all_tools_registered_in_tools_json() {
-        let content = std::fs::read_to_string("tools.json")
-            .expect("Failed to read tools.json");
-        let json: serde_json::Value = serde_json::from_str(&content)
-            .expect("tools.json is not valid JSON");
+        let content = std::fs::read_to_string("tools.json").expect("Failed to read tools.json");
+        let json: serde_json::Value =
+            serde_json::from_str(&content).expect("tools.json is not valid JSON");
         let json_tools = json.as_array().expect("tools.json must be an array");
 
-        let json_names: Vec<&str> = json_tools.iter()
+        let json_names: Vec<&str> = json_tools
+            .iter()
             .filter_map(|t| t.get("name").and_then(|n| n.as_str()))
             .collect();
 
@@ -375,8 +383,12 @@ mod tests {
             );
         }
 
-        assert_eq!(json_names.len(), ALL_TOOLS.len(),
+        assert_eq!(
+            json_names.len(),
+            ALL_TOOLS.len(),
             "tools.json has {} tools but ALL_TOOLS has {}",
-            json_names.len(), ALL_TOOLS.len());
+            json_names.len(),
+            ALL_TOOLS.len()
+        );
     }
 }

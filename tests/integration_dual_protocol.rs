@@ -1,14 +1,16 @@
+#![allow(clippy::cast_precision_loss, clippy::needless_pass_by_value)]
+
+use once_cell::sync::Lazy;
 /// Dual-protocol integration tests for ALL PostgreSQL tools
 /// Tests both TCP (port 3000) and HTTP (port 3001)
 /// Records latency, throughput, and success/failure rates
 /// Run: cargo test --test integration_dual_protocol -- --nocapture
-use serde_json::{json, Value};
+use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use std::collections::HashMap;
-use once_cell::sync::Lazy;
 
 #[derive(Clone, Debug)]
 struct ProtocolStats {
@@ -99,10 +101,8 @@ fn tcp_request(tool_name: &str, arguments: Value) -> (bool, u128) {
                     };
                     match serde_json::from_str::<Value>(&response_str) {
                         Ok(response) => {
-                            let has_error = response
-                                .get("error")
-                                .map(|e| !e.is_null())
-                                .unwrap_or(false);
+                            let has_error =
+                                response.get("error").map(|e| !e.is_null()).unwrap_or(false);
                             (
                                 !has_error && response.get("result").is_some(),
                                 start.elapsed().as_millis(),
@@ -146,10 +146,7 @@ async fn http_request(tool_name: &str, arguments: Value) -> (bool, u128) {
             }
             match resp.json::<Value>().await {
                 Ok(response) => {
-                    let has_error = response
-                        .get("error")
-                        .map(|e| !e.is_null())
-                        .unwrap_or(false);
+                    let has_error = response.get("error").map(|e| !e.is_null()).unwrap_or(false);
                     (
                         !has_error && response.get("result").is_some(),
                         start.elapsed().as_millis(),
@@ -165,10 +162,7 @@ async fn http_request(tool_name: &str, arguments: Value) -> (bool, u128) {
 // ============ HELPER: Test tool on both protocols ============
 fn test_tool_dual_protocol(tool_name: &str, arguments: Value, description: &str) {
     let mut stats_map = STATS.lock().unwrap();
-    let key = tool_name.to_string();
-    if !stats_map.contains_key(&key) {
-        stats_map.insert(key.clone(), Vec::new());
-    }
+    stats_map.entry(tool_name.to_string()).or_default();
 
     // TCP Test
     let (tcp_success, tcp_ms) = tcp_request(tool_name, arguments.clone());
@@ -178,9 +172,8 @@ fn test_tool_dual_protocol(tool_name: &str, arguments: Value, description: &str)
 
     // HTTP Test (async requires special handling in sync test)
     let http_runtime = tokio::runtime::Runtime::new().unwrap();
-    let (http_success, http_ms) = http_runtime.block_on(async {
-        http_request(tool_name, arguments.clone()).await
-    });
+    let (http_success, http_ms) =
+        http_runtime.block_on(async { http_request(tool_name, arguments.clone()).await });
     let mut http_stat = ProtocolStats::new(tool_name, "HTTP");
     http_stat.record(http_ms, http_success);
     stats_map.get_mut(tool_name).unwrap().push(http_stat);
@@ -341,8 +334,16 @@ fn zzz_final_report() {
 
     println!();
     println!("✅ Dual protocol testing complete!");
-    println!("   TCP  calls: {} successful out of {} ({:.1}%)",
-        tcp_success, tcp_total, (tcp_success as f64 / tcp_total as f64) * 100.0);
-    println!("   HTTP calls: {} successful out of {} ({:.1}%)",
-        http_success, http_total, (http_success as f64 / http_total as f64) * 100.0);
+    println!(
+        "   TCP  calls: {} successful out of {} ({:.1}%)",
+        tcp_success,
+        tcp_total,
+        (tcp_success as f64 / tcp_total as f64) * 100.0
+    );
+    println!(
+        "   HTTP calls: {} successful out of {} ({:.1}%)",
+        http_success,
+        http_total,
+        (http_success as f64 / http_total as f64) * 100.0
+    );
 }

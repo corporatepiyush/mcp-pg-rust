@@ -1,12 +1,19 @@
-use serde_json::{json, Value};
-use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
+use serde_json::{Value, json};
+use tokio_postgres::Client;
 
 pub async fn cancel_query(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let pid = params.as_ref().and_then(|p| p.get("pid").and_then(|v| v.as_i64()))
+    let pid = params
+        .as_ref()
+        .and_then(|p| p.get("pid").and_then(|v| v.as_i64()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'pid' parameter".into()))?;
 
-    let rows = client.query("SELECT pg_cancel_backend($1) AS cancelled", &[&(pid as i32)]).await?;
+    let rows = client
+        .query(
+            "SELECT pg_cancel_backend($1) AS cancelled",
+            &[&(pid as i32)],
+        )
+        .await?;
     let cancelled: bool = rows[0].get(0);
 
     Ok(json!({
@@ -17,10 +24,17 @@ pub async fn cancel_query(client: &Client, params: &Option<&Value>) -> MCPResult
 }
 
 pub async fn terminate_connection(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let pid = params.as_ref().and_then(|p| p.get("pid").and_then(|v| v.as_i64()))
+    let pid = params
+        .as_ref()
+        .and_then(|p| p.get("pid").and_then(|v| v.as_i64()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'pid' parameter".into()))?;
 
-    let rows = client.query("SELECT pg_terminate_backend($1) AS terminated", &[&(pid as i32)]).await?;
+    let rows = client
+        .query(
+            "SELECT pg_terminate_backend($1) AS terminated",
+            &[&(pid as i32)],
+        )
+        .await?;
     let terminated: bool = rows[0].get(0);
 
     Ok(json!({
@@ -51,18 +65,21 @@ pub async fn show_blocked_queries(client: &Client, _params: &Option<&Value>) -> 
         )
         .await?;
 
-    let blocks: Vec<Value> = rows.iter().map(|row| {
-        json!({
-            "blocked_pid": row.get::<_, i32>(0),
-            "blocked_user": row.get::<_, Option<String>>(1),
-            "blocked_query": row.get::<_, Option<String>>(2),
-            "blocked_start": row.get::<_, Option<String>>(3),
-            "blocking_pid": row.get::<_, i32>(4),
-            "blocking_user": row.get::<_, Option<String>>(5),
-            "blocking_query": row.get::<_, Option<String>>(6),
-            "blocking_start": row.get::<_, Option<String>>(7),
+    let blocks: Vec<Value> = rows
+        .iter()
+        .map(|row| {
+            json!({
+                "blocked_pid": row.get::<_, i32>(0),
+                "blocked_user": row.get::<_, Option<String>>(1),
+                "blocked_query": row.get::<_, Option<String>>(2),
+                "blocked_start": row.get::<_, Option<String>>(3),
+                "blocking_pid": row.get::<_, i32>(4),
+                "blocking_user": row.get::<_, Option<String>>(5),
+                "blocking_query": row.get::<_, Option<String>>(6),
+                "blocking_start": row.get::<_, Option<String>>(7),
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(json!({ "blocked_queries": blocks }))
 }

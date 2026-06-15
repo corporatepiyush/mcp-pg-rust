@@ -1,7 +1,7 @@
 /// Data generator for test schema
 /// Generates realistic test data across 12 tables with thousands of records
 /// Run: cargo run --release --bin load_test_data -- --database-url "postgres://..."
-use tokio_postgres::{connect, NoTls};
+use tokio_postgres::{NoTls, connect};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -74,7 +74,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn generate_customers(client: &tokio_postgres::Client, count: i32) -> Result<(), Box<dyn std::error::Error>> {
+async fn generate_customers(
+    client: &tokio_postgres::Client,
+    count: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
     for i in 0..count {
         let email = format!("user{}@example.com", i);
         let first_name = format!("User{}", i);
@@ -92,11 +95,26 @@ async fn generate_customers(client: &tokio_postgres::Client, count: i32) -> Resu
     Ok(())
 }
 
-async fn generate_categories(client: &tokio_postgres::Client, count: i32) -> Result<(), Box<dyn std::error::Error>> {
+async fn generate_categories(
+    client: &tokio_postgres::Client,
+    count: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
     let category_names = vec![
-        "Electronics", "Books", "Clothing", "Home & Garden", "Sports",
-        "Toys", "Beauty", "Food & Beverage", "Furniture", "Automotive",
-        "Pet Supplies", "Office Supplies", "Tools", "Music", "Video Games"
+        "Electronics",
+        "Books",
+        "Clothing",
+        "Home & Garden",
+        "Sports",
+        "Toys",
+        "Beauty",
+        "Food & Beverage",
+        "Furniture",
+        "Automotive",
+        "Pet Supplies",
+        "Office Supplies",
+        "Tools",
+        "Music",
+        "Video Games",
     ];
 
     for (_i, name) in category_names.iter().enumerate().take(count as usize) {
@@ -111,12 +129,15 @@ async fn generate_categories(client: &tokio_postgres::Client, count: i32) -> Res
     Ok(())
 }
 
-async fn generate_products(client: &tokio_postgres::Client, count: i32) -> Result<(), Box<dyn std::error::Error>> {
+async fn generate_products(
+    client: &tokio_postgres::Client,
+    count: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
     for i in 0..count {
         let category_id = (i % 15) + 1;
         let name = format!("Product {}", i);
         let description = format!("High-quality product #{} with excellent features", i);
-        let price = (10.0 + (i as f64 * std::f64::consts::PI) % 490.0).round() / 100.0;
+        let price = (10.0 + (f64::from(i) * std::f64::consts::PI) % 490.0).round() / 100.0;
         let stock = (i * 7) % 1000;
 
         client
@@ -129,12 +150,15 @@ async fn generate_products(client: &tokio_postgres::Client, count: i32) -> Resul
     Ok(())
 }
 
-async fn generate_accounts(client: &tokio_postgres::Client, count: i32) -> Result<(), Box<dyn std::error::Error>> {
+async fn generate_accounts(
+    client: &tokio_postgres::Client,
+    count: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
     let account_types = ["checking", "savings", "credit"];
     for i in 0..count {
         let customer_id = (i % 500) + 1;
         let account_type = account_types[i as usize % 3];
-        let balance = ((i as f64 * 123.45) % 50000.0).round() / 100.0;
+        let balance = ((f64::from(i) * 123.45) % 50000.0).round() / 100.0;
 
         client
             .execute(
@@ -146,8 +170,17 @@ async fn generate_accounts(client: &tokio_postgres::Client, count: i32) -> Resul
     Ok(())
 }
 
-async fn generate_inventory(client: &tokio_postgres::Client, count: i32) -> Result<(), Box<dyn std::error::Error>> {
-    let locations = ["Warehouse A", "Warehouse B", "Warehouse C", "Store 1", "Store 2"];
+async fn generate_inventory(
+    client: &tokio_postgres::Client,
+    count: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let locations = [
+        "Warehouse A",
+        "Warehouse B",
+        "Warehouse C",
+        "Store 1",
+        "Store 2",
+    ];
     for i in 0..count {
         let product_id = (i % 200) + 1;
         let location = locations[i as usize % locations.len()];
@@ -163,11 +196,14 @@ async fn generate_inventory(client: &tokio_postgres::Client, count: i32) -> Resu
     Ok(())
 }
 
-async fn generate_orders(client: &tokio_postgres::Client, count: i32) -> Result<(), Box<dyn std::error::Error>> {
+async fn generate_orders(
+    client: &tokio_postgres::Client,
+    count: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
     let statuses = ["pending", "processing", "shipped", "delivered", "cancelled"];
     for i in 0..count {
         let customer_id = (i % 500) + 1;
-        let total = ((i as f64 * 47.89) % 5000.0).round() / 100.0;
+        let total = ((f64::from(i) * 47.89) % 5000.0).round() / 100.0;
         let status = statuses[i as usize % statuses.len()];
         let address = format!("{} Main St, City {}", i, i % 100);
 
@@ -181,12 +217,15 @@ async fn generate_orders(client: &tokio_postgres::Client, count: i32) -> Result<
     Ok(())
 }
 
-async fn generate_order_items(client: &tokio_postgres::Client, count: i32) -> Result<(), Box<dyn std::error::Error>> {
+async fn generate_order_items(
+    client: &tokio_postgres::Client,
+    count: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
     for i in 0..count {
         let order_id = (i / 3) + 1;
         let product_id = (i % 200) + 1;
         let quantity = (i % 10) + 1;
-        let unit_price = ((i as f64 * 19.99) % 499.0).round() / 100.0;
+        let unit_price = ((f64::from(i) * 19.99) % 499.0).round() / 100.0;
 
         client
             .execute(
@@ -198,12 +237,15 @@ async fn generate_order_items(client: &tokio_postgres::Client, count: i32) -> Re
     Ok(())
 }
 
-async fn generate_invoices(client: &tokio_postgres::Client, count: i32) -> Result<(), Box<dyn std::error::Error>> {
+async fn generate_invoices(
+    client: &tokio_postgres::Client,
+    count: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
     let statuses = ["unpaid", "paid", "overdue", "partial"];
     for i in 0..count {
         let order_id = i + 1;
         let invoice_number = format!("INV-{:06}", i);
-        let amount = ((i as f64 * 123.45) % 10000.0).round() / 100.0;
+        let amount = ((f64::from(i) * 123.45) % 10000.0).round() / 100.0;
         let status = statuses[i as usize % statuses.len()];
 
         client
@@ -216,11 +258,14 @@ async fn generate_invoices(client: &tokio_postgres::Client, count: i32) -> Resul
     Ok(())
 }
 
-async fn generate_payments(client: &tokio_postgres::Client, count: i32) -> Result<(), Box<dyn std::error::Error>> {
+async fn generate_payments(
+    client: &tokio_postgres::Client,
+    count: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
     let methods = ["credit_card", "bank_transfer", "check", "cash"];
     for i in 0..count {
         let invoice_id = ((i * 7) % 1000) + 1;
-        let amount = ((i as f64 * 89.99) % 5000.0).round() / 100.0;
+        let amount = ((f64::from(i) * 89.99) % 5000.0).round() / 100.0;
         let method = methods[i as usize % methods.len()];
 
         client
@@ -233,7 +278,10 @@ async fn generate_payments(client: &tokio_postgres::Client, count: i32) -> Resul
     Ok(())
 }
 
-async fn generate_subscriptions(client: &tokio_postgres::Client, count: i32) -> Result<(), Box<dyn std::error::Error>> {
+async fn generate_subscriptions(
+    client: &tokio_postgres::Client,
+    count: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
     let plans = ["basic", "premium", "enterprise"];
     for i in 0..count {
         let customer_id = (i % 500) + 1;
@@ -250,12 +298,15 @@ async fn generate_subscriptions(client: &tokio_postgres::Client, count: i32) -> 
     Ok(())
 }
 
-async fn generate_transactions(client: &tokio_postgres::Client, count: i32) -> Result<(), Box<dyn std::error::Error>> {
+async fn generate_transactions(
+    client: &tokio_postgres::Client,
+    count: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
     let types = ["deposit", "withdrawal", "transfer", "fee"];
     for i in 0..count {
         let account_id = ((i * 3) % 400) + 1;
         let tx_type = types[i as usize % types.len()];
-        let amount = ((i as f64 * 45.67) % 2000.0).round() / 100.0;
+        let amount = ((f64::from(i) * 45.67) % 2000.0).round() / 100.0;
         let description = format!("Transaction #{}", i);
 
         client
@@ -268,7 +319,10 @@ async fn generate_transactions(client: &tokio_postgres::Client, count: i32) -> R
     Ok(())
 }
 
-async fn generate_audit_logs(client: &tokio_postgres::Client, count: i32) -> Result<(), Box<dyn std::error::Error>> {
+async fn generate_audit_logs(
+    client: &tokio_postgres::Client,
+    count: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
     let operations = ["INSERT", "UPDATE", "DELETE"];
     let tables = ["customers", "orders", "products", "invoices", "payments"];
 

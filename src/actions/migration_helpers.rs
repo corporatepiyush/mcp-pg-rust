@@ -1,16 +1,28 @@
-use serde_json::{json, Value};
-use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
+use serde_json::{Value, json};
+use tokio_postgres::Client;
 
 const MAX_IDENTIFIER_LEN: usize = 255;
 
-pub async fn generate_create_table_ddl(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let table = params.as_ref().and_then(|p| p.get("table").and_then(|v| v.as_str()))
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table' parameter".into()))?;
-    let schema = params.as_ref().and_then(|p| p.get("schema").and_then(|v| v.as_str())).unwrap_or("public");
+pub async fn generate_create_table_ddl(
+    client: &Client,
+    params: &Option<&Value>,
+) -> MCPResult<Value> {
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
+        .ok_or_else(|| {
+            crate::errors::MCPError::InvalidParams("Missing 'table' parameter".into())
+        })?;
+    let schema = params
+        .as_ref()
+        .and_then(|p| p.get("schema").and_then(|v| v.as_str()))
+        .unwrap_or("public");
 
     if table.is_empty() || table.len() > MAX_IDENTIFIER_LEN {
-        return Err(crate::errors::MCPError::InvalidParams(format!("'table' must be 1-{MAX_IDENTIFIER_LEN} characters")));
+        return Err(crate::errors::MCPError::InvalidParams(format!(
+            "'table' must be 1-{MAX_IDENTIFIER_LEN} characters"
+        )));
     }
 
     let rows = client
@@ -25,10 +37,17 @@ pub async fn generate_create_table_ddl(client: &Client, params: &Option<&Value>)
         .await?;
 
     if rows.is_empty() {
-        return Err(crate::errors::MCPError::InvalidParams(format!("Table {}.{} not found", schema, table)));
+        return Err(crate::errors::MCPError::InvalidParams(format!(
+            "Table {}.{} not found",
+            schema, table
+        )));
     }
 
-    let mut ddl = format!("CREATE TABLE {}.{} (\n", crate::validation::quote_ident(schema), crate::validation::quote_ident(table));
+    let mut ddl = format!(
+        "CREATE TABLE {}.{} (\n",
+        crate::validation::quote_ident(schema),
+        crate::validation::quote_ident(table)
+    );
     let mut cols = Vec::new();
 
     for row in &rows {
@@ -65,7 +84,10 @@ pub async fn generate_create_table_ddl(client: &Client, params: &Option<&Value>)
         .await?;
 
     if !pk_rows.is_empty() {
-        let pk_cols: Vec<String> = pk_rows.iter().map(|r| crate::validation::quote_ident(&r.get::<_, String>(0))).collect();
+        let pk_cols: Vec<String> = pk_rows
+            .iter()
+            .map(|r| crate::validation::quote_ident(&r.get::<_, String>(0)))
+            .collect();
         cols.push(format!("    PRIMARY KEY ({})", pk_cols.join(", ")));
     }
 
@@ -75,10 +97,20 @@ pub async fn generate_create_table_ddl(client: &Client, params: &Option<&Value>)
     Ok(json!({ "ddl": ddl, "table": table, "schema": schema }))
 }
 
-pub async fn generate_create_index_ddl(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let table = params.as_ref().and_then(|p| p.get("table").and_then(|v| v.as_str()))
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table' parameter".into()))?;
-    let schema = params.as_ref().and_then(|p| p.get("schema").and_then(|v| v.as_str())).unwrap_or("public");
+pub async fn generate_create_index_ddl(
+    client: &Client,
+    params: &Option<&Value>,
+) -> MCPResult<Value> {
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
+        .ok_or_else(|| {
+            crate::errors::MCPError::InvalidParams("Missing 'table' parameter".into())
+        })?;
+    let schema = params
+        .as_ref()
+        .and_then(|p| p.get("schema").and_then(|v| v.as_str()))
+        .unwrap_or("public");
 
     let rows = client
         .query(
@@ -97,20 +129,30 @@ pub async fn generate_create_index_ddl(client: &Client, params: &Option<&Value>)
         return Ok(json!({ "indexes": [], "table": table, "message": "No indexes found" }));
     }
 
-    let indexes: Vec<Value> = rows.iter().map(|row| {
-        json!({
-            "name": row.get::<_, String>(0),
-            "ddl": row.get::<_, String>(1),
+    let indexes: Vec<Value> = rows
+        .iter()
+        .map(|row| {
+            json!({
+                "name": row.get::<_, String>(0),
+                "ddl": row.get::<_, String>(1),
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(json!({ "indexes": indexes, "table": table }))
 }
 
 pub async fn table_dependencies(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
-    let table = params.as_ref().and_then(|p| p.get("table").and_then(|v| v.as_str()))
-        .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'table' parameter".into()))?;
-    let schema = params.as_ref().and_then(|p| p.get("schema").and_then(|v| v.as_str())).unwrap_or("public");
+    let table = params
+        .as_ref()
+        .and_then(|p| p.get("table").and_then(|v| v.as_str()))
+        .ok_or_else(|| {
+            crate::errors::MCPError::InvalidParams("Missing 'table' parameter".into())
+        })?;
+    let schema = params
+        .as_ref()
+        .and_then(|p| p.get("schema").and_then(|v| v.as_str()))
+        .unwrap_or("public");
 
     let rows = client
         .query(
@@ -139,14 +181,17 @@ pub async fn table_dependencies(client: &Client, params: &Option<&Value>) -> MCP
         )
         .await?;
 
-    let dependencies: Vec<Value> = rows.iter().map(|row| {
-        json!({
-            "object": row.get::<_, String>(0),
-            "type": row.get::<_, String>(1),
-            "schema": row.get::<_, String>(2),
-            "dependency": if row.get::<_, String>(3) == "n" { "normal" } else { "automatic" },
+    let dependencies: Vec<Value> = rows
+        .iter()
+        .map(|row| {
+            json!({
+                "object": row.get::<_, String>(0),
+                "type": row.get::<_, String>(1),
+                "schema": row.get::<_, String>(2),
+                "dependency": if row.get::<_, String>(3) == "n" { "normal" } else { "automatic" },
+            })
         })
-    }).collect();
+        .collect();
 
     // Also get what this table depends on
     let dep_on_rows = client
@@ -172,13 +217,16 @@ pub async fn table_dependencies(client: &Client, params: &Option<&Value>) -> MCP
         )
         .await?;
 
-    let depends_on: Vec<Value> = dep_on_rows.iter().map(|row| {
-        json!({
-            "object": row.get::<_, String>(0),
-            "type": row.get::<_, String>(1),
-            "schema": row.get::<_, String>(2),
+    let depends_on: Vec<Value> = dep_on_rows
+        .iter()
+        .map(|row| {
+            json!({
+                "object": row.get::<_, String>(0),
+                "type": row.get::<_, String>(1),
+                "schema": row.get::<_, String>(2),
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(json!({
         "table": table,

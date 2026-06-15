@@ -1,9 +1,12 @@
-use serde_json::{json, Value};
-use tokio_postgres::Client;
 use crate::errors::Result as MCPResult;
+use serde_json::{Value, json};
+use tokio_postgres::Client;
 
 /// 41. Show active transactions
-pub async fn show_active_transactions(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
+pub async fn show_active_transactions(
+    client: &Client,
+    _params: &Option<&Value>,
+) -> MCPResult<Value> {
     let rows = client
         .query(
             "SELECT pid, usename, application_name, state, xact_start, query_start, query
@@ -96,10 +99,11 @@ pub async fn show_waiting_locks(client: &Client, _params: &Option<&Value>) -> MC
 
 /// 44. Begin transaction
 /// 45. Show transaction isolation levels
-pub async fn show_transaction_isolation(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
-    let rows = client
-        .query("SHOW transaction_isolation", &[])
-        .await?;
+pub async fn show_transaction_isolation(
+    client: &Client,
+    _params: &Option<&Value>,
+) -> MCPResult<Value> {
+    let rows = client.query("SHOW transaction_isolation", &[]).await?;
 
     let level = rows[0].get::<_, String>(0);
 
@@ -160,7 +164,10 @@ pub async fn show_deadlocks(client: &Client, _params: &Option<&Value>) -> MCPRes
 /// disabled server-side. Client libraries (psycopg2, JDBC, etc.) implement
 /// auto-commit-off at the client level by wrapping statements in BEGIN/COMMIT.
 /// This tool reports `always_on` because the server always uses autocommit.
-pub async fn show_autocommit_status(_client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
+pub async fn show_autocommit_status(
+    _client: &Client,
+    _params: &Option<&Value>,
+) -> MCPResult<Value> {
     Ok(json!({
         "autocommit": true,
         "status": "always_on",
@@ -170,10 +177,11 @@ pub async fn show_autocommit_status(_client: &Client, _params: &Option<&Value>) 
 }
 
 /// 50. Show transaction timeout
-pub async fn show_transaction_timeout(client: &Client, _params: &Option<&Value>) -> MCPResult<Value> {
-    let rows = client
-        .query("SHOW statement_timeout", &[])
-        .await?;
+pub async fn show_transaction_timeout(
+    client: &Client,
+    _params: &Option<&Value>,
+) -> MCPResult<Value> {
+    let rows = client.query("SHOW statement_timeout", &[]).await?;
 
     let timeout = rows[0].get::<_, String>(0);
 
