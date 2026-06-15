@@ -12,11 +12,15 @@ use crate::protocol::{JsonRpcRequest, JsonRpcResponse};
 use crate::actions;
 use once_cell::sync::Lazy;
 
-static TOOLS_LIST: Lazy<Value> = Lazy::new(|| {
+/// Pre-serialized response bytes for `tools/list`.  Built once at startup;
+/// each call deserializes from this cached buffer instead of deep-cloning the
+/// entire 135-tool Value tree (~50 KB).
+static TOOLS_LIST_RESPONSE: Lazy<Vec<u8>> = Lazy::new(|| {
     let tools_json = include_str!("../tools.json");
     let tools: Vec<Value> = serde_json::from_str(tools_json)
         .expect("Failed to parse tools.json");
-    json!({ "tools": tools })
+    let resp = json!({ "tools": tools });
+    serde_json::to_vec(&resp).expect("Failed to serialize tools/list response")
 });
 
 const BUFFER_CAPACITY: usize = 4096;
@@ -55,22 +59,25 @@ impl MCPServer {
         let mut reader = BufReader::with_capacity(BUFFER_CAPACITY, stdin);
         let mut stdout = tokio::io::stdout();
         let mut line = String::with_capacity(512);
-        let mut response_buf = Vec::with_capacity(65536);
+    // 4 KB initial — handles >95% of responses without resizing.
+    // Tools like `list_tables` or `execute_query` may exceed this,
+    // but Vec grows geometrically so the amortized cost is negligible.
+    let mut response_buf = Vec::with_capacity(4096);
 
-        loop {
-            line.clear();
-            match reader.read_line(&mut line).await {
-                Ok(0) => break,
-                Ok(_) => {
-                    process_one_line(&line, &self.pool, &self.config, &mut response_buf, &mut stdout).await?;
-                }
-                Err(e) => {
-                    error!("IO error: {}", e);
-                    break;
-                }
+    loop {
+        line.clear();
+        match reader.read_line(&mut line).await {
+            Ok(0) => break,
+            Ok(_) => {
+                process_one_line(&line, &self.pool, &self.config, &mut response_buf, &mut stdout).await?;
+            }
+            Err(e) => {
+                error!("IO error: {}", e);
+                break;
             }
         }
-        Ok(())
+    }
+    Ok(())
     }
 
     pub async fn run(&self) -> MCPResult<()> {
@@ -103,7 +110,8 @@ async fn handle_client(socket: TcpStream, pool: Arc<ConnectionPool>, config: Con
     let (reader, mut writer) = socket.into_split();
     let mut reader = BufReader::with_capacity(BUFFER_CAPACITY, reader);
     let mut line = String::with_capacity(512);
-    let mut response_buf = Vec::with_capacity(65536);
+    // 4 KB initial capacity — grows geometrically for large responses.
+    let mut response_buf = Vec::with_capacity(4096);
 
     loop {
         line.clear();
@@ -212,32 +220,30 @@ pub async fn process_request_http(
     }
 }
 
-#[inline]
 fn handle_initialize(_req: &JsonRpcRequest) -> MCPResult<Value> {
-    Ok(json!({
-        "protocolVersion": "2024-11-05",
-        "capabilities": {
-            "tools": {
-                "listChanged": false
+    /// Cached initialize response — built once on first call.
+    static INIT_RESPONSE: Lazy<Value> = Lazy::new(|| {
+        json!({
+            "protocolVersion": "2024-11-05",
+            "capabilities": {
+                "tools": { "listChanged": false },
+                "resources": { "subscribe": false, "listChanged": false },
+                "prompts": { "listChanged": false }
             },
-            "resources": {
-                "subscribe": false,
-                "listChanged": false
-            },
-            "prompts": {
-                "listChanged": false
+            "serverInfo": {
+                "name": "mcp-postgres",
+                "version": env!("CARGO_PKG_VERSION")
             }
-        },
-        "serverInfo": {
-            "name": "mcp-postgres",
-            "version": env!("CARGO_PKG_VERSION")
-        }
-    }))
+        })
+    });
+
+    Ok(INIT_RESPONSE.clone())
 }
 
 #[inline]
 fn handle_tools_list() -> MCPResult<Value> {
-    Ok((*TOOLS_LIST).clone())
+    // Deserialize from cached bytes instead of deep-cloning a 50 KB Value tree.
+    Ok(serde_json::from_slice(&TOOLS_LIST_RESPONSE)?)
 }
 
 async fn handle_tools_call(
@@ -514,9 +520,9 @@ mod tests {
 
     #[test]
     fn test_tools_list_static() {
-        let list = &*TOOLS_LIST;
+        let list: Value = serde_json::from_slice(&TOOLS_LIST_RESPONSE).unwrap();
         let tools = list.get("tools").and_then(|v| v.as_array());
-        assert!(tools.is_some(), "TOOLS_LIST should contain a tools array");
+        assert!(tools.is_some(), "TOOLS_LIST_RESPONSE should contain a tools array");
         assert!(!tools.unwrap().is_empty(), "Tools list should not be empty");
     }
 

@@ -169,7 +169,7 @@ impl<T: Send + 'static> PooledConnection<T> {
     /// from the pool.  The pool's size is decremented.
     pub fn take(mut self) -> T {
         let conn = self.inner.take().unwrap();
-        self.pool.inner.size.fetch_sub(1, Ordering::Release);
+        self.pool.inner.size.0.fetch_sub(1, Ordering::Release);
         conn
     }
 
@@ -191,9 +191,47 @@ impl<T: Send + 'static> Drop for PooledConnection<T> {
     }
 }
 
+// ─── Cache-line-aligned wrappers for hot fields ────────────────────────────
+//
+// `size` (written on every acquire/release via CAS / fetch_sub) must be on its
+// own 64-byte cache line so that writes do not invalidate adjacent metadata
+// read by every other core.
+//
+// `closed` + `max_size` (read on every acquire, written once) share a second
+// cache line, isolated from the write-bouncing `size` line.
+
+/// `AtomicU32` padded to its own 64-byte cache line.
+#[repr(C, align(64))]
+struct AlignedSize(AtomicU32);
+
+/// `AtomicBool` + `max_size` on a dedicated 64-byte cache line,
+/// isolated from `AlignedSize` to prevent store-load false sharing.
+#[repr(C, align(64))]
+struct AlignedClosed {
+    closed: AtomicBool,
+    max_size: u32,
+}
+
 // ─── PoolInner: the actual state ─────────────────────────────────────────────
 
+#[repr(C)]
 struct PoolInner<T: Send + 'static> {
+    // ═══════════════════════════════════════════════════════════════════════
+    // Cache line 0 (offsets 0–63): `size` — written by every acquire/release.
+    //                                 Must NOT share with `closed` or `max_size`.
+    // ═══════════════════════════════════════════════════════════════════════
+    size: AlignedSize,
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Cache line 1 (offsets 64–127): `closed` + `max_size` — read on every
+    //                                 acquire, written once by `close()`.
+    // ═══════════════════════════════════════════════════════════════════════
+    closed: AlignedClosed,
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Cache line 2+ (offsets 128+): cold / read-only after construction.
+    // ═══════════════════════════════════════════════════════════════════════
+
     /// Factory for creating connections (boxed closure, set once)
     create: CreateFn<T>,
 
@@ -202,17 +240,8 @@ struct PoolInner<T: Send + 'static> {
 
     /// Lock-free bounded MPMC queue of idle connections.
     /// Pre-allocated at construction to `max_size` capacity.
+    /// Internal head/tail are already cache-padded by crossbeam.
     idle: ArrayQueue<T>,
-
-    /// Current pool size (idle + checked out).
-    /// Modified only via CAS (AcqRel semantics).
-    size: AtomicU32,
-
-    /// Maximum connections.  Immutable after construction.
-    max_size: u32,
-
-    /// Closed flag.  Set once with Release, read with Acquire.
-    closed: AtomicBool,
 
     /// Async waiter notification.  Uses `futex` on Linux (no mutex),
     /// `_umtx_op` on macOS, or `parking` on other platforms.
@@ -244,12 +273,14 @@ impl<T: Send + 'static> LockFreePool<T> {
         let idle = ArrayQueue::new(config.max_size as usize);
         Self {
             inner: Arc::new(PoolInner {
+                size: AlignedSize(AtomicU32::new(0)),
+                closed: AlignedClosed {
+                    closed: AtomicBool::new(false),
+                    max_size: config.max_size,
+                },
                 create,
                 validate,
                 idle,
-                size: AtomicU32::new(0),
-                max_size: config.max_size,
-                closed: AtomicBool::new(false),
                 notify: Notify::new(),
                 create_timeout: config.create_timeout,
                 wait_timeout: config.wait_timeout,
@@ -275,7 +306,7 @@ impl<T: Send + 'static> LockFreePool<T> {
         // Checks are ordered: closed is the cheapest (one atomic load),
         // then idle pop (lock-free CAS), then create path.
 
-        if self.inner.closed.load(Ordering::Acquire) {
+        if self.inner.closed.closed.load(Ordering::Acquire) {
             return Err(PoolError::Closed);
         }
 
@@ -293,23 +324,23 @@ impl<T: Send + 'static> LockFreePool<T> {
             // Validation failed — drop the connection and decrement size.
             // The connection is effectively dead; we don't return it.
             drop(item);
-            self.inner.size.fetch_sub(1, Ordering::Release);
+            self.inner.size.0.fetch_sub(1, Ordering::Release);
             // Fall through to try creating a new one
         }
 
         // ── Create path: pool empty ──
         loop {
-            if self.inner.closed.load(Ordering::Acquire) {
+            if self.inner.closed.closed.load(Ordering::Acquire) {
                 return Err(PoolError::Closed);
             }
 
             // Try to claim a slot via CAS
-            let current = self.inner.size.load(Ordering::Acquire);
-            if current < self.inner.max_size {
+            let current = self.inner.size.0.load(Ordering::Acquire);
+            if current < self.inner.closed.max_size {
                 // CAS: reserve a slot atomically
                 // This prevents two concurrent tasks from both trying to
                 // create beyond max_size.
-                if self.inner.size.compare_exchange_weak(
+                if self.inner.size.0.compare_exchange_weak(
                     current,
                     current + 1,
                     Ordering::AcqRel,
@@ -323,7 +354,7 @@ impl<T: Send + 'static> LockFreePool<T> {
                         }),
                         Err(e) => {
                             // Creation failed — release the reserved slot
-                            self.inner.size.fetch_sub(1, Ordering::Release);
+                            self.inner.size.0.fetch_sub(1, Ordering::Release);
                             self.inner.notify.notify_one();
                             Err(e)
                         }
@@ -354,7 +385,7 @@ impl<T: Send + 'static> LockFreePool<T> {
                             });
                         }
                         drop(item);
-                        self.inner.size.fetch_sub(1, Ordering::Release);
+                        self.inner.size.0.fetch_sub(1, Ordering::Release);
                     }
                     // No connection available — loop back and retry.
                     // This happens if a concurrent acquirer stole the
@@ -372,7 +403,7 @@ impl<T: Send + 'static> LockFreePool<T> {
                             });
                         }
                         drop(item);
-                        self.inner.size.fetch_sub(1, Ordering::Release);
+                        self.inner.size.0.fetch_sub(1, Ordering::Release);
                     }
                     return Err(PoolError::Timeout);
                 }
@@ -383,8 +414,8 @@ impl<T: Send + 'static> LockFreePool<T> {
     /// Create a single new connection with timeout.
     #[inline]
     async fn create_one(&self) -> Result<T, PoolError> {
-        if self.inner.closed.load(Ordering::Acquire) {
-            self.inner.size.fetch_sub(1, Ordering::Release);
+        if self.inner.closed.closed.load(Ordering::Acquire) {
+            self.inner.size.0.fetch_sub(1, Ordering::Release);
             return Err(PoolError::Closed);
         }
         match timeout(self.inner.create_timeout, (self.inner.create)()).await {
@@ -395,15 +426,15 @@ impl<T: Send + 'static> LockFreePool<T> {
     }
 
     pub fn close(&self) {
-        self.inner.closed.store(true, Ordering::Release);
+        self.inner.closed.closed.store(true, Ordering::Release);
         self.inner.notify.notify_waiters();
         while self.inner.idle.pop().is_some() {
-            self.inner.size.fetch_sub(1, Ordering::Relaxed);
+            self.inner.size.0.fetch_sub(1, Ordering::Relaxed);
         }
     }
 
     pub fn is_closed(&self) -> bool {
-        self.inner.closed.load(Ordering::Acquire)
+        self.inner.closed.closed.load(Ordering::Acquire)
     }
 
     #[inline]
@@ -412,7 +443,7 @@ impl<T: Send + 'static> LockFreePool<T> {
     }
 
     pub fn max_size(&self) -> u32 {
-        self.inner.max_size
+        self.inner.closed.max_size
     }
 }
 
@@ -428,7 +459,7 @@ impl<T: Send + 'static> PoolInner<T> {
     /// No mutexes, no allocations.
     #[inline]
     fn return_conn(&self, item: T) {
-        let closed = self.closed.load(Ordering::Acquire);
+        let closed = self.closed.closed.load(Ordering::Acquire);
         if !closed {
             match self.idle.push(item) {
                 Ok(()) => {
@@ -441,19 +472,19 @@ impl<T: Send + 'static> PoolInner<T> {
                 }
             }
         }
-        self.size.fetch_sub(1, Ordering::Release);
+        self.size.0.fetch_sub(1, Ordering::Release);
         self.notify.notify_one();
     }
 
     #[inline]
     fn status(&self) -> PoolStatus {
-        let size = self.size.load(Ordering::Acquire);
+        let size = self.size.0.load(Ordering::Acquire);
         let idle = self.idle.len();
         PoolStatus {
             size,
             idle: idle as u32,
-            max_size: self.max_size,
-            closed: self.closed.load(Ordering::Acquire),
+            max_size: self.closed.max_size,
+            closed: self.closed.closed.load(Ordering::Acquire),
         }
     }
 }
