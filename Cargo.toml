@@ -70,6 +70,42 @@ criterion = "0.5"
 # Latest minor version fetches
 # Run: cargo update --aggressive
 
+[lints.clippy]
+# ── Low-level performance lints ──────────────────────────────────────────────
+# These catch allocation, copy, and inlining inefficiencies at compile time.
+#
+# Notable gaps (no clippy lint exists):
+#   - Cache-line false sharing → use `#[repr(align(64))]` discipline (manual)
+#   - Branch prediction hints → use `#[cold]` / `#[inline]` (manual)
+#   - Memory ordering audit   → `cargo clippy` cannot check Ordering semantics
+
+# Stack / memory layout
+large_stack_frames = "warn"        # >2KB stack frames → L1 cache pressure
+large_enum_variant = "warn"        # oversized enum variants → wasteful layout
+boxed_local = "warn"               # fn(Box<T>) forces heap alloc on caller
+
+# Clone / copy overhead
+redundant_clone = "warn"           # unnecessary .clone() on hot path
+needless_pass_by_value = "warn"    # large types passed by value → memcpy
+trivially_copy_pass_by_ref = "warn" # &u32 vs u32 (extra indirection)
+
+# Const / compile-time evaluation
+missing_const_for_fn = "warn"      # missed const → runtime eval instead of compile-time
+
+# Integer conversion waste
+cast_lossless = "warn"             # i64 → i32 loses precision without cast
+unnecessary_cast = "warn"          # u32 as u32 → dead instruction
+
+# Collection / string inefficiency
+vec_init_then_push = "warn"        # Vec::new() + push → use with_capacity
+string_add_assign = "warn"         # s = s + x → s.push_str(x) (reallocation)
+inefficient_to_string = "warn"     # .to_string() on &str → redundant alloc
+manual_memcpy = "warn"             # manual copy loop → use copy_from_slice
+
+# Drop / semantics
+# let_underscore_drop — renamed from clippy to rustc; handled via #[allow()] per-site
+option_option = "warn"             # Option<Option<T>> → confusing layout
+
 [[bin]]
 name = "mcp-postgres"
 path = "src/main.rs"

@@ -267,7 +267,7 @@ impl<T: Send + 'static> LockFreePool<T> {
     pub fn new(
         create: CreateFn<T>,
         validate: ValidateFn<T>,
-        config: PoolConfig,
+        config: &PoolConfig,
     ) -> Self {
         // Pre-allocate exactly max_size slots — never grows, never shrinks
         let idle = ArrayQueue::new(config.max_size as usize);
@@ -549,7 +549,7 @@ pub(crate) mod test_helpers {
             wait_timeout: Duration::from_secs(10),
         };
 
-        LockFreePool::new(create, validate, config)
+        LockFreePool::new(create, validate, &config)
     }
 }
 
@@ -654,7 +654,7 @@ mod tests {
                     as BoxFuture<'static, Result<TestConnection, String>>
             }) as CreateFn<TestConnection>,
             Box::new(|_conn: &TestConnection| true) as ValidateFn<TestConnection>,
-            config,
+            &config,
         );
 
         let conn1 = pool.acquire().await.unwrap();
@@ -678,7 +678,7 @@ mod tests {
                     as BoxFuture<'static, Result<TestConnection, String>>
             }) as CreateFn<TestConnection>,
             Box::new(|_conn: &TestConnection| true) as ValidateFn<TestConnection>,
-            config,
+            &config,
         ));
 
         let conn1 = pool.acquire().await.unwrap();
@@ -722,15 +722,12 @@ mod tests {
             }) as ValidateFn<TestConnection>
         };
 
-        let pool = LockFreePool::new(
-            create,
-            validate,
-            PoolConfig {
-                max_size: 5,
-                create_timeout: Duration::from_secs(5),
-                wait_timeout: Duration::from_secs(1),
-            },
-        );
+        let config = PoolConfig {
+            max_size: 5,
+            create_timeout: Duration::from_secs(5),
+            wait_timeout: Duration::from_secs(1),
+        };
+        let pool = LockFreePool::new(create, validate, &config);
 
         // First acquire: creates conn(id=0, no validation on creation path)
         let conn1 = pool.acquire().await.unwrap();
@@ -777,7 +774,7 @@ mod tests {
                     as BoxFuture<'static, Result<TestConnection, String>>
             }) as CreateFn<TestConnection>,
             Box::new(|_conn: &TestConnection| true) as ValidateFn<TestConnection>,
-            config,
+            &config,
         ));
 
         let conn1 = pool.acquire().await.unwrap();
@@ -875,7 +872,7 @@ mod tests {
                     as BoxFuture<'static, Result<TestConnection, String>>
             }) as CreateFn<TestConnection>,
             Box::new(|_conn: &TestConnection| true) as ValidateFn<TestConnection>,
-            config,
+            &config,
         );
 
         let _conn = pool.acquire().await.unwrap();

@@ -44,7 +44,7 @@ impl From<tokio_postgres::Error> for MCPError {
 }
 
 impl MCPError {
-    pub fn error_code(&self) -> i64 {
+    pub const fn error_code(&self) -> i64 {
         match self {
             MCPError::ParseError(_) => -32700,
             MCPError::MethodNotFound(_) => -32601,

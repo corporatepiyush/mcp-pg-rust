@@ -49,7 +49,7 @@ pub struct MCPServer {
 }
 
 impl MCPServer {
-    pub fn new(config: Config, pool: Arc<ConnectionPool>) -> Self {
+    pub const fn new(config: Config, pool: Arc<ConnectionPool>) -> Self {
         Self { config, pool }
     }
 
@@ -192,7 +192,7 @@ pub async fn process_request(
 
 /// Handle JSON-RPC ping (respond with empty success)
 #[inline]
-fn handle_ping() -> MCPResult<Value> {
+const fn handle_ping() -> MCPResult<Value> {
     Ok(Value::Null)
 }
 

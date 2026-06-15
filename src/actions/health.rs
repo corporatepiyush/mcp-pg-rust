@@ -23,7 +23,7 @@ pub async fn analyze_db_health(client: &Client, _params: &Option<&Value>) -> MCP
         .await
         .map(|r| r.get::<_, i32>(0))
         .unwrap_or(100);
-    let conn_usage_pct = if max_connections > 0 { (connections as f64 / max_connections as f64) * 100.0 } else { 0.0 };
+    let conn_usage_pct = if max_connections > 0 { (connections as f64 / f64::from(max_connections)) * 100.0 } else { 0.0 };
 
     let idle_in_xact = client
         .query_one(

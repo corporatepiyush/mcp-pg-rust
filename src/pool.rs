@@ -52,7 +52,7 @@ impl ConnectionPool {
             wait_timeout: config.queue_timeout,
         };
 
-        let pool = LockFreePool::new(create, validate, lf_config);
+        let pool = LockFreePool::new(create, validate, &lf_config);
 
         // Test the pool by acquiring a connection
         let test_conn = pool.acquire().await.map_err(|e| {
@@ -96,7 +96,7 @@ impl ConnectionPool {
         self.inner.status().size
     }
 
-    pub fn max_size(&self) -> u32 {
+    pub const fn max_size(&self) -> u32 {
         self.max_size
     }
 
