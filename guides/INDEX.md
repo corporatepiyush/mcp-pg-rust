@@ -14,6 +14,7 @@ Reference documentation for mcp-postgres development and operations.
 
 ## Testing & Measurement
 
+- **[BENCHMARKING.md](./BENCHMARKING.md)** - Full benchmark suite: TCP throughput, HTTP latency, process monitoring, memory stability, error audit
 - **[LATENCY_MEASUREMENT.md](./LATENCY_MEASUREMENT.md)** - How to measure end-to-end latency, interpret results, optimize performance
 - **[TEST_SETUP.md](./TEST_SETUP.md)** - Test environment setup, schema creation, data loading procedures
 - **[QUICK_TEST.md](./QUICK_TEST.md)** - Quick reference for running tests, common commands
