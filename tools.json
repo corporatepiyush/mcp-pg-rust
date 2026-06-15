@@ -766,5 +766,788 @@
       },
       "required": ["table"]
     }
+  },
+  {
+    "name": "create_user",
+    "description": "Create a new PostgreSQL user (login role). Supports password, connection limits, login privilege, and expiration. Reduces typos vs raw SQL.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "username": {"type": "string", "description": "Username (required). 1-255 characters."},
+        "password": {"type": "string", "description": "Password for the user (optional)."},
+        "connection_limit": {"type": "integer", "description": "Max concurrent connections (optional). Default: unlimited."},
+        "can_login": {"type": "boolean", "description": "Allow login (optional). Default: true."},
+        "valid_until": {"type": "string", "description": "Expiry timestamp (optional). Example: '2027-01-01'."}
+      },
+      "required": ["username"]
+    }
+  },
+  {
+    "name": "alter_user",
+    "description": "Modify an existing PostgreSQL user. Supports password change, rename, connection limits, login toggle, and expiry. Specify only the attributes to change.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "username": {"type": "string", "description": "Username to alter (required)."},
+        "password": {"type": "string", "description": "New password (optional)."},
+        "new_name": {"type": "string", "description": "Rename user to this name (optional)."},
+        "connection_limit": {"type": "integer", "description": "New connection limit (optional)."},
+        "can_login": {"type": "boolean", "description": "Toggle LOGIN/NOLOGIN (optional)."},
+        "valid_until": {"type": "string", "description": "New expiry timestamp (optional). Example: '2027-01-01'."}
+      },
+      "required": ["username"]
+    }
+  },
+  {
+    "name": "drop_user",
+    "description": "Drop a PostgreSQL user safely. Use if_exists to avoid errors if the user doesn't exist. Cannot drop users who own objects or have active connections.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "username": {"type": "string", "description": "Username to drop (required)."},
+        "if_exists": {"type": "boolean", "description": "Add IF EXISTS clause (optional). Default: false."}
+      },
+      "required": ["username"]
+    }
+  },
+  {
+    "name": "create_role",
+    "description": "Create a new PostgreSQL role. Roles can be login (user) or non-login (group) roles. Use with_login=true for user creation.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "role_name": {"type": "string", "description": "Role name (required). 1-255 characters."},
+        "with_login": {"type": "boolean", "description": "Add LOGIN privilege (optional). Default: false (group role)."}
+      },
+      "required": ["role_name"]
+    }
+  },
+  {
+    "name": "alter_role",
+    "description": "Modify a PostgreSQL role. Supports password, login privilege, superuser, createdb, and rename.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "role_name": {"type": "string", "description": "Role name to alter (required)."},
+        "password": {"type": "string", "description": "New password (optional)."},
+        "can_login": {"type": "boolean", "description": "Toggle LOGIN/NOLOGIN (optional)."},
+        "superuser": {"type": "boolean", "description": "Toggle SUPERUSER/NOSUPERUSER (optional)."},
+        "createdb": {"type": "boolean", "description": "Toggle CREATEDB/NOCREATEDB (optional)."},
+        "new_name": {"type": "string", "description": "Rename role (optional)."}
+      },
+      "required": ["role_name"]
+    }
+  },
+  {
+    "name": "drop_role",
+    "description": "Drop a PostgreSQL role safely. Use if_exists to avoid errors. Cannot drop roles with dependent objects.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "role_name": {"type": "string", "description": "Role name to drop (required)."},
+        "if_exists": {"type": "boolean", "description": "Add IF EXISTS clause (optional). Default: false."}
+      },
+      "required": ["role_name"]
+    }
+  },
+  {
+    "name": "grant_privileges",
+    "description": "Grant privileges on a database object to a user/role. Supports tables, sequences, schemas, databases, and ALL TABLES IN SCHEMA. Common privileges: SELECT, INSERT, UPDATE, DELETE, ALL.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "privilege": {"type": "string", "description": "Privilege to grant (required). Examples: 'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'ALL'."},
+        "object_type": {"type": "string", "description": "Object type (required). One of: 'table', 'sequence', 'schema', 'database', 'all_tables_in_schema'."},
+        "object_name": {"type": "string", "description": "Object name (required). For all_tables_in_schema, use schema name."},
+        "grantee": {"type": "string", "description": "User or role to grant to (required)."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."}
+      },
+      "required": ["privilege", "object_type", "object_name", "grantee"]
+    }
+  },
+  {
+    "name": "revoke_privileges",
+    "description": "Revoke privileges on a database object from a user/role. Supports tables, sequences, schemas, databases, and ALL TABLES IN SCHEMA.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "privilege": {"type": "string", "description": "Privilege to revoke (required). Examples: 'SELECT', 'INSERT', 'ALL'."},
+        "object_type": {"type": "string", "description": "Object type (required). One of: 'table', 'sequence', 'schema', 'database', 'all_tables_in_schema'."},
+        "object_name": {"type": "string", "description": "Object name (required)."},
+        "revokee": {"type": "string", "description": "User or role to revoke from (required)."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."}
+      },
+      "required": ["privilege", "object_type", "object_name", "revokee"]
+    }
+  },
+  {
+    "name": "add_column",
+    "description": "Add a new column to an existing table. Supports data type, DEFAULT value, and NOT NULL constraint. Reduces ALTER TABLE syntax errors.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name (required). Example: 'users'."},
+        "column": {"type": "string", "description": "Column name (required). Example: 'email'."},
+        "data_type": {"type": "string", "description": "Column data type (required). Examples: 'TEXT', 'INTEGER', 'TIMESTAMP', 'VARCHAR(255)'."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."},
+        "default": {"type": "string", "description": "DEFAULT value expression (optional). Example: 'now()', '0', ''guest''."},
+        "not_null": {"type": "boolean", "description": "Add NOT NULL constraint (optional). Default: false."}
+      },
+      "required": ["table", "column", "data_type"]
+    }
+  },
+  {
+    "name": "drop_column",
+    "description": "Remove a column from a table. Optionally use CASCADE to drop dependent objects. Irreversible - use with caution.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name (required)."},
+        "column": {"type": "string", "description": "Column name to drop (required)."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."},
+        "cascade": {"type": "boolean", "description": "Drop dependent objects (optional). Default: false."}
+      },
+      "required": ["table", "column"]
+    }
+  },
+  {
+    "name": "rename_column",
+    "description": "Rename a column in an existing table. Non-disruptive operation that preserves data and constraints.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name (required)."},
+        "column": {"type": "string", "description": "Current column name (required)."},
+        "new_name": {"type": "string", "description": "New column name (required)."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."}
+      },
+      "required": ["table", "column", "new_name"]
+    }
+  },
+  {
+    "name": "alter_column_type",
+    "description": "Change the data type of a column. Optionally provide a USING expression to transform existing data. May fail if data cannot be cast.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name (required)."},
+        "column": {"type": "string", "description": "Column name (required)."},
+        "data_type": {"type": "string", "description": "New data type (required). Examples: 'TEXT', 'BIGINT', 'TIMESTAMPTZ'."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."},
+        "using": {"type": "string", "description": "USING expression for data conversion (optional). Example: 'column_name::BIGINT'."}
+      },
+      "required": ["table", "column", "data_type"]
+    }
+  },
+  {
+    "name": "rename_table",
+    "description": "Rename a table. Updates all dependent views, foreign key references, and metadata automatically.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Current table name (required)."},
+        "new_name": {"type": "string", "description": "New table name (required)."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."}
+      },
+      "required": ["table", "new_name"]
+    }
+  },
+  {
+    "name": "rename_index",
+    "description": "Rename an index. Useful for adopting consistent naming conventions.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "index": {"type": "string", "description": "Current index name (required)."},
+        "new_name": {"type": "string", "description": "New index name (required)."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."}
+      },
+      "required": ["index", "new_name"]
+    }
+  },
+  {
+    "name": "rename_schema",
+    "description": "Rename a schema. All objects within the schema are automatically moved.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "schema": {"type": "string", "description": "Current schema name (required)."},
+        "new_name": {"type": "string", "description": "New schema name (required)."}
+      },
+      "required": ["schema", "new_name"]
+    }
+  },
+  {
+    "name": "add_foreign_key",
+    "description": "Add a foreign key constraint to a table. Prevents orphaned records and enforces referential integrity. Supports ON DELETE and ON UPDATE actions.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Child table (required)."},
+        "columns": {"type": "string", "description": "Child column(s) (required). Comma-separated. Example: 'user_id' or 'col1, col2'."},
+        "ref_table": {"type": "string", "description": "Referenced (parent) table (required)."},
+        "ref_columns": {"type": "string", "description": "Referenced column(s) (required). Example: 'id'."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."},
+        "constraint_name": {"type": "string", "description": "Constraint name (optional). Auto-generated if omitted."},
+        "on_delete": {"type": "string", "description": "ON DELETE action (optional). Examples: 'CASCADE', 'SET NULL', 'RESTRICT', 'NO ACTION'."},
+        "on_update": {"type": "string", "description": "ON UPDATE action (optional). Examples: 'CASCADE', 'SET NULL', 'RESTRICT'."}
+      },
+      "required": ["table", "columns", "ref_table", "ref_columns"]
+    }
+  },
+  {
+    "name": "drop_foreign_key",
+    "description": "Drop a foreign key constraint by name. Use show_constraints to find constraint names.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name (required)."},
+        "constraint": {"type": "string", "description": "Constraint name to drop (required). Use show_constraints to list names."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."},
+        "cascade": {"type": "boolean", "description": "Drop dependent objects (optional). Default: false."}
+      },
+      "required": ["table", "constraint"]
+    }
+  },
+  {
+    "name": "add_unique_constraint",
+    "description": "Add a UNIQUE constraint to one or more columns. Prevents duplicate values. Applies across all rows in the table.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name (required)."},
+        "columns": {"type": "string", "description": "Column(s) for uniqueness (required). Comma-separated. Example: 'email' or 'org_id, name'."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."},
+        "constraint_name": {"type": "string", "description": "Constraint name (optional). Auto-generated if omitted."}
+      },
+      "required": ["table", "columns"]
+    }
+  },
+  {
+    "name": "drop_constraint",
+    "description": "Drop any table constraint (PRIMARY KEY, UNIQUE, CHECK, FOREIGN KEY) by name. Use show_constraints to find constraint names.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name (required)."},
+        "constraint": {"type": "string", "description": "Constraint name to drop (required)."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."},
+        "cascade": {"type": "boolean", "description": "Drop dependent objects (optional). Default: false."}
+      },
+      "required": ["table", "constraint"]
+    }
+  },
+  {
+    "name": "cancel_query",
+    "description": "Cancel a running query by PID. Sends SIGINT to the backend process. Safer than terminate_connection - allows the query to rollback gracefully.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "pid": {"type": "integer", "description": "PID of the query to cancel (required). Use show_running_queries to find PIDs."}
+      },
+      "required": ["pid"]
+    }
+  },
+  {
+    "name": "terminate_connection",
+    "description": "Terminate a database connection by PID. Disconnects the client. Use as last resort for hung or problematic connections. Less graceful than cancel_query.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "pid": {"type": "integer", "description": "PID of the connection to terminate (required). Use list_connections to find PIDs."}
+      },
+      "required": ["pid"]
+    }
+  },
+  {
+    "name": "show_blocked_queries",
+    "description": "Show queries currently blocked waiting for locks held by other sessions. Pairs blocked queries with their blocker PID, user, and query. Useful for diagnosing contention.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "list_extensions",
+    "description": "List all installed PostgreSQL extensions with version, schema, and description.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "create_extension",
+    "description": "Install a PostgreSQL extension. Supports IF NOT EXISTS, schema specification, version pinning, and CASCADE for dependencies.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string", "description": "Extension name (required). Examples: 'pgvector', 'pg_textsearch', 'timescaledb', 'uuid-ossp'."},
+        "schema": {"type": "string", "description": "Schema to install into (optional). Default: current schema."},
+        "version": {"type": "string", "description": "Specific version (optional). Example: '0.7.4'."},
+        "cascade": {"type": "boolean", "description": "Install dependencies (optional). Default: false."},
+        "if_not_exists": {"type": "boolean", "description": "Skip if already installed (optional). Default: false."}
+      },
+      "required": ["name"]
+    }
+  },
+  {
+    "name": "drop_extension",
+    "description": "Uninstall a PostgreSQL extension. Use CASCADE to drop dependent objects. Cannot drop extensions with required objects without CASCADE.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string", "description": "Extension name to drop (required)."},
+        "if_exists": {"type": "boolean", "description": "Skip if not installed (optional). Default: false."},
+        "cascade": {"type": "boolean", "description": "Drop dependent objects (optional). Default: false."}
+      },
+      "required": ["name"]
+    }
+  },
+  {
+    "name": "list_databases",
+    "description": "List all databases with owner, encoding, collation, and description. Includes both regular and template databases.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "create_database",
+    "description": "Create a new PostgreSQL database. Supports owner, encoding, and locale configuration. Cannot run inside a transaction block.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string", "description": "Database name (required). 1-255 characters."},
+        "owner": {"type": "string", "description": "Database owner (optional). Default: current user."},
+        "encoding": {"type": "string", "description": "Character encoding (optional). Example: 'UTF8'."},
+        "locale": {"type": "string", "description": "Locale / LC_COLLATE (optional). Example: 'en_US.UTF-8'."}
+      },
+      "required": ["name"]
+    }
+  },
+  {
+    "name": "vacuum",
+    "description": "Run VACUUM to reclaim storage and update visibility map. Supports options: FULL, FREEZE, VERBOSE. Less disruptive than VACUUM FULL but does not return disk space to OS.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name (optional). If omitted, vacuums entire database."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."},
+        "full": {"type": "boolean", "description": "Run VACUUM FULL (optional). Default: false. Locks table exclusively."},
+        "freeze": {"type": "boolean", "description": "Aggressively freeze tuples (optional). Default: false."},
+        "verbose": {"type": "boolean", "description": "Show detailed progress (optional). Default: false."}
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "vacuum_full",
+    "description": "Run VACUUM FULL to reclaim disk space and compact tables. Acquires exclusive lock. Use during low-traffic periods. More aggressive than standard VACUUM.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name (optional). If omitted, processes entire database."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."},
+        "analyze": {"type": "boolean", "description": "Update statistics after vacuum (optional). Default: false."},
+        "freeze": {"type": "boolean", "description": "Aggressively freeze tuples (optional). Default: false."},
+        "verbose": {"type": "boolean", "description": "Show detailed progress (optional). Default: false."}
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "reindex_database",
+    "description": "Rebuild all indexes in a database, schema, or specific table/index. Use CONCURRENTLY to avoid locking writes during reindex. Helps recover from index bloat and corruption.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "database": {"type": "string", "description": "Database name to reindex (required)."},
+        "schema": {"type": "string", "description": "Schema name (optional). Scopes operation to schema."},
+        "table": {"type": "string", "description": "Table name (optional). Scopes operation to table. Requires schema."},
+        "index": {"type": "string", "description": "Specific index name (optional). Scopes operation to one index."},
+        "concurrent": {"type": "boolean", "description": "Use CONCURRENTLY - no write lock (optional). Default: false."},
+        "verbose": {"type": "boolean", "description": "Show detailed progress (optional). Default: false."}
+      },
+      "required": ["database"]
+    }
+  },
+  {
+    "name": "generate_create_table_ddl",
+    "description": "Generate the CREATE TABLE DDL statement for an existing table. Useful for migrations, documentation, and recreating tables in other environments. Includes columns, types, defaults, nullability, and primary key.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name (required)."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."}
+      },
+      "required": ["table"]
+    }
+  },
+  {
+    "name": "generate_create_index_ddl",
+    "description": "Generate CREATE INDEX DDL statements for all indexes on a table. Useful for migrating index definitions between environments.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name (required)."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."}
+      },
+      "required": ["table"]
+    }
+  },
+  {
+    "name": "table_dependencies",
+    "description": "Show what database objects depend on a table and what the table depends on. Critical before DROP operations to understand impact. Shows views, foreign keys, materialized views referencing the table.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name (required)."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."}
+      },
+      "required": ["table"]
+    }
+  },
+  {
+    "name": "list_vector_columns",
+    "description": "List all columns with the vector data type (pgvector extension). Shows schema, table, and column name for each vector column.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "vector_search",
+    "description": "Perform vector similarity search using pgvector. Supports cosine (default), Euclidean (L2), and inner product distance. Returns results ordered by similarity. Requires pgvector extension.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name (required)."},
+        "column": {"type": "string", "description": "Vector column name (required)."},
+        "vector": {"type": "string", "description": "Query vector as JSON array string (required). Example: '[0.1,0.2,0.3,0.4]'."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."},
+        "limit": {"type": "integer", "description": "Max results (optional). Default: 10. Max: 1000."},
+        "select": {"type": "string", "description": "Columns to return (optional). Default: '*'. Example: 'id, title'."},
+        "distance": {"type": "string", "description": "Distance metric (optional). Options: 'cosine' (default), 'l2'/'euclidean', 'inner'/'ip'."}
+      },
+      "required": ["table", "column", "vector"]
+    }
+  },
+  {
+    "name": "create_vector_index",
+    "description": "Create an index on a vector column for fast similarity search. Supports HNSW (default) and IVFFlat index types. HNSW builds slower but has better recall. IVFFlat is faster to build with configurable lists.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name (required)."},
+        "column": {"type": "string", "description": "Vector column name (required)."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."},
+        "index_type": {"type": "string", "description": "Index type (optional). 'hnsw' (default) or 'ivfflat'."},
+        "distance": {"type": "string", "description": "Distance operator (optional). 'cosine' (default), 'l2'/'euclidean', 'inner'/'ip'."},
+        "lists": {"type": "integer", "description": "IVFFlat lists parameter (optional). Default: 100. Only used with ivfflat index_type."}
+      },
+      "required": ["table", "column"]
+    }
+  },
+  {
+    "name": "create_hypertable",
+    "description": "Convert a regular PostgreSQL table into a TimescaleDB hypertable for time-series data. Requires the timescaledb extension. Partitioning is automatic based on time intervals.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name to convert (required)."},
+        "time_column": {"type": "string", "description": "Time column name (required). Must be TIMESTAMPTZ, TIMESTAMP, or DATE."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."},
+        "chunk_time_interval": {"type": "string", "description": "Chunk time interval as INTERVAL (optional). Example: '1 day', '7 days', '1 month'."}
+      },
+      "required": ["table", "time_column"]
+    }
+  },
+  {
+    "name": "show_hypertable_details",
+    "description": "Show detailed information about a TimescaleDB hypertable. Returns dimensions, chunk target size, compression state, and tablespace configuration. Requires timescaledb extension.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Hypertable name (required)."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."}
+      },
+      "required": ["table"]
+    }
+  },
+  {
+    "name": "show_chunks",
+    "description": "List all chunks of a TimescaleDB hypertable. Shows chunk names, time ranges, compression status, and disk sizes. Useful for monitoring data distribution and compression.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Hypertable name (required)."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."}
+      },
+      "required": ["table"]
+    }
+  },
+  {
+    "name": "add_retention_policy",
+    "description": "Add a data retention policy to automatically drop outdated chunks from a TimescaleDB hypertable. Data older than the specified interval is deleted by a background job.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Hypertable name (required)."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."},
+        "drop_after": {"type": "string", "description": "Retention interval (required). Example: '90 days', '6 months', '1 year'."}
+      },
+      "required": ["table", "drop_after"]
+    }
+  },
+  {
+    "name": "add_compression_policy",
+    "description": "Add a compression policy to automatically compress chunks older than the specified interval. Reduces storage costs for historical time-series data. Requires timescaledb extension.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Hypertable name (required)."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."},
+        "compress_after": {"type": "string", "description": "Age threshold for compression (required). Example: '7 days', '1 month'."}
+      },
+      "required": ["table", "compress_after"]
+    }
+  },
+  {
+    "name": "compress_chunk",
+    "description": "Manually compress a specific chunk of a TimescaleDB hypertable. Useful for immediate compression of a chunk that meets the age threshold.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "chunk_name": {"type": "string", "description": "Chunk name to compress (required). Use show_chunks to find chunk names."},
+        "chunk_schema": {"type": "string", "description": "Chunk schema (optional). Default: '_hyper'."}
+      },
+      "required": ["chunk_name"]
+    }
+  },
+  {
+    "name": "add_continuous_aggregate",
+    "description": "Create a TimescaleDB continuous aggregate (materialized view) for real-time downsampling of time-series data. Automatically refreshes at the specified interval.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string", "description": "Continuous aggregate view name (required)."},
+        "query": {"type": "string", "description": "SELECT query defining the aggregation (required). Example: 'SELECT time_bucket(''1 hour'', ts) AS bucket, AVG(temperature) FROM sensor_data GROUP BY bucket'."},
+        "refresh_interval": {"type": "string", "description": "Auto-refresh interval (optional). Example: '1 hour'. If omitted, create without auto-refresh."}
+      },
+      "required": ["name", "query"]
+    }
+  },
+  {
+    "name": "list_bm25_indexes",
+    "description": "List all BM25 full-text search indexes (pg_textsearch extension). Shows schema, table, index name, definition, and usage statistics.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "search_bm25",
+    "description": "Execute a BM25 relevance-ranked full-text search query using the pg_textsearch extension. Returns results ordered by relevance score. Supports explicit index specification. Requires pg_textsearch extension and shared_preload_libraries.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table to search (required)."},
+        "text_column": {"type": "string", "description": "Text column to search against (required). Must have a BM25 index."},
+        "query": {"type": "string", "description": "Search query text (required). Example: 'performance optimization'."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."},
+        "index_name": {"type": "string", "description": "Explicit BM25 index name (optional). Required for partial indexes and PL/pgSQL compatibility."},
+        "limit": {"type": "integer", "description": "Max results (optional). Default: 10. Max: 1000."},
+        "select": {"type": "string", "description": "Columns to return (optional). Default: '*'. Example: 'id, title, created_at'."}
+      },
+      "required": ["table", "text_column", "query"]
+    }
+  },
+  {
+    "name": "create_bm25_index",
+    "description": "Create a BM25 full-text search index on a text column using the pg_textsearch extension. Supports custom BM25 parameters (k1, b), text search configurations, expression indexes, and partial indexes.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name (required)."},
+        "column": {"type": "string", "description": "Text column to index (required). Can be an expression for expression indexes."},
+        "text_config": {"type": "string", "description": "PostgreSQL text search configuration (optional). Default: 'english'. Options: 'english', 'french', 'german', 'simple', etc."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."},
+        "index_name": {"type": "string", "description": "Custom index name (optional). Auto-generated if omitted."},
+        "k1": {"type": "number", "description": "Term frequency saturation parameter (optional). Default: 1.2. Range: 0.1-10.0."},
+        "b": {"type": "number", "description": "Length normalization parameter (optional). Default: 0.75. Range: 0.0-1.0."},
+        "concurrently": {"type": "boolean", "description": "Create without blocking writes (optional). Default: false."},
+        "where": {"type": "string", "description": "Partial index WHERE clause (optional). Example: 'status = ''published'''."}
+      },
+      "required": ["table", "column"]
+    }
+  },
+  {
+    "name": "drop_bm25_index",
+    "description": "Drop a BM25 full-text search index. Supports IF EXISTS and CONCURRENTLY options.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "index_name": {"type": "string", "description": "Index name to drop (required). Use list_bm25_indexes to find index names."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."},
+        "if_exists": {"type": "boolean", "description": "Skip if index doesn't exist (optional). Default: false."},
+        "concurrently": {"type": "boolean", "description": "Drop without blocking writes (optional). Default: false."}
+      },
+      "required": ["index_name"]
+    }
+  },
+  {
+    "name": "bm25_force_merge",
+    "description": "Force-merge all BM25 index segments into one. Improves query performance after bulk inserts. Similar to Lucene's forceMerge(1). Best used after large batch loads, not during ongoing write traffic.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "index_name": {"type": "string", "description": "BM25 index name to merge (required)."}
+      },
+      "required": ["index_name"]
+    }
+  },
+  {
+    "name": "bm25_index_stats",
+    "description": "Show internal statistics and structure of a BM25 index. Returns segment count, document counts, and index health information for debugging and performance analysis.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "index_name": {"type": "string", "description": "BM25 index name (required)."}
+      },
+      "required": ["index_name"]
+    }
+  },
+  {
+    "name": "import_from_url",
+    "description": "Download a CSV file from a URL and import it into a PostgreSQL table using COPY FROM STDIN. Supports configurable delimiter, header row, and optional truncate before import. Ideal for loading data from S3, GitHub raw URLs, or any HTTP-accessible CSV.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "url": {"type": "string", "description": "URL of the CSV file to import (required). Supports HTTP/HTTPS."},
+        "table": {"type": "string", "description": "Target table name (required)."},
+        "schema": {"type": "string", "description": "Target schema (optional). Default: 'public'."},
+        "delimiter": {"type": "string", "description": "CSV delimiter (optional). Default: ','."},
+        "header": {"type": "boolean", "description": "CSV has header row (optional). Default: true."},
+        "truncate": {"type": "boolean", "description": "Truncate table before import (optional). Default: false."},
+        "columns": {"type": "string", "description": "Comma-separated column list for target columns (optional). Default: all columns."}
+      },
+      "required": ["url", "table"]
+    }
+  },
+  {
+    "name": "export_csv",
+    "description": "Export a table or SELECT query result as CSV text using COPY TO STDOUT. Returns the full CSV content in the response. Safe for moderate-sized exports (up to 100,000 rows). Use 'table' for a full table export or 'query' for a custom SELECT.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {"type": "string", "description": "SELECT query to export (optional, alternative to 'table'). Must be a SELECT statement."},
+        "table": {"type": "string", "description": "Table name to export (optional, alternative to 'query')."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."},
+        "header": {"type": "boolean", "description": "Include CSV header row (optional). Default: true."},
+        "delimiter": {"type": "string", "description": "CSV delimiter (optional). Default: ','."},
+        "limit": {"type": "number", "description": "Maximum rows to export (optional). Default: 10000, Max: 100000."}
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "suggest_indexes",
+    "description": "Analyze pg_stat_user_tables to find tables with high sequential scan counts and recommend new indexes. Examines table size, scan frequency, and existing indexes to prioritize suggestions. Read-only — no indexes are created.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "schema": {"type": "string", "description": "Schema to analyze (optional). Default: all user schemas."},
+        "min_scan_threshold": {"type": "number", "description": "Minimum sequential scans to consider (optional). Default: 100."},
+        "min_table_size_mb": {"type": "number", "description": "Minimum table size in MB (optional). Default: 10."}
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "find_tables_without_pk",
+    "description": "List all tables in user schemas that lack a primary key. Tables without a PK can cause performance issues (slow updates/deletes), replication problems, and ORM compatibility issues.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "schema": {"type": "string", "description": "Schema to check (optional). Default: all user schemas."}
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "find_missing_fk_indexes",
+    "description": "Find foreign key columns that lack an index. Unindexed FK columns cause row-level lock contention during UPDATE/DELETE on the parent table and slow down JOIN queries. Returns CREATE INDEX suggestions.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "schema": {"type": "string", "description": "Schema to check (optional). Default: all user schemas."}
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "analyze_table_bloat",
+    "description": "Estimate table bloat percentage using pg_stat_user_tables dead/live tuple ratios. Helps identify tables that need VACUUM or VACUUM FULL. Returns bloat percentage, dead/live tuple counts, and estimated bloat in bytes.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "schema": {"type": "string", "description": "Schema to analyze (optional). Default: all user schemas."},
+        "threshold": {"type": "number", "description": "Minimum bloat percentage to include (optional). Default: 10."}
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "clone_table_schema",
+    "description": "Create a new table with the same structure as an existing table using CREATE TABLE ... (LIKE ... INCLUDING ...). Optionally copies indexes, defaults, and constraints. The new table starts empty.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_table": {"type": "string", "description": "Source table name (required)."},
+        "new_table": {"type": "string", "description": "New table name (required)."},
+        "source_schema": {"type": "string", "description": "Source schema (optional). Default: 'public'."},
+        "new_schema": {"type": "string", "description": "Target schema (optional). Default: 'public'."},
+        "include_indexes": {"type": "boolean", "description": "Copy indexes (optional). Default: true."},
+        "include_defaults": {"type": "boolean", "description": "Copy column defaults (optional). Default: true."},
+        "include_constraints": {"type": "boolean", "description": "Copy CHECK constraints (optional). Default: false."}
+      },
+      "required": ["source_table", "new_table"]
+    }
+  },
+  {
+    "name": "security_audit",
+    "description": "Comprehensive security audit of the database. Reports superuser accounts, tables with PUBLIC access (world-readable/writable), and default privileges. Essential for compliance reviews and security hardening.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
+    "name": "audit_role_usage",
+    "description": "List all database roles with their attributes (superuser, login, connection limits, expiry) and membership information. Use 'role' parameter to inspect a specific role.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "role": {"type": "string", "description": "Specific role name to inspect (optional). Default: all roles."}
+      },
+      "required": []
+    }
+  },
+  {
+    "name": "sample_data",
+    "description": "Extract a random sample of rows from a table. Supports optional WHERE filter, custom ORDER BY, and column anonymization (emails → ****@domain, strings → f...t). Results are randomized by default for unbiased sampling.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "table": {"type": "string", "description": "Table name (required)."},
+        "schema": {"type": "string", "description": "Schema name (optional). Default: 'public'."},
+        "limit": {"type": "number", "description": "Maximum rows to return (optional). Default: 100, Max: 10000."},
+        "where": {"type": "string", "description": "Optional WHERE clause (without the WHERE keyword). Example: 'created_at > NOW() - INTERVAL 7 days'."},
+        "order_by": {"type": "string", "description": "Column to order by (optional). Default: RANDOM()."},
+        "anonymize_columns": {"type": "array", "items": {"type": "string"}, "description": "Column names to anonymize (optional). Emails become ****@domain, strings become f...t."}
+      },
+      "required": ["table"]
+    }
   }
 ]

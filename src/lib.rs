@@ -7,6 +7,8 @@ pub mod errors;
 pub mod metrics;
 pub mod http;
 pub mod validation;
+pub mod tools;
+pub mod lockfree_pool;
 
 use clap::Parser;
 

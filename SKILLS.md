@@ -18,7 +18,7 @@
 **HTTP/2 Server (Port 3001)**:
 - JSON-RPC 2.0 POST requests to `/rpc` endpoint
 - Stateless (each request is independent)
-- Connection pooling via `deadpool::postgres` (Pool<Client>)
+- Lock-free connection pooling via `crossbeam::queue::ArrayQueue` (CAS-only MPMC queue, zero mutexes)
 - Each request randomly selects connection from pool
 - Latency baseline: < 10ms per request (STRICT: > 10ms is not acceptable, > 20ms is deal breaker; pool init overhead acceptable only for first request)
 - Health endpoint: GET `/health` returns `{"status": "healthy"}`

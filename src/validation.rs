@@ -27,7 +27,23 @@ pub fn validate_identifier(name: &str, label: &str) -> Result<(), MCPError> {
 }
 
 pub fn quote_identifier(name: &str) -> String {
-    format!("\"{}\"", name)
+    quote_ident(name)
+}
+
+/// Quote a PostgreSQL identifier, escaping embedded double-quotes.
+/// Use this instead of duplicating `format!("\"{}\"", s.replace('"', "\"\""))` in every module.
+pub fn quote_ident(name: &str) -> String {
+    let mut out = String::with_capacity(name.len() + 2);
+    out.push('"');
+    for ch in name.chars() {
+        if ch == '"' {
+            out.push_str("\"\"");
+        } else {
+            out.push(ch);
+        }
+    }
+    out.push('"');
+    out
 }
 
 #[cfg(test)]

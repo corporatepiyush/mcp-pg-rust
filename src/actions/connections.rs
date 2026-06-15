@@ -93,7 +93,7 @@ pub async fn show_connection_summary(client: &Client, _params: &Option<&Value>) 
         .iter()
         .map(|row| {
             json!({
-                "state": row.get::<_, Option<String>>(0).unwrap_or_else(|| "unknown".to_string()),
+                "state": row.get::<_, Option<&str>>(0).unwrap_or("unknown"),
                 "count": row.get::<_, i64>(1),
             })
         })

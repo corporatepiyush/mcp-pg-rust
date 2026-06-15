@@ -1,7 +1,7 @@
 use serde_json::{json, Value};
 use tokio_postgres::Client;
 use crate::errors::{MCPError, Result as MCPResult};
-use crate::validation::{validate_identifier, quote_identifier};
+use crate::validation::{validate_identifier, quote_ident};
 
 const MAX_BATCH_ROWS: usize = 1000;
 const ALLOWED_OPS: &[&str] = &["=", "<", ">", "<=", ">=", "<>", "IN", "LIKE"];
@@ -58,12 +58,12 @@ fn build_where_sql(parsed: &[(String, String, &Value)]) -> String {
         if op == "IN" {
             if let Some(arr) = val.as_array() {
                 let items: Vec<String> = arr.iter().map(format_sql_value).collect();
-                format!("{} IN ({})", quote_identifier(col), items.join(", "))
+                format!("{} IN ({})", quote_ident(col), items.join(", "))
             } else {
-                format!("{} {} {}", quote_identifier(col), op, format_sql_value(val))
+                format!("{} {} {}", quote_ident(col), op, format_sql_value(val))
             }
         } else {
-            format!("{} {} {}", quote_identifier(col), op, format_sql_value(val))
+            format!("{} {} {}", quote_ident(col), op, format_sql_value(val))
         }
     }).collect::<Vec<_>>().join(" OR ")
 }
@@ -111,8 +111,8 @@ pub async fn async_batch_insert(client: &Client, params: &Option<&Value>) -> MCP
 
     validate_table_columns(table, &column_names)?;
 
-    let quoted_table = quote_identifier(table);
-    let quoted_cols: Vec<String> = column_names.iter().map(|c| quote_identifier(c)).collect();
+    let quoted_table = quote_ident(table);
+    let quoted_cols: Vec<String> = column_names.iter().map(|c| quote_ident(c)).collect();
     let cols = quoted_cols.join(", ");
 
     let mut sql = String::with_capacity(64 + cols.len() + rows.len() * (column_count * 16 + 4));
@@ -181,7 +181,7 @@ pub async fn async_batch_insert(client: &Client, params: &Option<&Value>) -> MCP
 
     let result = if let Some(col) = returning {
         validate_identifier(col, "returning")?;
-        let r = format!(" RETURNING {}", quote_identifier(col));
+        let r = format!(" RETURNING {}", quote_ident(col));
         sql.push_str(&r);
         match client.query(&sql, &[]).await {
             Ok(rows) => {
@@ -238,11 +238,11 @@ pub async fn async_batch_update(client: &Client, params: &Option<&Value>) -> MCP
     validate_identifier(table, "table")?;
     let parsed_where = validate_where_clauses(where_clauses)?;
 
-    let quoted_table = quote_identifier(table);
+    let quoted_table = quote_ident(table);
     let mut set_clauses = Vec::new();
     for (key, val) in updates {
         validate_identifier(key, "updates key")?;
-        set_clauses.push(format!("{} = {}", quote_identifier(key), format_sql_value(val)));
+        set_clauses.push(format!("{} = {}", quote_ident(key), format_sql_value(val)));
     }
 
     let where_sql = build_where_sql(&parsed_where);
@@ -274,13 +274,13 @@ pub async fn async_batch_delete(client: &Client, params: &Option<&Value>) -> MCP
 
     let returning = params.get("returning").and_then(|v| v.as_str());
 
-    let quoted_table = quote_identifier(table);
+    let quoted_table = quote_ident(table);
     let where_sql = build_where_sql(&parsed_where);
     let mut sql = format!("DELETE FROM {quoted_table} WHERE {where_sql}");
 
     if let Some(col) = returning {
         validate_identifier(col, "returning")?;
-        sql.push_str(&format!(" RETURNING {}", quote_identifier(col)));
+        sql.push_str(&format!(" RETURNING {}", quote_ident(col)));
         let rows = client.query(&sql, &[]).await?;
         let ids: Vec<Value> = rows.iter().map(|r| {
             r.try_get::<_, i64>(0).map(|id| json!(id))
@@ -333,8 +333,8 @@ pub async fn async_batch_insert_copy(client: &Client, params: &Option<&Value>) -
     let column_names: Vec<&str> = columns.iter().filter_map(|c| c.as_str()).collect();
     validate_table_columns(table, &column_names)?;
 
-    let quoted_table = quote_identifier(table);
-    let quoted_cols: Vec<String> = column_names.iter().map(|c| quote_identifier(c)).collect();
+    let quoted_table = quote_ident(table);
+    let quoted_cols: Vec<String> = column_names.iter().map(|c| quote_ident(c)).collect();
 
     let mut total_affected = 0u64;
 

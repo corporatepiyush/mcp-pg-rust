@@ -374,7 +374,7 @@ impl OptimizationAgent {
 - ✅ Changes are infrequent (weekly/monthly)
 - ✅ Full understanding is needed
 
-**Example**: Switching from custom pool to deadpool
+**Example**: Building a lock-free pool with crossbeam::ArrayQueue
 
 ### When to Use Automated Optimization
 

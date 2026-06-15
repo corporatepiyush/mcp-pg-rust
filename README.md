@@ -211,7 +211,7 @@ All tools follow the [MCP JSON-RPC 2.0](https://spec.modelcontextprotocol.io) sp
                        │
         ┌──────────────┴──────────────┐
         │   Connection Pool           │
-        │   (deadpool-postgres)       │
+         │   (lock-free queue pool)    │
         │   Min: 5, Max: 20           │
         └────────────┬────────────────┘
                      │

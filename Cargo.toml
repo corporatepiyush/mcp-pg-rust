@@ -1,6 +1,6 @@
 [package]
 name = "mcp-postgres"
-version = "3.2.1"
+version = "4.0.0"
 edition = "2024"
 authors = ["Piyush"]
 description = "High-performance MCP server for PostgreSQL with CPU-aware connection pooling and optimized buffers"
@@ -16,8 +16,6 @@ include = ["src/", "bin/", "tools.json", "Cargo.toml", "README.md", "schema.sql"
 # PostgreSQL
 tokio = { version = "1.41", features = ["macros", "rt-multi-thread", "io-util", "net", "time", "sync", "io-std"] }
 tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
-deadpool = "0.12"
-deadpool-postgres = "0.14"
 
 # HTTP/2 and SSE
 axum = "0.7"
@@ -59,8 +57,11 @@ mimalloc = { version = "0.1", features = ["local_dynamic_tls", "extended", "over
 libc = "0.2"
 num_cpus = "1.16"
 
-# HTTP Client for latency testing
+# HTTP Client for latency testing and data import
 reqwest = { version = "0.11", features = ["json"] }
+
+# Binary data for PostgreSQL COPY protocol
+bytes = "1.6"
 
 [dev-dependencies]
 tokio-test = "0.4"

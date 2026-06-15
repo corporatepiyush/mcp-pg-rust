@@ -14,8 +14,8 @@ fn validate_sql(sql: &str, allowed_prefix: &str, label: &str) -> std::result::Re
         ));
     }
     let trimmed = sql.trim();
-    let first_word = trimmed.split_whitespace().next().unwrap_or("").to_uppercase();
-    if first_word != allowed_prefix {
+    let first_word = trimmed.split_whitespace().next().unwrap_or("");
+    if !first_word.eq_ignore_ascii_case(allowed_prefix) {
         return Err(crate::errors::MCPError::InvalidParams(
             format!("Invalid {label} query: expected '{allowed_prefix}'")
         ));
@@ -148,25 +148,21 @@ pub async fn explain_query(client: &Client, params: &Option<&Value>) -> MCPResul
         .and_then(|v| v.as_str())
         .unwrap_or("json");
 
-    let format_upper = format.to_uppercase();
-    if format_upper == "XML" {
+    if format.eq_ignore_ascii_case("xml") {
         return Err(crate::errors::MCPError::InvalidParams(
             "XML format is not supported — use TEXT, YAML, or JSON".into()
         ));
     }
 
-    let mut opts = Vec::new();
-    opts.push(format!("FORMAT {}", format_upper));
+    let mut explain_sql = String::with_capacity(sql.len() + 80);
+    explain_sql.push_str("EXPLAIN (FORMAT ");
+    explain_sql.push_str(&format.to_uppercase());
     if analyze {
-        opts.push("ANALYZE".to_string());
+        explain_sql.push_str(", ANALYZE");
     }
     if buffers {
-        opts.push("BUFFERS".to_string());
+        explain_sql.push_str(", BUFFERS");
     }
-
-    let mut explain_sql = String::with_capacity(sql.len() + 64);
-    explain_sql.push_str("EXPLAIN (");
-    explain_sql.push_str(&opts.join(", "));
     explain_sql.push_str(") ");
     explain_sql.push_str(sql);
 
@@ -183,9 +179,13 @@ pub async fn explain_query(client: &Client, params: &Option<&Value>) -> MCPResul
             "options": { "analyze": analyze, "buffers": buffers, "format": format }
         }))
     } else {
-        let lines: Vec<String> = rows.iter().map(|r| r.get::<_, String>(0)).collect();
+        let mut plan = String::new();
+        for (i, row) in rows.iter().enumerate() {
+            if i > 0 { plan.push('\n'); }
+            plan.push_str(&row.get::<_, String>(0));
+        }
         Ok(json!({
-            "plan": lines.join("\n"),
+            "plan": plan,
             "options": { "analyze": analyze, "buffers": buffers, "format": format }
         }))
     }

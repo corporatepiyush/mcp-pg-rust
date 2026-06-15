@@ -328,7 +328,7 @@ Pool {
 ### Health Check Strategy
 
 ```rust
-// deadpool automatically validates connections:
+// LockFreePool validates connections synchronously on acquire:
 // - Tests connection before returning from pool
 // - Recycles stale connections
 // - Retries failed connections
@@ -699,7 +699,7 @@ Performance Issue Detected?
 
 ## References
 
-- **Deadpool Docs**: https://github.com/bikeshedder/deadpool
+- **crossbeam Docs**: https://github.com/crossbeam-rs/crossbeam
 - **Tokio Performance**: https://tokio.rs/tokio/topics/performance
 - **Mimalloc Tuning**: https://github.com/microsoft/mimalloc
 - **PostgreSQL EXPLAIN**: https://www.postgresql.org/docs/current/using-explain.html

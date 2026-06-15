@@ -36,7 +36,7 @@ pub async fn list_users(client: &Client, _params: &Option<&Value>) -> MCPResult<
 pub async fn list_user_privileges(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
     let username = params
         .as_ref()
-        .and_then(|p| p.get("username").and_then(|v| v.as_str()).map(|s| s.to_string()))
+        .and_then(|p| p.get("username").and_then(|v| v.as_str()))
         .ok_or_else(|| crate::errors::MCPError::InvalidParams("Missing 'username' parameter".into()))?;
 
     if username.is_empty() || username.len() > MAX_IDENTIFIER_LEN {

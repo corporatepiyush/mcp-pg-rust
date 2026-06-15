@@ -254,54 +254,17 @@ async fn handle_tools_call(
     let tool_args = req.params.as_ref().and_then(|p| p.get("arguments"));
 
     // Restricted mode check + unknown tool check BEFORE pool acquire
-    let write_tools: &[&str] = &[
-        "execute_insert", "execute_update", "execute_delete",
-        "async_execute_insert", "async_execute_update", "async_execute_delete",
-        "async_batch_insert", "async_batch_update", "async_batch_delete", "async_batch_insert_copy",
-        "create_table", "drop_table", "create_view", "drop_view", "alter_view", "create_schema", "drop_schema", "create_sequence", "drop_sequence", "alter_index", "backup_table", "create_index", "drop_index", "create_partition", "drop_partition",
-        "vacuum_analyze", "analyze_table", "reindex_table",
-        "reset_statistics", "truncate_table",
-    ];
-
     if config.server.access_mode == crate::config::AccessMode::Restricted
-        && write_tools.contains(&tool_name)
+        && crate::tools::is_write_tool(tool_name)
     {
         return Err(MCPError::InvalidParams(format!(
             "Operation '{tool_name}' is not allowed in restricted (read-only) mode"
         )));
     }
 
-    // Fast-path simple tools that don't need a DB connection
-    let no_db_tools: &[&str] = &["list_tables", "list_schemas", "show_constraints"];
-    if !no_db_tools.contains(&tool_name) {
-        // Verify tool exists before acquiring a connection
-        let tool_exists = matches!(tool_name,
-            "describe_table" | "list_triggers" | "list_indexes" | "execute_query" | "execute_insert"
-            | "execute_update" | "execute_delete" | "explain_query"
-            | "async_execute_insert" | "async_execute_update" | "async_execute_delete"
-            | "async_batch_insert" | "async_batch_update" | "async_batch_delete" | "async_batch_insert_copy"
-            | "create_table" | "drop_table" | "create_view" | "drop_view" | "alter_view" | "create_schema" | "drop_schema" | "create_sequence" | "drop_sequence" | "alter_index" | "backup_table" | "create_index" | "list_partitions" | "drop_index" | "create_partition" | "drop_partition"
-            | "get_table_stats" | "get_index_stats" | "show_database_size"
-            | "show_table_size" | "get_cache_hit_ratio"
-            | "list_connections" | "show_current_user"
-            | "show_running_queries" | "show_connection_summary"
-            | "vacuum_analyze" | "analyze_table" | "reindex_table"
-            | "get_pg_stat_statements" | "reset_statistics" | "truncate_table"
-            | "list_users" | "list_user_privileges" | "list_role_memberships"
-            | "list_database_privileges" | "show_session_info"
-            | "show_all_settings" | "get_setting" | "show_memory_settings"
-            | "show_performance_settings" | "show_log_settings"
-            | "show_replication_status" | "list_replication_slots"
-            | "list_standby_servers" | "show_wal_info" | "show_base_backup_progress"
-            | "show_active_transactions" | "show_locks" | "show_waiting_locks"
-            | "show_transaction_isolation" | "show_deadlocks"
-            | "show_autocommit_status" | "show_transaction_timeout"
-            | "analyze_db_health" | "list_unused_indexes" | "list_duplicate_indexes"
-            | "show_vacuum_progress" | "get_object_details"
-        );
-        if !tool_exists {
-            return Err(method_not_found(tool_name));
-        }
+    // Verify tool exists before acquiring a connection
+    if !crate::tools::tool_exists(tool_name) {
+        return Err(method_not_found(tool_name));
     }
 
     // Acquire pool connection only for known tools
@@ -396,13 +359,88 @@ async fn handle_tools_call(
         "show_vacuum_progress" => actions::health::show_vacuum_progress(&client, &tool_args).await,
         // Enhanced schema
         "get_object_details" => actions::schema::get_object_details(&client, &tool_args).await,
+        // User management
+        "create_user" => actions::user_mgmt::create_user(&client, &tool_args).await,
+        "alter_user" => actions::user_mgmt::alter_user(&client, &tool_args).await,
+        "drop_user" => actions::user_mgmt::drop_user(&client, &tool_args).await,
+        "create_role" => actions::user_mgmt::create_role(&client, &tool_args).await,
+        "alter_role" => actions::user_mgmt::alter_role(&client, &tool_args).await,
+        "drop_role" => actions::user_mgmt::drop_role(&client, &tool_args).await,
+        "grant_privileges" => actions::user_mgmt::grant_privileges(&client, &tool_args).await,
+        "revoke_privileges" => actions::user_mgmt::revoke_privileges(&client, &tool_args).await,
+        // Schema alter
+        "add_column" => actions::schema_alter::add_column(&client, &tool_args).await,
+        "drop_column" => actions::schema_alter::drop_column(&client, &tool_args).await,
+        "rename_column" => actions::schema_alter::rename_column(&client, &tool_args).await,
+        "alter_column_type" => actions::schema_alter::alter_column_type(&client, &tool_args).await,
+        "rename_table" => actions::schema_alter::rename_table(&client, &tool_args).await,
+        "rename_index" => actions::schema_alter::rename_index(&client, &tool_args).await,
+        "rename_schema" => actions::schema_alter::rename_schema(&client, &tool_args).await,
+        "add_foreign_key" => actions::schema_alter::add_foreign_key(&client, &tool_args).await,
+        "drop_foreign_key" => actions::schema_alter::drop_foreign_key(&client, &tool_args).await,
+        "add_unique_constraint" => actions::schema_alter::add_unique_constraint(&client, &tool_args).await,
+        "drop_constraint" => actions::schema_alter::drop_constraint(&client, &tool_args).await,
+        // Session management
+        "cancel_query" => actions::session_mgmt::cancel_query(&client, &tool_args).await,
+        "terminate_connection" => actions::session_mgmt::terminate_connection(&client, &tool_args).await,
+        "show_blocked_queries" => actions::session_mgmt::show_blocked_queries(&client, &tool_args).await,
+        // Extension management
+        "list_extensions" => actions::ext_mgmt::list_extensions(&client, &tool_args).await,
+        "create_extension" => actions::ext_mgmt::create_extension(&client, &tool_args).await,
+        "drop_extension" => actions::ext_mgmt::drop_extension(&client, &tool_args).await,
+        // Database management
+        "list_databases" => actions::db_mgmt::list_databases(&client, &tool_args).await,
+        "create_database" => actions::db_mgmt::create_database(&client, &tool_args).await,
+        // Extended maintenance
+        "vacuum" => actions::maint_ext::vacuum(&client, &tool_args).await,
+        "vacuum_full" => actions::maint_ext::vacuum_full(&client, &tool_args).await,
+        "reindex_database" => actions::maint_ext::reindex_database(&client, &tool_args).await,
+        // Migration helpers
+        "generate_create_table_ddl" => actions::migration_helpers::generate_create_table_ddl(&client, &tool_args).await,
+        "generate_create_index_ddl" => actions::migration_helpers::generate_create_index_ddl(&client, &tool_args).await,
+        "table_dependencies" => actions::migration_helpers::table_dependencies(&client, &tool_args).await,
+        // pgvector
+        "list_vector_columns" => actions::pgvector::list_vector_columns(&client, &tool_args).await,
+        "vector_search" => actions::pgvector::vector_search(&client, &tool_args).await,
+        "create_vector_index" => actions::pgvector::create_vector_index(&client, &tool_args).await,
+        // TimescaleDB
+        "create_hypertable" => actions::timescaledb::create_hypertable(&client, &tool_args).await,
+        "show_hypertable_details" => actions::timescaledb::show_hypertable_details(&client, &tool_args).await,
+        "show_chunks" => actions::timescaledb::show_chunks(&client, &tool_args).await,
+        "add_retention_policy" => actions::timescaledb::add_retention_policy(&client, &tool_args).await,
+        "add_compression_policy" => actions::timescaledb::add_compression_policy(&client, &tool_args).await,
+        "compress_chunk" => actions::timescaledb::compress_chunk(&client, &tool_args).await,
+        "add_continuous_aggregate" => actions::timescaledb::add_continuous_aggregate(&client, &tool_args).await,
+        // pg_textsearch (BM25)
+        "list_bm25_indexes" => actions::pg_textsearch::list_bm25_indexes(&client, &tool_args).await,
+        "search_bm25" => actions::pg_textsearch::search_bm25(&client, &tool_args).await,
+        "create_bm25_index" => actions::pg_textsearch::create_bm25_index(&client, &tool_args).await,
+        "drop_bm25_index" => actions::pg_textsearch::drop_bm25_index(&client, &tool_args).await,
+        "bm25_force_merge" => actions::pg_textsearch::bm25_force_merge(&client, &tool_args).await,
+        "bm25_index_stats" => actions::pg_textsearch::bm25_index_stats(&client, &tool_args).await,
+        // v4.0: Data I/O
+        "import_from_url" => actions::data_io::import_from_url(&client, &tool_args).await,
+        "export_csv" => actions::data_io::export_csv(&client, &tool_args).await,
+        // v4.0: Index Advisor
+        "suggest_indexes" => actions::index_advisor::suggest_indexes(&client, &tool_args).await,
+        // v4.0: Schema Health
+        "find_tables_without_pk" => actions::schema_health::find_tables_without_pk(&client, &tool_args).await,
+        "find_missing_fk_indexes" => actions::schema_health::find_missing_fk_indexes(&client, &tool_args).await,
+        "analyze_table_bloat" => actions::schema_health::analyze_table_bloat(&client, &tool_args).await,
+        "clone_table_schema" => actions::schema_health::clone_table_schema(&client, &tool_args).await,
+        // v4.0: Security Audit
+        "security_audit" => actions::security_audit::security_audit(&client, &tool_args).await,
+        "audit_role_usage" => actions::security_audit::audit_role_usage(&client, &tool_args).await,
+        // v4.0: Data Tools
+        "sample_data" => actions::data_tools::sample_data(&client, &tool_args).await,
         tool => Err(method_not_found(tool)),
     };
 
     if let Err(ref e) = result {
         error!("Tool '{}' error: {:?}", tool_name, e);
     }
-    pool.release(client);
+    // client is returned to the pool automatically via Drop
+    drop(client);
     result
 }
 

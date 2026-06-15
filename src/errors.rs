@@ -12,7 +12,7 @@ pub enum MCPError {
     InvalidParams(String),
 
     #[error("Database error: {0}")]
-    DatabaseError(#[from] tokio_postgres::Error),
+    DatabaseError(tokio_postgres::Error),
 
     #[error("Connection pool error: {0}")]
     PoolError(String),
@@ -22,6 +22,25 @@ pub enum MCPError {
 
     #[error("JSON error: {0}")]
     JsonError(#[from] serde_json::Error),
+}
+
+/// Converts tokio_postgres errors, upgrading permission-denied (42501)
+/// to `InvalidParams` so the user gets a clear message instead of
+/// a generic "db error".  Tools use `?` on DB calls — this `From`
+/// fires automatically.
+impl From<tokio_postgres::Error> for MCPError {
+    fn from(e: tokio_postgres::Error) -> Self {
+        if let Some(db_err) = e.as_db_error()
+            && *db_err.code() == tokio_postgres::error::SqlState::INSUFFICIENT_PRIVILEGE
+        {
+            MCPError::InvalidParams(format!(
+                "Permission denied: database user lacks required privileges. ({})",
+                db_err.message()
+            ))
+        } else {
+            MCPError::DatabaseError(e)
+        }
+    }
 }
 
 impl MCPError {
