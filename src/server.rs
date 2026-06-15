@@ -203,15 +203,13 @@ pub async fn process_request_http(
 ) -> JsonRpcResponse {
     metrics::inc_requests();
 
-    let response = match process_request(req, pool, config).await {
+    match process_request(req, pool, config).await {
         Ok(result) => JsonRpcResponse::success(req.id.clone(), result),
         Err(e) => {
             metrics::inc_errors();
             JsonRpcResponse::error(req.id.clone(), e.error_code(), e.to_string())
         }
-    };
-
-    response
+    }
 }
 
 #[inline]

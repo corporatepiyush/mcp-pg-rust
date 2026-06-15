@@ -30,10 +30,10 @@ fn tcp_request(tool_name: &str, arguments: Value) -> Result<Value, Box<dyn std::
     let response_str = String::from_utf8(buffer[..n].to_vec())?;
     let response: Value = serde_json::from_str(&response_str)?;
 
-    if let Some(error) = response.get("error") {
-        if !error.is_null() {
-            return Err(format!("Tool error: {}", error).into());
-        }
+    if let Some(error) = response.get("error")
+        && !error.is_null()
+    {
+        return Err(format!("Tool error: {}", error).into());
     }
 
     Ok(response)

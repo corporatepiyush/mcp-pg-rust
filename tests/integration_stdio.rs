@@ -29,7 +29,7 @@ fn send_notification(stdin: &mut dyn Write, method: &str, params: Option<Value>)
 fn read_response(reader: &mut dyn BufRead) -> Value {
     let mut line = String::new();
     reader.read_line(&mut line).unwrap();
-    serde_json::from_str(&line.trim()).unwrap()
+    serde_json::from_str(line.trim()).unwrap()
 }
 
 fn assert_success(resp: &Value, id: u64) {

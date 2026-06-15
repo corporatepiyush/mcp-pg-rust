@@ -55,23 +55,23 @@ pub async fn execute_query(client: &Client, params: &Option<&Value>) -> MCPResul
             let values: Vec<Value> = (0..row.len())
                 .map(|i| {
                     // Try type inference: prefer native JSON types over raw strings
-                    if let Ok(v) = row.try_get::<_, bool>(i) {
+                    match row.try_get::<_, bool>(i) { Ok(v) => {
                         json!(v)
-                    } else if let Ok(v) = row.try_get::<_, i32>(i) {
+                    } _ => { match row.try_get::<_, i32>(i) { Ok(v) => {
                         json!(v)
-                    } else if let Ok(v) = row.try_get::<_, i64>(i) {
+                    } _ => { match row.try_get::<_, i64>(i) { Ok(v) => {
                         json!(v)
-                    } else if let Ok(v) = row.try_get::<_, f32>(i) {
+                    } _ => { match row.try_get::<_, f32>(i) { Ok(v) => {
                         json!(v)
-                    } else if let Ok(v) = row.try_get::<_, f64>(i) {
+                    } _ => { match row.try_get::<_, f64>(i) { Ok(v) => {
                         json!(v)
-                    } else if let Ok(v) = row.try_get::<_, String>(i) {
+                    } _ => { match row.try_get::<_, String>(i) { Ok(v) => {
                         Value::String(v)
-                    } else if let Ok(v) = row.try_get::<_, Option<String>>(i) {
+                    } _ => { match row.try_get::<_, Option<String>>(i) { Ok(v) => {
                         v.map(Value::String).unwrap_or(Value::Null)
-                    } else {
+                    } _ => {
                         Value::Null
-                    }
+                    }}}}}}}}}}}}}}
                 })
                 .collect();
             Value::Array(values)
