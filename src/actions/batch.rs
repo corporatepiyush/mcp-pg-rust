@@ -76,7 +76,7 @@ fn build_where_sql(parsed: &[(String, String, &Value)]) -> String {
             }
         })
         .collect::<Vec<_>>()
-        .join(" OR ")
+        .join(" AND ")
 }
 
 /// Batch insert - high performance multi-row insertion
@@ -475,7 +475,7 @@ mod tests {
             ("status".to_string(), "=".to_string(), &v2),
         ];
         let sql = build_where_sql(&parsed);
-        assert_eq!(sql, r#""id" = 1 OR "status" = 'active'"#);
+        assert_eq!(sql, r#""id" = 1 AND "status" = 'active'"#);
     }
 
     #[test]
