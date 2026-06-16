@@ -99,9 +99,7 @@ impl ConnectionPool {
                     // so it persists for every query on this connection.
                     if stmt_timeout_ms > 0 {
                         client
-                            .batch_execute(&format!(
-                                "SET statement_timeout TO '{stmt_timeout_ms}'"
-                            ))
+                            .batch_execute(&format!("SET statement_timeout TO '{stmt_timeout_ms}'"))
                             .await
                             .map_err(|e| e.to_string())?;
                     }

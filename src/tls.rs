@@ -12,7 +12,12 @@ use tokio_postgres_rustls::MakeRustlsConnect;
 /// Return `true` if the connection string opts into TLS via `sslmode`.
 pub fn wants_tls(connection_string: &str) -> bool {
     sslmode(connection_string)
-        .map(|m| matches!(m.as_str(), "require" | "verify-ca" | "verify-full" | "prefer"))
+        .map(|m| {
+            matches!(
+                m.as_str(),
+                "require" | "verify-ca" | "verify-full" | "prefer"
+            )
+        })
         .unwrap_or(false)
 }
 
@@ -23,9 +28,7 @@ fn sslmode(connection_string: &str) -> Option<String> {
     let lower = connection_string.to_ascii_lowercase();
     let idx = lower.find("sslmode=")?;
     let rest = &lower[idx + "sslmode=".len()..];
-    let end = rest
-        .find(|c: char| c == ' ' || c == '&' || c == '\'')
-        .unwrap_or(rest.len());
+    let end = rest.find([' ', '&', '\'']).unwrap_or(rest.len());
     Some(rest[..end].trim().to_string())
 }
 

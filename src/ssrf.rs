@@ -10,30 +10,30 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use crate::errors::MCPError;
 
 /// Return `true` if the IP must NOT be reachable from a user-controlled fetch.
-pub fn is_blocked_ip(ip: IpAddr) -> bool {
+pub const fn is_blocked_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => is_blocked_v4(v4),
         IpAddr::V6(v6) => is_blocked_v6(v6),
     }
 }
 
-fn is_blocked_v4(ip: Ipv4Addr) -> bool {
+const fn is_blocked_v4(ip: Ipv4Addr) -> bool {
     ip.is_loopback()            // 127.0.0.0/8
         || ip.is_private()      // 10/8, 172.16/12, 192.168/16
         || ip.is_link_local()   // 169.254/16  (incl. 169.254.169.254 metadata)
         || ip.is_unspecified()  // 0.0.0.0
         || ip.is_broadcast()    // 255.255.255.255
         || ip.is_documentation()
-        || is_shared_v4(ip)     // 100.64/10 carrier-grade NAT
+        || is_shared_v4(ip) // 100.64/10 carrier-grade NAT
 }
 
 /// 100.64.0.0/10 — RFC 6598 shared address space (no stable std helper).
-fn is_shared_v4(ip: Ipv4Addr) -> bool {
+const fn is_shared_v4(ip: Ipv4Addr) -> bool {
     let o = ip.octets();
     o[0] == 100 && (o[1] & 0b1100_0000) == 0b0100_0000
 }
 
-fn is_blocked_v6(ip: Ipv6Addr) -> bool {
+const fn is_blocked_v6(ip: Ipv6Addr) -> bool {
     if ip.is_loopback() || ip.is_unspecified() {
         return true;
     }
@@ -135,7 +135,9 @@ mod tests {
     async fn test_validate_rejects_scheme() {
         let err = validate_import_url("file:///etc/passwd").await.unwrap_err();
         assert!(err.to_string().contains("scheme"));
-        let err = validate_import_url("ftp://example.com/x").await.unwrap_err();
+        let err = validate_import_url("ftp://example.com/x")
+            .await
+            .unwrap_err();
         assert!(err.to_string().contains("scheme"));
     }
 

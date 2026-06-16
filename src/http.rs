@@ -2,8 +2,8 @@ use axum::{
     Json, Router,
     extract::State,
     http::{HeaderMap, StatusCode, header},
-    response::{IntoResponse, Response},
     response::sse::{Event, Sse},
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use futures::stream::{self, Stream};
@@ -93,10 +93,7 @@ async fn handle_rpc(
 }
 
 /// Handle SSE subscriptions
-async fn handle_subscribe(
-    State(state): State<HttpState>,
-    headers: HeaderMap,
-) -> Response {
+async fn handle_subscribe(State(state): State<HttpState>, headers: HeaderMap) -> Response {
     if !http_authorized(&state, &headers) {
         warn!("SSE subscription rejected: unauthorized");
         return unauthorized();

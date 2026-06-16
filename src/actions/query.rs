@@ -442,10 +442,7 @@ mod tests {
 
     #[test]
     fn test_unquoted_semicolon_detected() {
-        assert_eq!(
-            first_unquoted_semicolon("SELECT 1; DROP TABLE x"),
-            Some(8)
-        );
+        assert_eq!(first_unquoted_semicolon("SELECT 1; DROP TABLE x"), Some(8));
     }
 
     #[test]
@@ -456,7 +453,10 @@ mod tests {
 
     #[test]
     fn test_semicolon_in_identifier_ignored() {
-        assert_eq!(first_unquoted_semicolon("SELECT \"weird;col\" FROM t"), None);
+        assert_eq!(
+            first_unquoted_semicolon("SELECT \"weird;col\" FROM t"),
+            None
+        );
     }
 
     #[test]

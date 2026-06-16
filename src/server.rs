@@ -679,7 +679,9 @@ mod tests {
         let data = b"hello world\nsecond line\n";
         let mut reader = BufReader::new(&data[..]);
         let mut line = String::new();
-        let n = read_line_capped(&mut reader, &mut line, 1024).await.unwrap();
+        let n = read_line_capped(&mut reader, &mut line, 1024)
+            .await
+            .unwrap();
         assert_eq!(n, "hello world\n".len());
         assert_eq!(line, "hello world\n");
     }
@@ -689,7 +691,9 @@ mod tests {
         let data = b"";
         let mut reader = BufReader::new(&data[..]);
         let mut line = String::new();
-        let n = read_line_capped(&mut reader, &mut line, 1024).await.unwrap();
+        let n = read_line_capped(&mut reader, &mut line, 1024)
+            .await
+            .unwrap();
         assert_eq!(n, 0);
     }
 
