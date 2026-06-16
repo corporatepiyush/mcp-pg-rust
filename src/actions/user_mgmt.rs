@@ -3,6 +3,25 @@ use serde_json::{Value, json};
 use tokio_postgres::Client;
 
 const MAX_IDENTIFIER_LEN: usize = 255;
+const MAX_PASSWORD_LEN: usize = 1024;
+
+/// Reject passwords containing control characters (NUL, newline, carriage
+/// return). They are escaped for quotes when interpolated into CREATE/ALTER
+/// statements, but control characters can still corrupt the statement, so they
+/// are disallowed outright.
+fn validate_password(pw: &str) -> MCPResult<()> {
+    if pw.len() > MAX_PASSWORD_LEN {
+        return Err(crate::errors::MCPError::InvalidParams(format!(
+            "'password' exceeds maximum length of {MAX_PASSWORD_LEN} characters"
+        )));
+    }
+    if pw.chars().any(|c| c.is_control()) {
+        return Err(crate::errors::MCPError::InvalidParams(
+            "'password' must not contain control characters".into(),
+        ));
+    }
+    Ok(())
+}
 
 pub async fn create_user(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
     let username = params
@@ -33,6 +52,7 @@ pub async fn create_user(client: &Client, params: &Option<&Value>) -> MCPResult<
 
     let mut sql = format!("CREATE USER {}", quote_ident(username));
     if let Some(pw) = password {
+        validate_password(pw)?;
         sql.push_str(&format!(" PASSWORD '{}'", pw.replace('\'', "''")));
     }
     if let Some(limit) = connection_limit {
@@ -96,6 +116,7 @@ pub async fn alter_user(client: &Client, params: &Option<&Value>) -> MCPResult<V
 
     let mut sql = format!("ALTER USER {}", quote_ident(username));
     if let Some(pw) = password {
+        validate_password(pw)?;
         sql.push_str(&format!(" PASSWORD '{}'", pw.replace('\'', "''")));
     }
     if let Some(limit) = connection_limit {
@@ -205,6 +226,7 @@ pub async fn alter_role(client: &Client, params: &Option<&Value>) -> MCPResult<V
 
     let mut sql = format!("ALTER ROLE {}", quote_ident(role_name));
     if let Some(pw) = password {
+        validate_password(pw)?;
         sql.push_str(&format!(" PASSWORD '{}'", pw.replace('\'', "''")));
     }
     if let Some(login) = can_login {
