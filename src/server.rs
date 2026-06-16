@@ -97,13 +97,16 @@ fn parse_request(line: &str) -> Result<JsonRpcRequest, String> {
 }
 
 pub struct MCPServer {
-    config: Config,
+    config: Arc<Config>,
     pool: Arc<ConnectionPool>,
 }
 
 impl MCPServer {
-    pub const fn new(config: Config, pool: Arc<ConnectionPool>) -> Self {
-        Self { config, pool }
+    pub fn new(config: Config, pool: Arc<ConnectionPool>) -> Self {
+        Self {
+            config: Arc::new(config),
+            pool,
+        }
     }
 
     /// Run in stdio mode for MCP compatibility (Claude Desktop, etc.)
@@ -154,7 +157,7 @@ impl MCPServer {
             }
 
             let pool = Arc::clone(&self.pool);
-            let config = self.config.clone();
+            let config = Arc::clone(&self.config);
 
             tokio::spawn(async move {
                 if let Err(e) = handle_client(socket, pool, config).await {
@@ -169,7 +172,7 @@ impl MCPServer {
 async fn handle_client(
     socket: TcpStream,
     pool: Arc<ConnectionPool>,
-    config: Config,
+    config: Arc<Config>,
 ) -> MCPResult<()> {
     let (reader, mut writer) = socket.into_split();
     let mut reader = BufReader::with_capacity(BUFFER_CAPACITY, reader);
