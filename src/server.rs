@@ -25,6 +25,61 @@ static TOOLS_LIST_RESPONSE: Lazy<Vec<u8>> = Lazy::new(|| {
 const BUFFER_CAPACITY: usize = 4096;
 const NEWLINE: &[u8] = b"\n";
 
+/// Maximum length of a single TCP request line. Bounds per-request memory so a
+/// client streaming bytes without a newline cannot grow the buffer without
+/// limit. Generous enough for large batch payloads (16 MiB).
+const MAX_REQUEST_BYTES: usize = 16 * 1024 * 1024;
+
+/// Time a TCP client has to send the auth token after connecting. Mitigates
+/// slowloris-style connections that open but never authenticate.
+const AUTH_HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Read one `\n`-terminated line into `line`, returning `InvalidData` if it
+/// would exceed `max_bytes`. Unlike `read_line`, memory is bounded to
+/// `max_bytes` regardless of how much an attacker streams without a newline.
+/// Returns `Ok(0)` on EOF.
+async fn read_line_capped<R>(
+    reader: &mut R,
+    line: &mut String,
+    max_bytes: usize,
+) -> std::io::Result<usize>
+where
+    R: AsyncBufReadExt + Unpin,
+{
+    use std::io::{Error, ErrorKind};
+    line.clear();
+    let mut buf: Vec<u8> = Vec::new();
+    loop {
+        let chunk = reader.fill_buf().await?;
+        if chunk.is_empty() {
+            break; // EOF
+        }
+        let (take, done) = match chunk.iter().position(|&b| b == b'\n') {
+            Some(i) => (i + 1, true),
+            None => (chunk.len(), false),
+        };
+        if buf.len() + take > max_bytes {
+            reader.consume(take);
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "request line exceeds maximum length",
+            ));
+        }
+        buf.extend_from_slice(&chunk[..take]);
+        reader.consume(take);
+        if done {
+            break;
+        }
+    }
+    if buf.is_empty() {
+        return Ok(0);
+    }
+    let s = String::from_utf8(buf)
+        .map_err(|_| Error::new(ErrorKind::InvalidData, "request line is not valid UTF-8"))?;
+    line.push_str(&s);
+    Ok(line.len())
+}
+
 #[inline]
 #[cold]
 fn parse_error(msg: String) -> JsonRpcResponse {
@@ -125,10 +180,14 @@ async fn handle_client(
     // Per-connection authentication handshake. When a token is configured,
     // the client must send it as the very first line before any JSON-RPC.
     if let Some(ref token) = config.server.auth_token {
-        line.clear();
-        match reader.read_line(&mut line).await {
-            Ok(0) => return Ok(()),
-            Ok(_) => {
+        let read = tokio::time::timeout(
+            AUTH_HANDSHAKE_TIMEOUT,
+            read_line_capped(&mut reader, &mut line, MAX_REQUEST_BYTES),
+        )
+        .await;
+        match read {
+            Ok(Ok(0)) => return Ok(()),
+            Ok(Ok(_)) => {
                 if !crate::auth::verify_token(token, line.trim()) {
                     warn!("Authentication failed; closing connection");
                     let _ = writer
@@ -141,16 +200,19 @@ async fn handle_client(
                     return Ok(());
                 }
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 error!("IO error during auth: {}", e);
+                return Ok(());
+            }
+            Err(_) => {
+                warn!("Authentication handshake timed out; closing connection");
                 return Ok(());
             }
         }
     }
 
     loop {
-        line.clear();
-        match reader.read_line(&mut line).await {
+        match read_line_capped(&mut reader, &mut line, MAX_REQUEST_BYTES).await {
             Ok(0) => break,
             Ok(_) => {
                 process_one_line(&line, &pool, &config, &mut response_buf, &mut writer).await?;
@@ -562,6 +624,37 @@ fn method_not_found(name: &str) -> MCPError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn test_read_line_capped_normal() {
+        let data = b"hello world\nsecond line\n";
+        let mut reader = BufReader::new(&data[..]);
+        let mut line = String::new();
+        let n = read_line_capped(&mut reader, &mut line, 1024).await.unwrap();
+        assert_eq!(n, "hello world\n".len());
+        assert_eq!(line, "hello world\n");
+    }
+
+    #[tokio::test]
+    async fn test_read_line_capped_eof() {
+        let data = b"";
+        let mut reader = BufReader::new(&data[..]);
+        let mut line = String::new();
+        let n = read_line_capped(&mut reader, &mut line, 1024).await.unwrap();
+        assert_eq!(n, 0);
+    }
+
+    #[tokio::test]
+    async fn test_read_line_capped_rejects_oversized() {
+        // No newline, longer than the cap -> InvalidData error, bounded memory.
+        let data = vec![b'a'; 5000];
+        let mut reader = BufReader::new(&data[..]);
+        let mut line = String::new();
+        let err = read_line_capped(&mut reader, &mut line, 1024)
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    }
 
     #[test]
     fn test_parse_valid_request() {
