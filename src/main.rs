@@ -31,9 +31,16 @@ async fn main() -> Result<()> {
         info!("Metrics enabled on port {}", args.metrics_port);
     }
 
-    // Create connection pool
+    // Create connection pool. The server's request_timeout is enforced at the
+    // database as a per-connection statement_timeout so no single query can pin
+    // a pooled connection indefinitely.
     let pool = std::sync::Arc::new(
-        pool::ConnectionPool::new(&config.database.url, config.pool.clone()).await?,
+        pool::ConnectionPool::with_statement_timeout(
+            &config.database.url,
+            config.pool.clone(),
+            config.server.request_timeout,
+        )
+        .await?,
     );
     info!(
         "Connection pool initialized: min={}, max={}",

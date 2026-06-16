@@ -26,13 +26,28 @@ pub struct ConnectionPool {
 
 impl ConnectionPool {
     pub async fn new(connection_string: &str, config: PoolConfig) -> anyhow::Result<Self> {
+        Self::with_statement_timeout(connection_string, config, Duration::ZERO).await
+    }
+
+    /// Create a pool whose connections enforce a server-side `statement_timeout`.
+    ///
+    /// A non-zero `statement_timeout` caps how long any single query may run,
+    /// preventing a slow/runaway query from pinning a pooled connection
+    /// indefinitely. A value of `Duration::ZERO` leaves PostgreSQL's default
+    /// (unlimited) in place.
+    pub async fn with_statement_timeout(
+        connection_string: &str,
+        config: PoolConfig,
+        statement_timeout: Duration,
+    ) -> anyhow::Result<Self> {
         debug!(
-            "Creating lock-free connection pool: max_size={}",
-            config.max_size
+            "Creating lock-free connection pool: max_size={}, statement_timeout={:?}",
+            config.max_size, statement_timeout
         );
 
         let conn_string = connection_string.to_string();
         let create_timeout = Duration::from_secs(5);
+        let stmt_timeout_ms = statement_timeout.as_millis();
 
         let create = {
             let cs = conn_string.clone();
@@ -43,6 +58,17 @@ impl ConnectionPool {
                         .await
                         .map_err(|e| e.to_string())?;
                     tokio::spawn(connection);
+                    // Apply a per-connection statement_timeout so no single query
+                    // can hold a pooled connection forever. Session-level (not LOCAL)
+                    // so it persists for every query on this connection.
+                    if stmt_timeout_ms > 0 {
+                        client
+                            .batch_execute(&format!(
+                                "SET statement_timeout TO '{stmt_timeout_ms}'"
+                            ))
+                            .await
+                            .map_err(|e| e.to_string())?;
+                    }
                     Ok(client)
                 }) as BoxFuture<'static, Result<Client, String>>
             }) as CreateFn<Client>
