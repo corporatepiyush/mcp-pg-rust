@@ -26,7 +26,7 @@ pub struct ConnectionPool {
 
 impl ConnectionPool {
     pub async fn new(connection_string: &str, config: PoolConfig) -> anyhow::Result<Self> {
-        Self::with_statement_timeout(connection_string, config, Duration::ZERO).await
+        Self::with_session_setup(connection_string, config, Duration::ZERO, false).await
     }
 
     /// Create a pool whose connections enforce a server-side `statement_timeout`.
@@ -40,9 +40,25 @@ impl ConnectionPool {
         config: PoolConfig,
         statement_timeout: Duration,
     ) -> anyhow::Result<Self> {
+        Self::with_session_setup(connection_string, config, statement_timeout, false).await
+    }
+
+    /// Create a pool, optionally enforcing `statement_timeout` and a read-only
+    /// default transaction mode on every connection.
+    ///
+    /// When `read_only` is true, each connection runs
+    /// `SET default_transaction_read_only = on`, so every statement (including
+    /// volatile functions invoked from a SELECT) is rejected at the database if
+    /// it attempts a write — a stronger guarantee than tool-name filtering.
+    pub async fn with_session_setup(
+        connection_string: &str,
+        config: PoolConfig,
+        statement_timeout: Duration,
+        read_only: bool,
+    ) -> anyhow::Result<Self> {
         debug!(
-            "Creating lock-free connection pool: max_size={}, statement_timeout={:?}",
-            config.max_size, statement_timeout
+            "Creating lock-free connection pool: max_size={}, statement_timeout={:?}, read_only={}",
+            config.max_size, statement_timeout, read_only
         );
 
         let conn_string = connection_string.to_string();
@@ -86,6 +102,14 @@ impl ConnectionPool {
                             .batch_execute(&format!(
                                 "SET statement_timeout TO '{stmt_timeout_ms}'"
                             ))
+                            .await
+                            .map_err(|e| e.to_string())?;
+                    }
+                    // Restricted (read-only) mode: enforce at the database so a
+                    // write attempted from any statement is rejected.
+                    if read_only {
+                        client
+                            .batch_execute("SET default_transaction_read_only = on")
                             .await
                             .map_err(|e| e.to_string())?;
                     }
