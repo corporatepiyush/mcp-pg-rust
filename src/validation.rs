@@ -33,6 +33,50 @@ pub fn quote_identifier(name: &str) -> String {
     quote_ident(name)
 }
 
+/// PostgreSQL privilege keywords accepted by GRANT/REVOKE.
+const VALID_PRIVILEGES: &[&str] = &[
+    "SELECT",
+    "INSERT",
+    "UPDATE",
+    "DELETE",
+    "TRUNCATE",
+    "REFERENCES",
+    "TRIGGER",
+    "CREATE",
+    "CONNECT",
+    "TEMPORARY",
+    "TEMP",
+    "EXECUTE",
+    "USAGE",
+    "MAINTAIN",
+    "ALL",
+    "ALL PRIVILEGES",
+];
+
+/// Validate a privilege specification for GRANT/REVOKE. Accepts a
+/// comma-separated list of known privilege keywords (case-insensitive), e.g.
+/// `"SELECT, INSERT"` or `"ALL PRIVILEGES"`. Rejects anything else so the
+/// value can be safely interpolated into the statement.
+pub fn validate_privilege_list(privilege: &str) -> Result<(), MCPError> {
+    let trimmed = privilege.trim();
+    if trimmed.is_empty() {
+        return Err(MCPError::InvalidParams(
+            "'privilege' must not be empty".into(),
+        ));
+    }
+    for part in trimmed.split(',') {
+        let token = part.trim().to_ascii_uppercase();
+        if !VALID_PRIVILEGES.contains(&token.as_str()) {
+            return Err(MCPError::InvalidParams(format!(
+                "Invalid privilege '{}'. Allowed: {}",
+                part.trim(),
+                VALID_PRIVILEGES.join(", ")
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Quote a PostgreSQL identifier, escaping embedded double-quotes.
 /// Use this instead of duplicating `format!("\"{}\"", s.replace('"', "\"\""))` in every module.
 pub fn quote_ident(name: &str) -> String {
@@ -88,5 +132,21 @@ mod tests {
     fn test_quote_identifier() {
         assert_eq!(quote_identifier("users"), "\"users\"");
         assert_eq!(quote_identifier("order_items"), "\"order_items\"");
+    }
+
+    #[test]
+    fn test_validate_privilege_list_valid() {
+        assert!(validate_privilege_list("SELECT").is_ok());
+        assert!(validate_privilege_list("select, insert").is_ok());
+        assert!(validate_privilege_list("ALL PRIVILEGES").is_ok());
+        assert!(validate_privilege_list("SELECT, UPDATE, DELETE").is_ok());
+    }
+
+    #[test]
+    fn test_validate_privilege_list_rejects_injection() {
+        let err = validate_privilege_list("SELECT ON pg_authid TO attacker; --").unwrap_err();
+        assert!(err.to_string().contains("Invalid privilege"));
+        assert!(validate_privilege_list("").is_err());
+        assert!(validate_privilege_list("DROP").is_err());
     }
 }

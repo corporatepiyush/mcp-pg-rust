@@ -43,6 +43,29 @@ pub async fn import_from_url(client: &Client, params: &Option<&Value>) -> MCPRes
         .as_ref()
         .and_then(|p| p.get("columns").and_then(|v| v.as_str()));
 
+    // COPY requires a single-character delimiter; reject anything else so the
+    // value cannot smuggle extra COPY options.
+    if delimiter.chars().count() != 1 {
+        return Err(crate::errors::MCPError::InvalidParams(
+            "'delimiter' must be a single character".into(),
+        ));
+    }
+
+    // Validate the optional column list as identifiers and rebuild it quoted,
+    // instead of interpolating the raw string into the COPY statement.
+    let col_clause = match columns {
+        Some(c) => {
+            let mut quoted = Vec::new();
+            for col in c.split(',') {
+                let col = col.trim();
+                crate::validation::validate_identifier(col, "column")?;
+                quoted.push(quote_ident(col));
+            }
+            format!(" ({})", quoted.join(", "))
+        }
+        None => String::new(),
+    };
+
     // SSRF guard: only http(s), and the host must resolve to a public address.
     crate::ssrf::validate_import_url(url).await?;
 
@@ -93,7 +116,6 @@ pub async fn import_from_url(client: &Client, params: &Option<&Value>) -> MCPRes
     }
     let content: Bytes = buf.freeze();
 
-    let col_clause = columns.map(|c| format!(" ({})", c)).unwrap_or_default();
     let copy_sql = format!(
         "COPY {} FROM STDIN (FORMAT csv, HEADER {}, DELIMITER '{}'){}",
         qualified,
@@ -140,6 +162,12 @@ pub async fn export_csv(client: &Client, params: &Option<&Value>) -> MCPResult<V
         .and_then(|p| p.get("limit").and_then(|v| v.as_i64()))
         .unwrap_or(10000)
         .min(100000);
+
+    if delimiter.chars().count() != 1 {
+        return Err(crate::errors::MCPError::InvalidParams(
+            "'delimiter' must be a single character".into(),
+        ));
+    }
 
     let sql = match (query, table) {
         (Some(q), _) => {

@@ -284,6 +284,8 @@ pub async fn grant_privileges(client: &Client, params: &Option<&Value>) -> MCPRe
         .and_then(|p| p.get("schema").and_then(|v| v.as_str()))
         .unwrap_or("public");
 
+    crate::validation::validate_privilege_list(privilege)?;
+
     let valid_types = [
         "table",
         "sequence",
@@ -348,6 +350,8 @@ pub async fn revoke_privileges(client: &Client, params: &Option<&Value>) -> MCPR
         .as_ref()
         .and_then(|p| p.get("schema").and_then(|v| v.as_str()))
         .unwrap_or("public");
+
+    crate::validation::validate_privilege_list(privilege)?;
 
     let valid_types = [
         "table",
