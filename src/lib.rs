@@ -1,4 +1,5 @@
 pub mod actions;
+pub mod auth;
 pub mod config;
 pub mod errors;
 pub mod http;
@@ -59,4 +60,10 @@ pub struct Args {
     /// Access mode: unrestricted (full read/write) or restricted (read-only)
     #[arg(long, default_value = "unrestricted")]
     pub access_mode: config::AccessMode,
+
+    /// Shared secret required for TCP/HTTP requests (falls back to env
+    /// MCP_AUTH_TOKEN). Required when binding to a non-loopback address.
+    /// Not used in stdio mode.
+    #[arg(long)]
+    pub auth_token: Option<String>,
 }

@@ -53,6 +53,10 @@ pub struct ServerConfig {
     pub port: u16,
     pub request_timeout: Duration,
     pub access_mode: AccessMode,
+    /// Shared secret required for TCP/HTTP transports. `None` means no auth
+    /// (only permitted on loopback binds).
+    #[serde(default)]
+    pub auth_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,6 +83,12 @@ impl Config {
         let min_size = args.min_connections.unwrap_or(5);
         let max_size = args.max_connections.unwrap_or(20);
 
+        let auth_token = args
+            .auth_token
+            .clone()
+            .or_else(|| std::env::var("MCP_AUTH_TOKEN").ok())
+            .filter(|t| !t.is_empty());
+
         Ok(Config {
             database: DatabaseConfig { url: database_url },
             server: ServerConfig {
@@ -86,6 +96,7 @@ impl Config {
                 port: args.port,
                 request_timeout: Duration::from_secs(30),
                 access_mode: args.access_mode,
+                auth_token,
             },
             pool: PoolConfig {
                 min_size,
@@ -111,6 +122,7 @@ impl Default for Config {
                 port: 3000,
                 request_timeout: Duration::from_secs(30),
                 access_mode: AccessMode::Unrestricted,
+                auth_token: None,
             },
             pool: PoolConfig {
                 min_size: 5,

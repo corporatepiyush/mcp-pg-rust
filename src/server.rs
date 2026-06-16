@@ -122,6 +122,32 @@ async fn handle_client(
     // 4 KB initial capacity — grows geometrically for large responses.
     let mut response_buf = Vec::with_capacity(4096);
 
+    // Per-connection authentication handshake. When a token is configured,
+    // the client must send it as the very first line before any JSON-RPC.
+    if let Some(ref token) = config.server.auth_token {
+        line.clear();
+        match reader.read_line(&mut line).await {
+            Ok(0) => return Ok(()),
+            Ok(_) => {
+                if !crate::auth::verify_token(token, line.trim()) {
+                    warn!("Authentication failed; closing connection");
+                    let _ = writer
+                        .write_all(
+                            b"{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\
+                              \"message\":\"Unauthorized\"},\"id\":null}\n",
+                        )
+                        .await;
+                    let _ = writer.flush().await;
+                    return Ok(());
+                }
+            }
+            Err(e) => {
+                error!("IO error during auth: {}", e);
+                return Ok(());
+            }
+        }
+    }
+
     loop {
         line.clear();
         match reader.read_line(&mut line).await {

@@ -25,6 +25,23 @@ async fn main() -> Result<()> {
     // Load configuration
     let config = config::Config::from_args(&args)?;
 
+    // Security: refuse to expose a network transport without authentication
+    // when bound to a non-loopback address. Loopback-only binds remain open
+    // for local development; stdio mode is a trusted local pipe.
+    if !args.stdio
+        && config.server.auth_token.is_none()
+        && !mcp_postgres::auth::is_loopback_host(&config.server.host)
+    {
+        anyhow::bail!(
+            "Refusing to bind to non-loopback host '{}' without an auth token. \
+             Set --auth-token or the MCP_AUTH_TOKEN env var, or bind to a loopback address.",
+            config.server.host
+        );
+    }
+    if config.server.auth_token.is_some() {
+        info!("Transport authentication: ENABLED (token required on TCP and HTTP)");
+    }
+
     // Initialize metrics if enabled
     if args.enable_metrics {
         metrics::init_metrics(args.metrics_port)?;
