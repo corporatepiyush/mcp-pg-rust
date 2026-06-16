@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.0.6] - 2026-06-16
+
+### 🔴 SECURITY
+
+- **`create_table`/`create_partition` blocked `/*` comments (C4)**: column definitions and values parameters now reject `/*` block-comment injection, closing a gap where the prior `;` and `--` checks could be bypassed.
+- **`export_csv` SQL-prefix validation (C5)**: replaced weak `starts_with("SELECT")` with full `validate_sql` check, blocking comment-prefix smuggling.
+
+### ⚡ PERFORMANCE / MEMORY
+
+- **Zero-copy `read_line_capped`**: decode bytes directly into `String` via `str::from_utf8` + `push_str`, eliminating one `Vec<u8>` allocation per request.
+- **Streaming `import_from_url`**: open COPY sink before HTTP fetch, pipe response chunks directly via `sink.send()` — removed intermediate `BytesMut`/`Bytes` buffer (was buffering entire file).
+- **`response_buf` auto-shrink**: replace `Vec` with a fresh 4 KB allocation when capacity exceeds 64 KB, reclaiming memory after large exports.
+
+### 🐛 CORRECTNESS
+
+- **`async_batch_insert_copy` row cap**: raised the contradictory 1000-row limit to `MAX_BATCH_COPY_ROWS = 100_000` so chunking actually works; added `MAX_BATCH_SIZE = 5_000` bound on `batch_size` parameter.
+- **`async_batch_insert_copy` transactional safety**: now wraps all chunks in `BEGIN`/`SET LOCAL synchronous_commit=OFF`/`COMMIT` with `ROLLBACK` on failure.
+- **`backup_table` index-def schema support**: queried `schemaname` from `pg_indexes` to handle schema-qualified table references in index definitions.
+- **`auth_token` leak prevention**: added `#[serde(skip_serializing)]` to `ServerConfig.auth_token`.
+
 ## [4.0.5] - 2026-06-16
 
 Security hardening and correctness release from the optimization/security review.

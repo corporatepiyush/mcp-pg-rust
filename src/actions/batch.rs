@@ -324,6 +324,13 @@ pub async fn async_batch_delete(client: &Client, params: &Option<&Value>) -> MCP
     }
 }
 
+/// Maximum rows in a single async_batch_insert_copy request. Memory is bounded
+/// by per-chunk `batch_size` (default 1,000, max 5,000) and the JSON-RPC request
+/// size cap (16 MiB from `MAX_REQUEST_BYTES`). This allows truly large imports
+/// where the caller provides 10K+ rows, unlike `async_batch_insert` which has
+/// a hard cap of 1,000 and builds one SQL statement.
+const MAX_BATCH_COPY_ROWS: usize = 100_000;
+
 /// Batch insert with auto-batching for massive loads
 pub async fn async_batch_insert_copy(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
     let params = params
@@ -345,18 +352,20 @@ pub async fn async_batch_insert_copy(client: &Client, params: &Option<&Value>) -
         .and_then(|v| v.as_array())
         .ok_or_else(|| MCPError::InvalidParams("Missing 'rows'".into()))?;
 
-    let batch_size = params
+    const MAX_BATCH_SIZE: usize = 5_000;
+    let batch_size = (params
         .get("batch_size")
         .and_then(|v| v.as_u64())
-        .unwrap_or(1000) as usize;
+        .unwrap_or(1000) as usize)
+        .min(MAX_BATCH_SIZE);
 
     if rows.is_empty() {
         return Ok(json!({"rows_affected": 0}));
     }
 
-    if rows.len() > MAX_BATCH_ROWS {
+    if rows.len() > MAX_BATCH_COPY_ROWS {
         return Err(MCPError::InvalidParams(format!(
-            "Batch size exceeds maximum of {MAX_BATCH_ROWS} rows (got {})",
+            "Batch copy size exceeds maximum of {MAX_BATCH_COPY_ROWS} rows (got {})",
             rows.len()
         )));
     }
@@ -366,6 +375,13 @@ pub async fn async_batch_insert_copy(client: &Client, params: &Option<&Value>) -
 
     let quoted_table = quote_ident(table);
     let quoted_cols: Vec<String> = column_names.iter().map(|c| quote_ident(c)).collect();
+
+    // Wrap the entire import in a transaction with synchronous_commit=OFF
+    // for throughput, matching async_batch_insert behavior.
+    client.execute("BEGIN", &[]).await?;
+    client
+        .execute("SET LOCAL synchronous_commit = OFF", &[])
+        .await?;
 
     let mut total_affected = 0u64;
 
@@ -387,9 +403,16 @@ pub async fn async_batch_insert_copy(client: &Client, params: &Option<&Value>) -
 
         sql.push_str(&value_parts.join(", "));
 
-        let rows_affected = client.execute(&sql, &[]).await?;
-        total_affected += rows_affected;
+        match client.execute(&sql, &[]).await {
+            Ok(n) => total_affected += n,
+            Err(e) => {
+                client.execute("ROLLBACK", &[]).await.ok();
+                return Err(MCPError::DatabaseError(e));
+            }
+        }
     }
+
+    client.execute("COMMIT", &[]).await?;
 
     #[allow(clippy::cast_precision_loss)]
     let batches = (rows.len() as f64 / batch_size as f64).ceil() as u32;

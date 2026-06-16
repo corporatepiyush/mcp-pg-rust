@@ -725,7 +725,7 @@
         "table": {"type": "string", "description": "Target table (required). Example: 'users', 'events'. Case-insensitive. Should be empty for best performance."},
         "columns": {"type": "array", "items": {"type": "string"}, "description": "Column names in order (required). Example: ['id', 'event_type', 'timestamp']. All must exist."},
         "rows": {"type": "array", "items": {"type": "array"}, "description": "Rows to insert (required). Can be huge (10K+, 100K+). Each row must have matching column count."},
-        "batch_size": {"type": "integer", "description": "Rows per batch (optional, default: 1,000). Range: 100-5,000. Larger = faster but more memory. For 100K+ use 1,000-2,000."}
+        "batch_size": {"type": "integer", "description": "Rows per batch (optional, default: 1,000, max: 5,000). Larger = faster but more memory. Max 5,000; for 100K+ rows use 1,000-2,000."}
       },
       "required": ["table", "columns", "rows"]
     }

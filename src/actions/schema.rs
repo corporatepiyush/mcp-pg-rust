@@ -537,7 +537,7 @@ pub async fn create_partition(client: &Client, params: &Option<&Value>) -> MCPRe
             "Missing 'values' parameter (FOR RANGE: 'FROM (x) TO (y)' or FOR LIST: 'IN (values)' or FOR HASH: 'MODULUS n REMAINDER r')".into()
         ))?;
 
-    if values.contains(';') || values.contains("--") {
+    if values.contains(';') || values.contains("--") || values.contains("/*") {
         return Err(MCPError::InvalidParams(
             "Invalid 'values' parameter: semicolons and SQL comments not allowed".into(),
         ));
@@ -630,7 +630,7 @@ pub async fn create_table(client: &Client, params: &Option<&Value>) -> MCPResult
             )));
         }
 
-        if col_def.contains(';') || col_def.contains("--") {
+        if col_def.contains(';') || col_def.contains("--") || col_def.contains("/*") {
             return Err(MCPError::InvalidParams(format!(
                 "Column {} definition contains dangerous SQL patterns",
                 idx
@@ -1119,15 +1119,20 @@ pub async fn backup_table(client: &Client, params: &Option<&Value>) -> MCPResult
     let mut indexes_created = 0;
     for idx_name in indexes {
         let new_idx_name = format!("{}_on_{}", idx_name, backup_name);
-        let idx_def: String = client
+        let row = client
             .query_one(
-                "SELECT indexdef FROM pg_indexes WHERE indexname = $1",
+                "SELECT indexdef, schemaname FROM pg_indexes WHERE indexname = $1",
                 &[&idx_name],
             )
-            .await?
-            .get(0);
+            .await?;
+        let idx_def: String = row.get(0);
+        let schema: String = row.get(1);
 
         let updated_def = idx_def
+            .replace(
+                &format!("ON {}.{}", schema, table),
+                &format!("ON {}.{}", schema, backup_name),
+            )
             .replace(&format!("ON {}", table), &format!("ON {}", backup_name))
             .replace(&idx_name, &new_idx_name);
 

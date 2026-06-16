@@ -1,6 +1,5 @@
 use crate::errors::Result as MCPResult;
 use crate::validation::quote_ident;
-use bytes::{Bytes, BytesMut};
 use futures::SinkExt;
 use futures::StreamExt;
 use serde_json::{Value, json};
@@ -79,6 +78,18 @@ pub async fn import_from_url(client: &Client, params: &Option<&Value>) -> MCPRes
             .await?;
     }
 
+    // Build the COPY SQL early so we can open the sink before the HTTP fetch.
+    let copy_sql = format!(
+        "COPY {} FROM STDIN (FORMAT csv, HEADER {}, DELIMITER '{}'){}",
+        qualified,
+        if header { "true" } else { "false" },
+        delimiter.replace('\'', "''"),
+        col_clause,
+    );
+
+    // Open the COPY sink first — chunks stream directly into it.
+    let mut sink = Box::pin(client.copy_in(&copy_sql).await?);
+
     // Disable redirects (a 3xx could redirect to a blocked internal address)
     // and bound the request time.
     let http = reqwest::Client::builder()
@@ -100,34 +111,23 @@ pub async fn import_from_url(client: &Client, params: &Option<&Value>) -> MCPRes
         )));
     }
 
-    // Stream the body with a hard size cap so a huge/endless response cannot
-    // exhaust memory.
-    let mut buf = BytesMut::new();
+    // Stream body chunks directly into the COPY sink instead of buffering
+    // the entire file. A hard size cap still bounds worst-case memory.
     let mut stream = resp.bytes_stream();
+    let mut total_bytes: usize = 0;
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| {
             crate::errors::MCPError::InvalidParams(format!("Failed to read response body: {}", e))
         })?;
-        if buf.len() + chunk.len() > MAX_IMPORT_BYTES {
+        total_bytes += chunk.len();
+        if total_bytes > MAX_IMPORT_BYTES {
             return Err(crate::errors::MCPError::InvalidParams(format!(
                 "Response body exceeds maximum import size of {} bytes",
                 MAX_IMPORT_BYTES
             )));
         }
-        buf.extend_from_slice(&chunk);
+        sink.as_mut().send(chunk).await?;
     }
-    let content: Bytes = buf.freeze();
-
-    let copy_sql = format!(
-        "COPY {} FROM STDIN (FORMAT csv, HEADER {}, DELIMITER '{}'){}",
-        qualified,
-        if header { "true" } else { "false" },
-        delimiter.replace('\'', "''"),
-        col_clause,
-    );
-
-    let mut sink = Box::pin(client.copy_in(&copy_sql).await?);
-    sink.as_mut().send(content).await?;
     // finish() flushes, ends the COPY, and returns the number of rows imported.
     let count = sink.as_mut().finish().await?;
 
@@ -173,14 +173,9 @@ pub async fn export_csv(client: &Client, params: &Option<&Value>) -> MCPResult<V
 
     let sql = match (query, table) {
         (Some(q), _) => {
+            crate::actions::query::validate_sql(q, "SELECT", "SELECT")?;
             let trimmed = q.trim();
-            if trimmed.to_uppercase().starts_with("SELECT") {
-                format!("({}) AS _export", trimmed.trim_end_matches(';'))
-            } else {
-                return Err(crate::errors::MCPError::InvalidParams(
-                    "Query must be a SELECT statement".into(),
-                ));
-            }
+            format!("({}) AS _export", trimmed.trim_end_matches(';'))
         }
         (None, Some(t)) => format!("{}.{}", quote_ident(schema), quote_ident(t)),
         (None, None) => {

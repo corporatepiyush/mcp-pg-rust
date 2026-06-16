@@ -94,7 +94,7 @@ fn to_hex(bytes: &[u8]) -> String {
     s
 }
 
-fn validate_sql(
+pub(crate) fn validate_sql(
     sql: &str,
     allowed_prefix: &str,
     label: &str,

@@ -38,6 +38,9 @@ const AUTH_HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_se
 /// would exceed `max_bytes`. Unlike `read_line`, memory is bounded to
 /// `max_bytes` regardless of how much an attacker streams without a newline.
 /// Returns `Ok(0)` on EOF.
+///
+/// Performance: reads chunk bytes directly into the `line` String's buffer,
+/// avoiding an intermediate `Vec<u8>` allocation per request.
 async fn read_line_capped<R>(
     reader: &mut R,
     line: &mut String,
@@ -48,35 +51,35 @@ where
 {
     use std::io::{Error, ErrorKind};
     line.clear();
-    let mut buf: Vec<u8> = Vec::new();
+    let mut total: usize = 0;
     loop {
         let chunk = reader.fill_buf().await?;
         if chunk.is_empty() {
-            break; // EOF
+            break;
         }
         let (take, done) = match chunk.iter().position(|&b| b == b'\n') {
             Some(i) => (i + 1, true),
             None => (chunk.len(), false),
         };
-        if buf.len() + take > max_bytes {
+        if total + take > max_bytes {
             reader.consume(take);
             return Err(Error::new(
                 ErrorKind::InvalidData,
                 "request line exceeds maximum length",
             ));
         }
-        buf.extend_from_slice(&chunk[..take]);
+        let s = std::str::from_utf8(&chunk[..take])
+            .map_err(|_| Error::new(ErrorKind::InvalidData, "request line is not valid UTF-8"))?;
+        line.push_str(s);
+        total += take;
         reader.consume(take);
         if done {
             break;
         }
     }
-    if buf.is_empty() {
+    if line.is_empty() {
         return Ok(0);
     }
-    let s = String::from_utf8(buf)
-        .map_err(|_| Error::new(ErrorKind::InvalidData, "request line is not valid UTF-8"))?;
-    line.push_str(&s);
     Ok(line.len())
 }
 
@@ -258,6 +261,7 @@ async fn process_one_line<W: AsyncWriteExt + Unpin>(
                     response_buf.extend_from_slice(NEWLINE);
                     writer.write_all(response_buf).await?;
                     writer.flush().await?;
+                    maybe_shrink_buf(response_buf);
                 }
                 // notification (no id) expects no response
                 return Ok(());
@@ -292,7 +296,17 @@ async fn process_one_line<W: AsyncWriteExt + Unpin>(
 
     writer.write_all(response_buf).await?;
     writer.flush().await?;
+    maybe_shrink_buf(response_buf);
     Ok(())
+}
+
+/// If the response buffer grew large for a previous request, release the
+/// excess memory so a subsequent small request doesn't waste address space.
+/// Replace with a fresh small allocation when capacity exceeds 64 KB.
+fn maybe_shrink_buf(buf: &mut Vec<u8>) {
+    if buf.capacity() > 65536 {
+        *buf = Vec::with_capacity(4096);
+    }
 }
 
 /// Process a JSON-RPC request (used by both TCP and HTTP transports)

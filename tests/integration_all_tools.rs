@@ -2107,3 +2107,112 @@ fn test_tool_48d_async_execute_delete_missing_sql() {
         }
     }
 }
+
+// ============ SQL INJECTION: /* in create_table column definitions ============
+#[test]
+fn test_security_create_table_block_comment_in_col() {
+    match tcp_request(
+        "create_table",
+        json!({
+            "table": "test_sec_comment",
+            "columns": ["id int /*, admin boolean */"]
+        }),
+    ) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ create_table security: correctly rejected /* in column definition");
+            } else {
+                panic!("✗ create_table should reject /* in column definition");
+            }
+        }
+        Err(_) => {
+            println!("✓ create_table security: correctly rejected /* in column definition");
+        }
+    }
+}
+
+// ============ SQL INJECTION: /* in create_partition values ============
+#[test]
+fn test_security_create_partition_block_comment() {
+    drop_if_exists("test_part_sec");
+    drop_if_exists("test_parent_sec");
+    // Create parent table first (may work or fail depending on setup)
+    let _ = tcp_request(
+        "create_table",
+        json!({
+            "table": "test_parent_sec",
+            "columns": ["id int", "name text"]
+        }),
+    );
+    match tcp_request(
+        "create_partition",
+        json!({
+            "table": "test_parent_sec",
+            "partition_name": "test_part_sec",
+            "partition_type": "RANGE",
+            "column": "id",
+            "values": "FROM (1) TO (100) /*, DROP TABLE test_parent_sec */"
+        }),
+    ) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ create_partition security: correctly rejected /* in values");
+            } else {
+                panic!("✗ create_partition should reject /* in values");
+            }
+        }
+        Err(_) => {
+            println!("✓ create_partition security: correctly rejected /* in values");
+        }
+    }
+    let _ = tcp_request("drop_table", json!({"table": "test_parent_sec", "if_exists": true}));
+}
+
+// ============ async_batch_insert_copy clamping: batch_size cap at 5000 ============
+#[test]
+fn test_tool_13b_async_batch_insert_copy_clamping() {
+    // batch_size > 5000 should be clamped, not error
+    match tcp_request(
+        "async_batch_insert_copy",
+        json!({
+            "table": "pg_tables",
+            "columns": ["schemaname"],
+            "rows": [["public"]],
+            "batch_size": 99999
+        }),
+    ) {
+        Ok(response) => {
+            let result = response.get("result");
+            assert!(result.is_some(), "Expected result even with oversize batch_size");
+            println!("✓ async_batch_insert_copy: batch_size=99999 clamped without error");
+        }
+        Err(e) => {
+            println!("✓ async_batch_insert_copy: batch_size=99999 (skipped - read-only table): {}", e);
+        }
+    }
+}
+
+// ============ async_batch_insert_copy clamping: MAX_BATCH_COPY_ROWS cap ============
+#[test]
+fn test_tool_13c_async_batch_insert_copy_max_rows_exceeded() {
+    let many_rows: Vec<Vec<&str>> = (0..100_001).map(|_| vec!["val"]).collect();
+    match tcp_request(
+        "async_batch_insert_copy",
+        json!({
+            "table": "pg_tables",
+            "columns": ["schemaname"],
+            "rows": many_rows
+        }),
+    ) {
+        Ok(response) => {
+            if response.get("error").is_some() && !response.get("error").unwrap().is_null() {
+                println!("✓ async_batch_insert_copy: correctly rejected >100K rows");
+            } else {
+                panic!("✗ async_batch_insert_copy should reject >100K rows");
+            }
+        }
+        Err(_) => {
+            println!("✓ async_batch_insert_copy: correctly rejected >100K rows");
+        }
+    }
+}

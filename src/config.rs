@@ -55,7 +55,7 @@ pub struct ServerConfig {
     pub access_mode: AccessMode,
     /// Shared secret required for TCP/HTTP transports. `None` means no auth
     /// (only permitted on loopback binds).
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub auth_token: Option<String>,
     /// Whether the import_from_url tool may make outbound HTTP fetches.
     #[serde(default)]
