@@ -32,7 +32,7 @@ CREATE TABLE accounts (
     id SERIAL PRIMARY KEY,
     customer_id INT NOT NULL REFERENCES customers(id),
     account_type VARCHAR(50),
-    balance DECIMAL(12, 2) DEFAULT 0,
+    balance DOUBLE PRECISION DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -50,7 +50,7 @@ CREATE TABLE products (
     category_id INT NOT NULL REFERENCES categories(id),
     name VARCHAR(255) NOT NULL,
     description TEXT,
-    price DECIMAL(10, 2),
+    price DOUBLE PRECISION,
     stock_quantity INT DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -70,7 +70,7 @@ CREATE TABLE orders (
     id SERIAL PRIMARY KEY,
     customer_id INT NOT NULL REFERENCES customers(id),
     order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    total_amount DECIMAL(12, 2),
+    total_amount DOUBLE PRECISION,
     status VARCHAR(50) DEFAULT 'pending',
     shipping_address TEXT
 );
@@ -81,7 +81,7 @@ CREATE TABLE order_items (
     order_id INT NOT NULL REFERENCES orders(id),
     product_id INT NOT NULL REFERENCES products(id),
     quantity INT,
-    unit_price DECIMAL(10, 2)
+    unit_price DOUBLE PRECISION
 );
 
 -- 8. Invoices table
@@ -90,8 +90,8 @@ CREATE TABLE invoices (
     order_id INT NOT NULL REFERENCES orders(id),
     invoice_number VARCHAR(100) UNIQUE,
     invoice_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    due_date DATE,
-    amount_due DECIMAL(12, 2),
+    due_date VARCHAR(20),
+    amount_due DOUBLE PRECISION,
     status VARCHAR(50) DEFAULT 'unpaid'
 );
 
@@ -100,7 +100,7 @@ CREATE TABLE payments (
     id SERIAL PRIMARY KEY,
     invoice_id INT NOT NULL REFERENCES invoices(id),
     payment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    amount DECIMAL(12, 2),
+    amount DOUBLE PRECISION,
     payment_method VARCHAR(50),
     status VARCHAR(50) DEFAULT 'completed'
 );
@@ -110,8 +110,8 @@ CREATE TABLE subscriptions (
     id SERIAL PRIMARY KEY,
     customer_id INT NOT NULL REFERENCES customers(id),
     plan_type VARCHAR(50),
-    start_date DATE,
-    end_date DATE,
+    start_date VARCHAR(20),
+    end_date VARCHAR(20),
     status VARCHAR(50) DEFAULT 'active',
     auto_renew BOOLEAN DEFAULT true
 );
@@ -121,7 +121,7 @@ CREATE TABLE transactions (
     id SERIAL PRIMARY KEY,
     account_id INT NOT NULL REFERENCES accounts(id),
     transaction_type VARCHAR(50),
-    amount DECIMAL(12, 2),
+    amount DOUBLE PRECISION,
     description TEXT,
     transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     status VARCHAR(50) DEFAULT 'completed'

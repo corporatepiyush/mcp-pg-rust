@@ -15,6 +15,7 @@ echo ""
 DB_URL="${DATABASE_URL:-postgres://postgres:postgres@localhost:5432/postgres}"
 MCP_HOST="${MCP_HOST:-127.0.0.1}"
 MCP_PORT="${MCP_PORT:-3000}"
+HTTP_PORT="${HTTP_PORT:-3001}"
 
 echo "📋 Configuration:"
 echo "  Database: $DB_URL"
@@ -78,7 +79,7 @@ echo ""
 
 # Test 1: tools/list endpoint
 echo "  Test 1: tools/list (schema discovery)..."
-TOOLS_RESPONSE=$(curl -s http://$MCP_HOST:$MCP_PORT/health 2>/dev/null || echo '{"status":"error"}')
+TOOLS_RESPONSE=$(curl -s http://$MCP_HOST:$HTTP_PORT/health 2>/dev/null || echo '{"status":"error"}')
 if echo "$TOOLS_RESPONSE" | grep -q "healthy"; then
     echo "    ✅ Health check passed"
 else
@@ -88,7 +89,7 @@ fi
 # Test 2: Basic tool calls (read operations)
 echo "  Test 2: Basic tool calls (5 sequential requests)..."
 for i in {1..5}; do
-    RESULT=$(curl -s -X POST http://$MCP_HOST:$MCP_PORT/rpc \
+    RESULT=$(curl -s -X POST http://$MCP_HOST:$HTTP_PORT/rpc \
         -H "Content-Type: application/json" \
         -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"show_current_user","arguments":{}},"id":'$i'}' 2>/dev/null)
     if echo "$RESULT" | grep -q "postgres"; then
@@ -104,7 +105,7 @@ START_TIME=$(date +%s%N | cut -b1-13)
 CONCURRENT_COUNT=0
 
 for i in {1..20}; do
-    (curl -s -X POST http://$MCP_HOST:$MCP_PORT/rpc \
+    (curl -s -X POST http://$MCP_HOST:$HTTP_PORT/rpc \
         -H "Content-Type: application/json" \
         -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"show_current_user","arguments":{}},"id":'$i'}' > /dev/null 2>&1) &
 done
@@ -117,16 +118,16 @@ echo "    ✅ 20 concurrent requests completed in ${ELAPSED}ms"
 # Test 4: Tool-specific load test (query execution)
 echo "  Test 4: Query execution load test (10 requests)..."
 for i in {1..10}; do
-    curl -s -X POST http://$MCP_HOST:$MCP_PORT/rpc \
+    curl -s -X POST http://$MCP_HOST:$HTTP_PORT/rpc \
         -H "Content-Type: application/json" \
-        -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"execute_query","arguments":{"query":"SELECT COUNT(*) FROM users"}},"id":'$i'}' > /dev/null 2>&1
+        -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"execute_query","arguments":{"query":"SELECT COUNT(*) FROM customers"}},"id":'$i'}' > /dev/null 2>&1
 done
 echo "    ✅ 10 query execution requests completed"
 
 # Test 5: Data modification load test (DDL operations)
 echo "  Test 5: DDL operations load test (backup_table)..."
 for i in {1..3}; do
-    curl -s -X POST http://$MCP_HOST:$MCP_PORT/rpc \
+    curl -s -X POST http://$MCP_HOST:$HTTP_PORT/rpc \
         -H "Content-Type: application/json" \
         -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"list_tables","arguments":{}},"id":'$i'}' > /dev/null 2>&1
 done
@@ -157,7 +158,7 @@ end
 EOF
 
     # Run wrk test: 30 seconds, 10 threads, 20 connections
-    WRK_OUTPUT=$(wrk -t10 -c20 -d30s -s /tmp/wrk_test.lua http://$MCP_HOST:$MCP_PORT/rpc 2>&1)
+    WRK_OUTPUT=$(wrk -t10 -c20 -d30s -s /tmp/wrk_test.lua http://$MCP_HOST:$HTTP_PORT/rpc 2>&1)
 
     # Extract key metrics
     REQUESTS=$(echo "$WRK_OUTPUT" | grep "Requests/sec" | awk '{print $2}' | cut -d'.' -f1)
@@ -206,7 +207,7 @@ else
         echo "    ⚠️  wrk not found, falling back to Apache Bench..."
 
         AB_OUTPUT=$(ab -n 500 -c 20 -p /dev/stdin -T "application/json" \
-            http://$MCP_HOST:$MCP_PORT/rpc 2>&1 << 'JSON'
+            http://$MCP_HOST:$HTTP_PORT/rpc 2>&1 << 'JSON'
 {"jsonrpc":"2.0","method":"tools/call","params":{"name":"show_current_user","arguments":{}},"id":1}
 JSON
 )

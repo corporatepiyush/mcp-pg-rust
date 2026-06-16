@@ -272,7 +272,7 @@ fn test_list_unused_indexes() {
     match tcp_request("list_unused_indexes", json!({})) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
-            let indexes = result.get("indexes").expect("Missing indexes");
+            let indexes = result.get("unused_indexes").expect("Missing unused_indexes");
 
             assert!(indexes.is_array(), "indexes should be array");
             println!(
@@ -352,7 +352,7 @@ fn test_get_pg_stat_statements() {
 
 #[test]
 fn test_get_setting_max_connections() {
-    match tcp_request("get_setting", json!({"setting_name": "max_connections"})) {
+    match tcp_request("get_setting", json!({"setting": "max_connections"})) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
             let value = result.get("value").expect("Missing value");
@@ -366,7 +366,7 @@ fn test_get_setting_max_connections() {
 
 #[test]
 fn test_get_setting_work_mem() {
-    match tcp_request("get_setting", json!({"setting_name": "work_mem"})) {
+    match tcp_request("get_setting", json!({"setting": "work_mem"})) {
         Ok(response) => {
             let result = response.get("result").expect("Missing result");
             let value = result.get("value").expect("Missing value");

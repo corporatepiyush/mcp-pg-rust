@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.1.0] - 2026-06-16
+
+### 🛠 INFRASTRUCTURE & TESTING
+- **Automated Test Environment**: Stabilized PostgreSQL testing environment with a dedicated `postgres` role and optimized schema.
+- **Enhanced Test Schema**: Updated `test_schema.sql` to use `DOUBLE PRECISION` and `VARCHAR` for dates, ensuring seamless interoperability between Rust and PostgreSQL.
+- **Test Data Loader**: Fixed type mismatch issues in `load_test_data` binary for high-precision numeric types.
+- **Improved Integration Runner**: Fixed `setup_and_test.sh` to correctly handle dual-protocol (TCP/HTTP) port mapping.
+
+### 🐛 BUG FIXES
+- **Integration Test Consistency**: Fixed parameter naming in `get_setting` and key lookups in `list_unused_indexes` within the integration test suite.
+
+
 ## [4.0.6] - 2026-06-16
 
 ### 🔴 SECURITY
