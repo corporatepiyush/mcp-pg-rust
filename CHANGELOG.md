@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.0.5] - 2026-06-16
+
+Security hardening and correctness release from the optimization/security review.
+
+### 🔴 SECURITY
+
+- **Transport authentication (A1)**: new `--auth-token` flag / `MCP_AUTH_TOKEN` env. When set, TCP connections must send the token as their first line and HTTP `/rpc` and `/subscribe` must present `Authorization: Bearer <token>` (constant-time compare). The server now refuses to bind a non-loopback host without a token. `/health` stays open; stdio is unaffected.
+- **SSRF protection for `import_from_url` (A2)**: http(s) only, hosts must resolve to public addresses (blocks loopback/private/link-local incl. `169.254.169.254`, CGNAT, ULA, IPv4-mapped), redirects disabled, 30s timeout, 100 MiB body cap. The tool is now gated behind `--allow-url-import` (off by default).
+- **Validated SQL fragments (A3)**: `grant_privileges`/`revoke_privileges` validate `privilege` against an allowlist; `import_from_url` validates `columns` as identifiers and requires a single-character `delimiter` (also enforced in `export_csv`).
+- **Optional TLS to PostgreSQL (A4)**: rustls connector used when the connection string sets `sslmode=require/verify-ca/verify-full/prefer`; plaintext by default (unchanged).
+- **Database-enforced read-only mode (A5)**: restricted mode now sets `default_transaction_read_only = on` per connection, so writes are rejected at the database, not just by tool name.
+- **Accurate multi-statement detection (A6)**: `validate_sql` now skips string literals, quoted identifiers, dollar-quotes, and comments.
+- **Password hardening (A7)**: reject control characters and over-long passwords in user/role tools.
+- **Batch WHERE join changed to AND (A8)** — *behavior change*: `async_batch_update`/`async_batch_delete` previously OR-joined predicates, widening the affected rows. They now require all conditions to match.
+- **DoS hardening (A9)**: per-connection `statement_timeout` from `request_timeout`; TCP request-line length cap (16 MiB) with an auth-handshake timeout; `export_csv` output capped at 100 MiB.
+
+### ⚡ PERFORMANCE / CORRECTNESS
+
+- **`execute_query` result decoding (B1)**: dispatch on column type — `NUMERIC`, `DATE`/`TIME`/`TIMESTAMP(TZ)`, `UUID`, `JSON`/`JSONB`, and `BYTEA` previously decoded to `null` and now decode correctly (decimals/temporals/uuid as strings, json as structured JSON, bytea as `\x` hex).
+- **Zero-copy `tools/list` (B2)**: splices cached bytes into the response on the TCP/stdio path instead of parse + re-serialize.
+- **Removed dead mimalloc env block (B3)** and shared `Config` via `Arc` instead of per-connection clones (B4).
+- **`import_from_url`** now reports the real imported row count (was hard-coded `0`).
+
 ## [2.1.1] - 2026-06-14
 
 ### 🔴 SECURITY FIXES (Critical)
