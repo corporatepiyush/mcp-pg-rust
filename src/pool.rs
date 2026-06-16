@@ -49,15 +49,35 @@ impl ConnectionPool {
         let create_timeout = Duration::from_secs(5);
         let stmt_timeout_ms = statement_timeout.as_millis();
 
+        // Build a TLS connector once if the connection string opts into it.
+        let tls_connector = if crate::tls::wants_tls(&conn_string) {
+            Some(crate::tls::make_connector()?)
+        } else {
+            None
+        };
+
         let create = {
             let cs = conn_string.clone();
             Box::new(move || {
                 let cs = cs.clone();
+                let tls = tls_connector.clone();
                 Box::pin(async move {
-                    let (client, connection) = tokio_postgres::connect(&cs, NoTls)
-                        .await
-                        .map_err(|e| e.to_string())?;
-                    tokio::spawn(connection);
+                    let client = match tls {
+                        Some(tls) => {
+                            let (client, connection) = tokio_postgres::connect(&cs, tls)
+                                .await
+                                .map_err(|e| e.to_string())?;
+                            tokio::spawn(connection);
+                            client
+                        }
+                        None => {
+                            let (client, connection) = tokio_postgres::connect(&cs, NoTls)
+                                .await
+                                .map_err(|e| e.to_string())?;
+                            tokio::spawn(connection);
+                            client
+                        }
+                    };
                     // Apply a per-connection statement_timeout so no single query
                     // can hold a pooled connection forever. Session-level (not LOCAL)
                     // so it persists for every query on this connection.
