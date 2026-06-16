@@ -244,6 +244,25 @@ async fn process_one_line<W: AsyncWriteExt + Unpin>(
 
     let (response, is_notification) = match parse_request(line) {
         Ok(req) => {
+            // Fast path: tools/list. Splice the cached result bytes straight into
+            // the JSON-RPC envelope, skipping the parse-into-Value and
+            // re-serialize that the generic path would do for a ~50 KB payload.
+            if req.method == "tools/list" {
+                if let Some(id) = req.id.as_ref() {
+                    response_buf.clear();
+                    response_buf.extend_from_slice(b"{\"jsonrpc\":\"2.0\",\"result\":");
+                    response_buf.extend_from_slice(&TOOLS_LIST_RESPONSE);
+                    response_buf.extend_from_slice(b",\"id\":");
+                    serde_json::to_writer(&mut *response_buf, id)?;
+                    response_buf.extend_from_slice(b"}");
+                    response_buf.extend_from_slice(NEWLINE);
+                    writer.write_all(response_buf).await?;
+                    writer.flush().await?;
+                }
+                // notification (no id) expects no response
+                return Ok(());
+            }
+
             let is_notif = req.id.is_none();
             match process_request(&req, pool, config).await {
                 Ok(result) => (JsonRpcResponse::success(req.id, result), is_notif),
@@ -635,6 +654,25 @@ fn method_not_found(name: &str) -> MCPError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_tools_list_splice_matches_generic() {
+        // The hand-spliced fast-path bytes must be byte-identical to the
+        // generic JsonRpcResponse::success serialization.
+        let id = Value::Number(7.into());
+        let result: Value = serde_json::from_slice(&TOOLS_LIST_RESPONSE).unwrap();
+        let generic =
+            serde_json::to_vec(&JsonRpcResponse::success(Some(id.clone()), result)).unwrap();
+
+        let mut spliced = Vec::new();
+        spliced.extend_from_slice(b"{\"jsonrpc\":\"2.0\",\"result\":");
+        spliced.extend_from_slice(&TOOLS_LIST_RESPONSE);
+        spliced.extend_from_slice(b",\"id\":");
+        serde_json::to_writer(&mut spliced, &id).unwrap();
+        spliced.extend_from_slice(b"}");
+
+        assert_eq!(spliced, generic);
+    }
 
     #[tokio::test]
     async fn test_read_line_capped_normal() {
