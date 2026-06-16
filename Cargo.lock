@@ -1430,6 +1430,7 @@ dependencies = [
  "futures",
  "hyper 1.10.1",
  "libc",
+ "libmimalloc-sys",
  "lru",
  "mimalloc",
  "num_cpus",

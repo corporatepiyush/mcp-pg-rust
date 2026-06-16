@@ -21,6 +21,7 @@ async fn main() -> Result<()> {
 
     info!("Starting MCP PostgreSQL Server");
     info!("Version: {}", env!("CARGO_PKG_VERSION"));
+    log_mimalloc_version();
 
     // Load configuration
     let config = config::Config::from_args(&args)?;
@@ -104,6 +105,27 @@ async fn main() -> Result<()> {
 
     info!("Server shutdown complete");
     Ok(())
+}
+
+/// Log the linked mimalloc version and warn if it is not v3.
+///
+/// v3 is selected by the absence of `libmimalloc-sys/v2`. Cargo feature
+/// unification is additive, so a transitive `v2` feature would silently
+/// downgrade the allocator — this surfaces that instead of hiding it.
+fn log_mimalloc_version() {
+    // SAFETY: mi_version() is a pure read of a compile-time constant.
+    let v = unsafe { libmimalloc_sys::mi_version() };
+    info!(
+        "mimalloc version: {}.{}.{}",
+        v / 10000,
+        (v / 100) % 100,
+        v % 100
+    );
+    if v < 30000 {
+        tracing::warn!(
+            "Expected mimalloc v3 but linked v{v}; a dependency enabled the `v2` feature"
+        );
+    }
 }
 
 fn init_tracing(log_level: &str) -> Result<()> {

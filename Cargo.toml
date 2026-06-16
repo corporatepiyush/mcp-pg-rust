@@ -61,8 +61,13 @@ prometheus = { version = "0.13", default-features = false }
 # CLI
 clap = { version = "4.5", features = ["derive"] }
 
-# Memory Allocator (wraps mimalloc C library - currently v2.1.x with v2 features)
-mimalloc = { version = "0.1", features = ["local_dynamic_tls", "extended", "override"] }
+# Memory Allocator. libmimalloc-sys bundles both v2 and v3 and selects v3 unless
+# its `v2` feature is enabled (see its build.rs). We do NOT enable `v2`, so this
+# statically links mimalloc v3.3.x. Do not add the `v2` feature anywhere in the graph.
+# `0.1.49` is the floor that bundles v3; `extended` exposes mi_version() for the
+# runtime version log in main.rs.
+mimalloc = { version = "0.1.49", features = ["local_dynamic_tls", "extended", "override"] }
+libmimalloc-sys = { version = "0.1.49", features = ["extended"] }
 
 # System (TCP socket options, CPU detection)
 libc = "0.2"
