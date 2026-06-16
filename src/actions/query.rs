@@ -27,22 +27,103 @@ fn validate_sql(
             "Invalid {label} query: expected '{allowed_prefix}'"
         )));
     }
-    // Reject multi-statement: find the first unquoted ';' that is not trailing
+    // Reject multi-statement: find the first statement-terminating ';' that is
+    // not inside a string literal, quoted identifier, dollar-quoted string, or
+    // comment. A single trailing ';' is allowed.
     let body = trimmed.strip_suffix(';').unwrap_or(trimmed);
-    let mut in_string = false;
-    for (i, ch) in body.char_indices() {
-        if ch == '\'' {
-            in_string = !in_string;
-        }
-        if !in_string && ch == ';' {
-            let ctx_end = (i + 20).min(sql.len());
-            return Err(crate::errors::MCPError::InvalidParams(format!(
-                "Multi-statement queries are not allowed: {label} contained ';' at position {i} (context: ...{}...)",
-                &sql[i..ctx_end]
-            )));
-        }
+    if let Some(i) = first_unquoted_semicolon(body) {
+        let ctx_end = (i + 20).min(body.len());
+        let ctx = body.get(i..ctx_end).unwrap_or("");
+        return Err(crate::errors::MCPError::InvalidParams(format!(
+            "Multi-statement queries are not allowed: {label} contained ';' at position {i} (context: ...{ctx}...)"
+        )));
     }
     Ok(())
+}
+
+/// Byte index of the first `;` in `sql` that lies outside any string literal,
+/// quoted identifier, dollar-quoted string, or comment. Returns `None` if there
+/// is no such terminator.
+fn first_unquoted_semicolon(sql: &str) -> Option<usize> {
+    let b = sql.as_bytes();
+    let n = b.len();
+    let mut i = 0;
+    while i < n {
+        match b[i] {
+            b'\'' => {
+                // single-quoted string literal; '' is an escaped quote
+                i += 1;
+                while i < n {
+                    if b[i] == b'\'' {
+                        if i + 1 < n && b[i + 1] == b'\'' {
+                            i += 2;
+                            continue;
+                        }
+                        i += 1;
+                        break;
+                    }
+                    i += 1;
+                }
+            }
+            b'"' => {
+                // double-quoted identifier; "" is an escaped quote
+                i += 1;
+                while i < n {
+                    if b[i] == b'"' {
+                        if i + 1 < n && b[i + 1] == b'"' {
+                            i += 2;
+                            continue;
+                        }
+                        i += 1;
+                        break;
+                    }
+                    i += 1;
+                }
+            }
+            b'-' if i + 1 < n && b[i + 1] == b'-' => {
+                // line comment to end of line
+                i += 2;
+                while i < n && b[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'/' if i + 1 < n && b[i + 1] == b'*' => {
+                // block comment (PostgreSQL allows nesting)
+                i += 2;
+                let mut depth = 1usize;
+                while i < n && depth > 0 {
+                    if i + 1 < n && b[i] == b'/' && b[i + 1] == b'*' {
+                        depth += 1;
+                        i += 2;
+                    } else if i + 1 < n && b[i] == b'*' && b[i + 1] == b'/' {
+                        depth -= 1;
+                        i += 2;
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            b'$' => {
+                // dollar-quoted string: $tag$ ... $tag$ (tag may be empty)
+                let mut j = i + 1;
+                while j < n && (b[j].is_ascii_alphanumeric() || b[j] == b'_') {
+                    j += 1;
+                }
+                if j < n && b[j] == b'$' {
+                    let tag = &sql[i..=j]; // includes both $ delimiters
+                    match sql[j + 1..].find(tag) {
+                        Some(off) => i = j + 1 + off + tag.len(),
+                        None => i = n, // unterminated — consume the rest
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+            b';' => return Some(i),
+            _ => i += 1,
+        }
+    }
+    None
 }
 
 /// 6. Execute query
@@ -278,5 +359,58 @@ async fn async_sync_commit_execute(client: &Client, sql: &str) -> MCPResult<Valu
             client.execute("ROLLBACK", &[]).await.ok();
             Err(crate::errors::MCPError::DatabaseError(e))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_unquoted_semicolon_detected() {
+        assert_eq!(
+            first_unquoted_semicolon("SELECT 1; DROP TABLE x"),
+            Some(8)
+        );
+    }
+
+    #[test]
+    fn test_semicolon_in_string_ignored() {
+        assert_eq!(first_unquoted_semicolon("SELECT ';not a stmt'"), None);
+        assert_eq!(first_unquoted_semicolon("SELECT 'a''b; c'"), None);
+    }
+
+    #[test]
+    fn test_semicolon_in_identifier_ignored() {
+        assert_eq!(first_unquoted_semicolon("SELECT \"weird;col\" FROM t"), None);
+    }
+
+    #[test]
+    fn test_semicolon_in_comments_ignored() {
+        assert_eq!(first_unquoted_semicolon("SELECT 1 -- a; b\n"), None);
+        assert_eq!(first_unquoted_semicolon("SELECT 1 /* a; b */"), None);
+    }
+
+    #[test]
+    fn test_semicolon_in_dollar_quote_ignored() {
+        assert_eq!(first_unquoted_semicolon("SELECT $$a; b$$"), None);
+        assert_eq!(first_unquoted_semicolon("SELECT $tag$a; b$tag$"), None);
+    }
+
+    #[test]
+    fn test_validate_sql_allows_trailing_semicolon() {
+        assert!(validate_sql("SELECT 1;", "SELECT", "SELECT").is_ok());
+        assert!(validate_sql("SELECT ';'", "SELECT", "SELECT").is_ok());
+    }
+
+    #[test]
+    fn test_validate_sql_rejects_stacked() {
+        assert!(validate_sql("SELECT 1; DROP TABLE x", "SELECT", "SELECT").is_err());
+    }
+
+    #[test]
+    fn test_validate_sql_prefix() {
+        assert!(validate_sql("DELETE FROM x WHERE id=1", "DELETE", "DELETE").is_ok());
+        assert!(validate_sql("SELECT 1", "DELETE", "DELETE").is_err());
     }
 }
