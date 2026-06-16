@@ -1,9 +1,16 @@
 use crate::errors::Result as MCPResult;
 use crate::validation::quote_ident;
+use bytes::{Bytes, BytesMut};
 use futures::SinkExt;
 use futures::StreamExt;
 use serde_json::{Value, json};
+use std::time::Duration;
 use tokio_postgres::Client;
+
+/// Cap on the response body fetched by `import_from_url` (100 MiB).
+const MAX_IMPORT_BYTES: usize = 100 * 1024 * 1024;
+/// Timeout for the outbound fetch in `import_from_url`.
+const IMPORT_FETCH_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub async fn import_from_url(client: &Client, params: &Option<&Value>) -> MCPResult<Value> {
     let url = params
@@ -36,6 +43,9 @@ pub async fn import_from_url(client: &Client, params: &Option<&Value>) -> MCPRes
         .as_ref()
         .and_then(|p| p.get("columns").and_then(|v| v.as_str()));
 
+    // SSRF guard: only http(s), and the host must resolve to a public address.
+    crate::ssrf::validate_import_url(url).await?;
+
     let qualified = format!("{}.{}", quote_ident(schema), quote_ident(table));
 
     if truncate {
@@ -44,7 +54,17 @@ pub async fn import_from_url(client: &Client, params: &Option<&Value>) -> MCPRes
             .await?;
     }
 
-    let resp = reqwest::get(url).await.map_err(|e| {
+    // Disable redirects (a 3xx could redirect to a blocked internal address)
+    // and bound the request time.
+    let http = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(IMPORT_FETCH_TIMEOUT)
+        .build()
+        .map_err(|e| {
+            crate::errors::MCPError::InvalidParams(format!("Failed to build HTTP client: {e}"))
+        })?;
+
+    let resp = http.get(url).send().await.map_err(|e| {
         crate::errors::MCPError::InvalidParams(format!("Failed to fetch URL: {}", e))
     })?;
     let status = resp.status();
@@ -54,9 +74,24 @@ pub async fn import_from_url(client: &Client, params: &Option<&Value>) -> MCPRes
             status
         )));
     }
-    let content = resp.bytes().await.map_err(|e| {
-        crate::errors::MCPError::InvalidParams(format!("Failed to read response body: {}", e))
-    })?;
+
+    // Stream the body with a hard size cap so a huge/endless response cannot
+    // exhaust memory.
+    let mut buf = BytesMut::new();
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| {
+            crate::errors::MCPError::InvalidParams(format!("Failed to read response body: {}", e))
+        })?;
+        if buf.len() + chunk.len() > MAX_IMPORT_BYTES {
+            return Err(crate::errors::MCPError::InvalidParams(format!(
+                "Response body exceeds maximum import size of {} bytes",
+                MAX_IMPORT_BYTES
+            )));
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    let content: Bytes = buf.freeze();
 
     let col_clause = columns.map(|c| format!(" ({})", c)).unwrap_or_default();
     let copy_sql = format!(

@@ -8,6 +8,7 @@ pub mod metrics;
 pub mod pool;
 pub mod protocol;
 pub mod server;
+pub mod ssrf;
 pub mod tls;
 pub mod tools;
 pub mod validation;
@@ -67,4 +68,9 @@ pub struct Args {
     /// Not used in stdio mode.
     #[arg(long)]
     pub auth_token: Option<String>,
+
+    /// Allow the import_from_url tool to make outbound HTTP fetches.
+    /// Disabled by default to reduce SSRF exposure.
+    #[arg(long)]
+    pub allow_url_import: bool,
 }

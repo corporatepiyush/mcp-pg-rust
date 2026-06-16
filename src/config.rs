@@ -57,6 +57,9 @@ pub struct ServerConfig {
     /// (only permitted on loopback binds).
     #[serde(default)]
     pub auth_token: Option<String>,
+    /// Whether the import_from_url tool may make outbound HTTP fetches.
+    #[serde(default)]
+    pub allow_url_import: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,6 +100,7 @@ impl Config {
                 request_timeout: Duration::from_secs(30),
                 access_mode: args.access_mode,
                 auth_token,
+                allow_url_import: args.allow_url_import,
             },
             pool: PoolConfig {
                 min_size,
@@ -123,6 +127,7 @@ impl Default for Config {
                 request_timeout: Duration::from_secs(30),
                 access_mode: AccessMode::Unrestricted,
                 auth_token: None,
+                allow_url_import: false,
             },
             pool: PoolConfig {
                 min_size: 5,

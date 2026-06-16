@@ -371,6 +371,14 @@ async fn handle_tools_call(
         )));
     }
 
+    // import_from_url makes outbound HTTP requests; require explicit opt-in.
+    if tool_name == "import_from_url" && !config.server.allow_url_import {
+        return Err(MCPError::InvalidParams(
+            "'import_from_url' is disabled; start the server with --allow-url-import to enable it"
+                .into(),
+        ));
+    }
+
     // Verify tool exists before acquiring a connection
     if !crate::tools::tool_exists(tool_name) {
         return Err(method_not_found(tool_name));
