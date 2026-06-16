@@ -68,10 +68,9 @@ pub async fn import_from_url(client: &Client, params: &Option<&Value>) -> MCPRes
     );
 
     let mut sink = Box::pin(client.copy_in(&copy_sql).await?);
-    sink.as_mut().send(content.clone()).await?;
-    sink.as_mut().close().await?;
-
-    let count = 0i64;
+    sink.as_mut().send(content).await?;
+    // finish() flushes, ends the COPY, and returns the number of rows imported.
+    let count = sink.as_mut().finish().await?;
 
     Ok(json!({
         "success": true,
