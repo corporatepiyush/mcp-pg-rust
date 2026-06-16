@@ -9,6 +9,8 @@ use tokio_postgres::Client;
 
 /// Cap on the response body fetched by `import_from_url` (100 MiB).
 const MAX_IMPORT_BYTES: usize = 100 * 1024 * 1024;
+/// Cap on the CSV produced by `export_csv` (100 MiB) to bound memory.
+const MAX_EXPORT_BYTES: usize = 100 * 1024 * 1024;
 /// Timeout for the outbound fetch in `import_from_url`.
 const IMPORT_FETCH_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -201,6 +203,12 @@ pub async fn export_csv(client: &Client, params: &Option<&Value>) -> MCPResult<V
     let mut output = Vec::new();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
+        if output.len() + chunk.len() > MAX_EXPORT_BYTES {
+            return Err(crate::errors::MCPError::InvalidParams(format!(
+                "Export exceeds maximum size of {} bytes; narrow the query or lower the limit",
+                MAX_EXPORT_BYTES
+            )));
+        }
         output.extend_from_slice(&chunk);
     }
 
