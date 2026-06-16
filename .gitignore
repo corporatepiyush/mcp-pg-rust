@@ -18,6 +18,9 @@ CHANGELOG.md
 AGENTS_CHANGELOG.md
 *CHANGELOG*
 
+# Action plan / scratch docs (not versioned)
+*_PLAN.md
+
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
