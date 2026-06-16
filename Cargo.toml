@@ -15,7 +15,11 @@ include = ["src/", "bin/", "tools.json", "Cargo.toml", "README.md", "schema.sql"
 [dependencies]
 # PostgreSQL
 tokio = { version = "1.41", features = ["macros", "rt-multi-thread", "io-util", "net", "time", "sync", "io-std"] }
-tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
+tokio-postgres = { version = "0.7", features = ["with-serde_json-1", "with-uuid-1", "with-chrono-0_4"] }
+
+# Decoders for common column types in execute_query result rows.
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+rust_decimal = { version = "1", features = ["db-tokio-postgres"] }
 
 # TLS for PostgreSQL connections (used only when the connection string requests
 # sslmode=require/verify-ca/verify-full/prefer). ring provider avoids the

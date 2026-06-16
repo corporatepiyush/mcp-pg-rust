@@ -1,8 +1,98 @@
 use crate::errors::Result as MCPResult;
 use serde_json::{Value, json};
-use tokio_postgres::Client;
+use tokio_postgres::types::Type;
+use tokio_postgres::{Client, Row};
 
 const MAX_SQL_LEN: usize = 10_000;
+
+/// Decode a single result cell to JSON based on its PostgreSQL column type.
+///
+/// Numeric and boolean types map to native JSON numbers/bools; temporal,
+/// numeric-decimal, uuid and text types map to strings; json/jsonb pass
+/// through as structured JSON; bytea becomes a hex string. Unknown types fall
+/// back to their text representation, and only truly undecodable values (e.g.
+/// arrays) become null.
+fn decode_cell(row: &Row, i: usize) -> Value {
+    let ty = row.columns()[i].type_().clone();
+    match ty {
+        Type::BOOL => match row.try_get::<_, Option<bool>>(i) {
+            Ok(Some(v)) => json!(v),
+            _ => Value::Null,
+        },
+        Type::INT2 => match row.try_get::<_, Option<i16>>(i) {
+            Ok(Some(v)) => json!(v),
+            _ => Value::Null,
+        },
+        Type::INT4 => match row.try_get::<_, Option<i32>>(i) {
+            Ok(Some(v)) => json!(v),
+            _ => Value::Null,
+        },
+        Type::INT8 => match row.try_get::<_, Option<i64>>(i) {
+            Ok(Some(v)) => json!(v),
+            _ => Value::Null,
+        },
+        Type::OID => match row.try_get::<_, Option<u32>>(i) {
+            Ok(Some(v)) => json!(v),
+            _ => Value::Null,
+        },
+        Type::FLOAT4 => match row.try_get::<_, Option<f32>>(i) {
+            Ok(Some(v)) => json!(v),
+            _ => Value::Null,
+        },
+        Type::FLOAT8 => match row.try_get::<_, Option<f64>>(i) {
+            Ok(Some(v)) => json!(v),
+            _ => Value::Null,
+        },
+        // Decimal as a string to preserve full precision.
+        Type::NUMERIC => str_cell::<rust_decimal::Decimal>(row, i),
+        Type::UUID => str_cell::<uuid::Uuid>(row, i),
+        Type::TIMESTAMP => str_cell::<chrono::NaiveDateTime>(row, i),
+        Type::TIMESTAMPTZ => str_cell::<chrono::DateTime<chrono::Utc>>(row, i),
+        Type::DATE => str_cell::<chrono::NaiveDate>(row, i),
+        Type::TIME => str_cell::<chrono::NaiveTime>(row, i),
+        Type::JSON | Type::JSONB => match row.try_get::<_, Option<Value>>(i) {
+            Ok(Some(v)) => v,
+            _ => Value::Null,
+        },
+        Type::BYTEA => match row.try_get::<_, Option<Vec<u8>>>(i) {
+            Ok(Some(b)) => Value::String(to_hex(&b)),
+            _ => Value::Null,
+        },
+        Type::TEXT | Type::VARCHAR | Type::BPCHAR | Type::NAME => {
+            match row.try_get::<_, Option<String>>(i) {
+                Ok(Some(v)) => Value::String(v),
+                _ => Value::Null,
+            }
+        }
+        // Fallback: enums, citext, and other text-output types decode as String.
+        _ => match row.try_get::<_, Option<String>>(i) {
+            Ok(Some(v)) => Value::String(v),
+            _ => Value::Null,
+        },
+    }
+}
+
+/// Decode an optional value whose Rust type implements `Display`, rendering it
+/// as a JSON string (or null when SQL NULL / undecodable).
+fn str_cell<T>(row: &Row, i: usize) -> Value
+where
+    T: std::fmt::Display + for<'a> tokio_postgres::types::FromSql<'a>,
+{
+    match row.try_get::<_, Option<T>>(i) {
+        Ok(Some(v)) => Value::String(v.to_string()),
+        _ => Value::Null,
+    }
+}
+
+fn to_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    let mut s = String::with_capacity(2 + bytes.len() * 2);
+    s.push_str("\\x");
+    for b in bytes {
+        let _ = write!(s, "{b:02x}");
+    }
+    s
+}
 
 fn validate_sql(
     sql: &str,
@@ -141,23 +231,7 @@ pub async fn execute_query(client: &Client, params: &Option<&Value>) -> MCPResul
     let results: Vec<Value> = rows
         .iter()
         .map(|row| {
-            let values: Vec<Value> = (0..row.len())
-                .map(|i| {
-                    // Try type inference: prefer native JSON types over raw strings
-                    row.try_get::<_, bool>(i)
-                        .map(|v| json!(v))
-                        .or_else(|_| row.try_get::<_, i32>(i).map(|v| json!(v)))
-                        .or_else(|_| row.try_get::<_, i64>(i).map(|v| json!(v)))
-                        .or_else(|_| row.try_get::<_, f32>(i).map(|v| json!(v)))
-                        .or_else(|_| row.try_get::<_, f64>(i).map(|v| json!(v)))
-                        .or_else(|_| row.try_get::<_, String>(i).map(Value::String))
-                        .or_else(|_| {
-                            row.try_get::<_, Option<String>>(i)
-                                .map(|v| v.map(Value::String).unwrap_or(Value::Null))
-                        })
-                        .unwrap_or(Value::Null)
-                })
-                .collect();
+            let values: Vec<Value> = (0..row.len()).map(|i| decode_cell(row, i)).collect();
             Value::Array(values)
         })
         .collect();
@@ -412,5 +486,12 @@ mod tests {
     fn test_validate_sql_prefix() {
         assert!(validate_sql("DELETE FROM x WHERE id=1", "DELETE", "DELETE").is_ok());
         assert!(validate_sql("SELECT 1", "DELETE", "DELETE").is_err());
+    }
+
+    #[test]
+    fn test_to_hex() {
+        assert_eq!(to_hex(&[0xde, 0xad, 0xbe, 0xef]), "\\xdeadbeef");
+        assert_eq!(to_hex(&[]), "\\x");
+        assert_eq!(to_hex(&[0x00, 0x0f]), "\\x000f");
     }
 }
