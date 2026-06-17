@@ -32,13 +32,25 @@ fn sslmode(connection_string: &str) -> Option<String> {
     Some(rest[..end].trim().to_string())
 }
 
+/// Install the rustls `ring` crypto provider as the process default.
+///
+/// Idempotent — only the first install in the process wins; later calls are
+/// ignored. Call this anywhere a rustls-backed client may be built (Postgres
+/// TLS via [`make_connector`], or the data-import HTTP client which uses reqwest
+/// with `rustls-no-provider`) so the process never lacks a default
+/// `CryptoProvider`. Keeping it in the library — rather than only in the binary's
+/// `main` — ensures library consumers get correct TLS too.
+pub fn ensure_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 /// Build a rustls connector loading the OS trust store.
 ///
 /// Installs the ring crypto provider as the process default on first call
 /// (idempotent — a second install is ignored).
 pub fn make_connector() -> anyhow::Result<MakeRustlsConnect> {
     // Safe to call repeatedly; only the first install wins.
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    ensure_crypto_provider();
 
     let mut roots = rustls::RootCertStore::empty();
     let result = rustls_native_certs::load_native_certs();

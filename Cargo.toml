@@ -1,6 +1,6 @@
 [package]
 name = "mcp-postgres"
-version = "4.2.0"
+version = "4.2.1"
 edition = "2024"
 authors = ["Piyush"]
 description = "High-performance MCP server for PostgreSQL with CPU-aware connection pooling and optimized buffers"
@@ -79,7 +79,7 @@ num_cpus = "1.16"
 # `rustls-no-provider` so reqwest uses the process-default rustls CryptoProvider,
 # which we install as `ring` at startup (see main.rs / src/tls.rs). This keeps the
 # whole project on ring with no cmake/aws-lc dependency.
-reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "stream", "http2", "charset"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "stream", "http2", "charset", "system-proxy"] }
 
 # Binary data for PostgreSQL COPY protocol
 bytes = "1.6"

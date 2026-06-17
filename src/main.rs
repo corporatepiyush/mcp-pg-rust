@@ -16,12 +16,10 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    // Install the rustls `ring` crypto provider as the process default up front.
-    // Postgres TLS installs it lazily (src/tls.rs), but the data-import HTTP
-    // client (reqwest, built with `rustls-no-provider`) relies on the process
-    // default for any HTTPS fetch that happens without a prior Postgres TLS
-    // connection. Idempotent — the first install wins.
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    // Install the rustls `ring` crypto provider as the process default up front
+    // (idempotent). The data-import path also ensures this itself, but doing it
+    // at startup keeps the provider ready for every TLS user. See src/tls.rs.
+    mcp_postgres::tls::ensure_crypto_provider();
 
     // Initialize logging
     init_tracing(&args.log_level)?;

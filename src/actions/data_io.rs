@@ -90,6 +90,12 @@ pub async fn import_from_url(client: &Client, params: &Option<&Value>) -> MCPRes
     // Open the COPY sink first — chunks stream directly into it.
     let mut sink = Box::pin(client.copy_in(&copy_sql).await?);
 
+    // reqwest is built with `rustls-no-provider`, so it needs a process-default
+    // rustls CryptoProvider. Ensure `ring` is installed even when this runs in a
+    // process that never opened a Postgres TLS connection (e.g. a library
+    // consumer). Idempotent.
+    crate::tls::ensure_crypto_provider();
+
     // Disable redirects (a 3xx could redirect to a blocked internal address)
     // and bound the request time.
     let http = reqwest::Client::builder()
