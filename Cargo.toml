@@ -1,6 +1,6 @@
 [package]
 name = "mcp-postgres"
-version = "4.1.0"
+version = "4.2.0"
 edition = "2024"
 authors = ["Piyush"]
 description = "High-performance MCP server for PostgreSQL with CPU-aware connection pooling and optimized buffers"
@@ -73,8 +73,13 @@ libmimalloc-sys = { version = "0.1.49", features = ["extended"] }
 libc = "0.2"
 num_cpus = "1.16"
 
-# HTTP Client for latency testing and data import
-reqwest = { version = "0.12", features = ["json", "stream"] }
+# HTTP Client for latency testing and data import.
+# reqwest 0.13 made rustls the default TLS backend but with the aws-lc-rs crypto
+# provider (which needs the cmake/Go toolchain). We pin default-features=false +
+# `rustls-no-provider` so reqwest uses the process-default rustls CryptoProvider,
+# which we install as `ring` at startup (see main.rs / src/tls.rs). This keeps the
+# whole project on ring with no cmake/aws-lc dependency.
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "stream", "http2", "charset"] }
 
 # Binary data for PostgreSQL COPY protocol
 bytes = "1.6"
