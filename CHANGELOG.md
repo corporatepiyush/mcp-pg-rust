@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.0.0] - 2026-06-18
+
+MCP specification compliance — protocol revision **`2025-11-25`**. See [MIGRATION.md](./MIGRATION.md).
+
+### 💥 BREAKING
+
+- **`tools/call` now returns a spec-compliant `CallToolResult`.** Handlers
+  previously returned raw payloads (e.g. `{"tables": [...]}`) as the JSON-RPC
+  `result`. Results are now wrapped in `content[]` with the original object
+  preserved under `structuredContent` (MCP 2025-06-18+). Custom clients must
+  read `result.structuredContent` (or `result.content[0].text`).
+- **Tool failures return `isError: true` results instead of JSON-RPC protocol
+  errors**, so the model can see the message and self-correct. Includes SQL
+  errors, validation failures, restricted-mode and `import_from_url` policy
+  rejections. Malformed requests / unknown tools remain protocol errors.
+- **Removed falsely-advertised `resources` and `prompts` capabilities** from
+  `initialize` (they had no handlers and returned `-32601`).
+
+### ✨ ADDED
+
+- **Protocol version negotiation** in `initialize`: defaults to `2025-11-25`,
+  echoes back any supported revision the client requests (`2025-06-18`,
+  `2025-03-26`, `2024-11-05`).
+- **`instructions`** field in `InitializeResult` to guide model tool use.
+
 ## [4.1.0] - 2026-06-16
 
 ### 🛠 INFRASTRUCTURE & TESTING

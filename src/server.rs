@@ -356,24 +356,77 @@ pub async fn process_request_http(
     }
 }
 
-fn handle_initialize(_req: &JsonRpcRequest) -> MCPResult<Value> {
-    /// Cached initialize response — built once on first call.
-    static INIT_RESPONSE: Lazy<Value> = Lazy::new(|| {
-        json!({
-            "protocolVersion": "2024-11-05",
-            "capabilities": {
-                "tools": { "listChanged": false },
-                "resources": { "subscribe": false, "listChanged": false },
-                "prompts": { "listChanged": false }
-            },
-            "serverInfo": {
-                "name": "mcp-postgres",
-                "version": env!("CARGO_PKG_VERSION")
-            }
-        })
-    });
+/// MCP protocol revisions this server can speak, newest first. Used for
+/// version negotiation in `initialize` (MCP spec, lifecycle/initialization).
+const SUPPORTED_PROTOCOL_VERSIONS: &[&str] =
+    &["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
+/// The newest revision we implement; returned when the client requests a
+/// version we do not support.
+const LATEST_PROTOCOL_VERSION: &str = "2025-11-25";
 
-    Ok(INIT_RESPONSE.clone())
+/// `instructions` string surfaced to the client and appended to the model's
+/// system prompt to guide tool use (MCP `InitializeResult.instructions`).
+const SERVER_INSTRUCTIONS: &str = "PostgreSQL MCP server. Use `execute_query` for read-only SELECTs and \
+`execute_insert`/`execute_update`/`execute_delete` for DML. Inspect structure with `list_tables`, \
+`describe_table`, and `list_indexes` before writing queries. Tool results carry both human-readable \
+text and a machine-readable `structuredContent` object. Tool failures are returned with `isError: true` \
+rather than as protocol errors, so read the message and retry with corrected arguments.";
+
+fn handle_initialize(req: &JsonRpcRequest) -> MCPResult<Value> {
+    // Version negotiation: echo the client's requested revision when we support
+    // it, otherwise offer our latest. The client decides whether to proceed.
+    let protocol_version = req
+        .params
+        .as_ref()
+        .and_then(|p| p.get("protocolVersion"))
+        .and_then(Value::as_str)
+        .filter(|v| SUPPORTED_PROTOCOL_VERSIONS.contains(v))
+        .unwrap_or(LATEST_PROTOCOL_VERSION);
+
+    Ok(json!({
+        "protocolVersion": protocol_version,
+        // Advertise only what we actually implement. Earlier releases falsely
+        // declared `resources` and `prompts` capabilities with no handlers.
+        "capabilities": {
+            "tools": { "listChanged": false }
+        },
+        "serverInfo": {
+            "name": "mcp-postgres",
+            "version": env!("CARGO_PKG_VERSION")
+        },
+        "instructions": SERVER_INSTRUCTIONS
+    }))
+}
+
+/// Wrap a successful tool result in an MCP `CallToolResult`. The data is
+/// provided both as serialized text (for backwards compatibility / display)
+/// and, when it is a JSON object, as `structuredContent` (MCP 2025-06-18+).
+#[inline]
+fn tool_success(value: Value) -> Value {
+    let text = serde_json::to_string(&value).unwrap_or_else(|_| "null".to_string());
+    if value.is_object() {
+        json!({
+            "content": [{ "type": "text", "text": text }],
+            "structuredContent": value,
+            "isError": false
+        })
+    } else {
+        json!({
+            "content": [{ "type": "text", "text": text }],
+            "isError": false
+        })
+    }
+}
+
+/// Wrap a tool execution failure as an MCP `CallToolResult` with `isError: true`
+/// so the model sees the message and can self-correct, rather than receiving an
+/// opaque JSON-RPC protocol error.
+#[inline]
+fn tool_error(message: impl Into<String>) -> Value {
+    json!({
+        "content": [{ "type": "text", "text": message.into() }],
+        "isError": true
+    })
 }
 
 #[inline]
@@ -395,20 +448,21 @@ async fn handle_tools_call(
 
     let tool_args = req.params.as_ref().and_then(|p| p.get("arguments"));
 
-    // Restricted mode check + unknown tool check BEFORE pool acquire
+    // Restricted mode check + unknown tool check BEFORE pool acquire. Policy
+    // rejections are tool-level failures (the tool exists, the call is well
+    // formed) so they are surfaced as `isError` results, not protocol errors.
     if config.server.access_mode == crate::config::AccessMode::Restricted
         && crate::tools::is_write_tool(tool_name)
     {
-        return Err(MCPError::InvalidParams(format!(
+        return Ok(tool_error(format!(
             "Operation '{tool_name}' is not allowed in restricted (read-only) mode"
         )));
     }
 
     // import_from_url makes outbound HTTP requests; require explicit opt-in.
     if tool_name == "import_from_url" && !config.server.allow_url_import {
-        return Err(MCPError::InvalidParams(
-            "'import_from_url' is disabled; start the server with --allow-url-import to enable it"
-                .into(),
+        return Ok(tool_error(
+            "'import_from_url' is disabled; start the server with --allow-url-import to enable it",
         ));
     }
 
@@ -652,12 +706,19 @@ async fn handle_tools_call(
         tool => Err(method_not_found(tool)),
     };
 
-    if let Err(ref e) = result {
-        error!("Tool '{}' error: {:?}", tool_name, e);
-    }
     // client is returned to the pool automatically via Drop
     drop(client);
-    result
+
+    // Wrap in an MCP `CallToolResult`. Execution failures become `isError`
+    // results so the model can read the message and self-correct, instead of
+    // an opaque JSON-RPC protocol error.
+    match result {
+        Ok(value) => Ok(tool_success(value)),
+        Err(e) => {
+            error!("Tool '{tool_name}' error: {e:?}");
+            Ok(tool_error(e.to_string()))
+        }
+    }
 }
 
 #[cold]
@@ -819,9 +880,55 @@ mod tests {
             id: Some(Value::Number(1.into())),
         };
         let result = handle_initialize(&req).unwrap();
-        assert_eq!(result["protocolVersion"], "2024-11-05");
+        // No requested version → server offers its latest supported revision.
+        assert_eq!(result["protocolVersion"], LATEST_PROTOCOL_VERSION);
         assert!(result["capabilities"]["tools"]["listChanged"].is_boolean());
+        // False resources/prompts capabilities must not be advertised.
+        assert!(result["capabilities"]["resources"].is_null());
+        assert!(result["capabilities"]["prompts"].is_null());
+        assert!(result["instructions"].is_string());
         assert_eq!(result["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn test_handle_initialize_version_negotiation() {
+        // A supported requested version is echoed back verbatim.
+        let req = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            method: "initialize".to_string(),
+            params: Some(json!({ "protocolVersion": "2024-11-05" })),
+            id: Some(Value::Number(1.into())),
+        };
+        assert_eq!(
+            handle_initialize(&req).unwrap()["protocolVersion"],
+            "2024-11-05"
+        );
+
+        // An unsupported version falls back to our latest.
+        let req = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            method: "initialize".to_string(),
+            params: Some(json!({ "protocolVersion": "1999-01-01" })),
+            id: Some(Value::Number(1.into())),
+        };
+        assert_eq!(
+            handle_initialize(&req).unwrap()["protocolVersion"],
+            LATEST_PROTOCOL_VERSION
+        );
+    }
+
+    #[test]
+    fn test_tool_result_wrapping() {
+        // Object results carry both text and structuredContent.
+        let ok = tool_success(json!({ "rows": 3 }));
+        assert_eq!(ok["isError"], false);
+        assert_eq!(ok["content"][0]["type"], "text");
+        assert_eq!(ok["structuredContent"]["rows"], 3);
+
+        // Errors are CallToolResults with isError=true, not protocol errors.
+        let err = tool_error("boom");
+        assert_eq!(err["isError"], true);
+        assert_eq!(err["content"][0]["text"], "boom");
     }
 
     /// Enforce Phase 1.5: no bare `SET ` outside transaction blocks.

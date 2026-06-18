@@ -6,6 +6,13 @@
 
 **mcp-postgres** is a high-performance MCP server that brings PostgreSQL into Claude Desktop and any MCP-compatible AI tool. 135 PostgreSQL tools, lock-free connection pooling, sub-10ms latency.
 
+> **MCP suite.** One of four high-performance MCP servers written in Rust —
+> [mcp-postgres](https://github.com/corporatepiyush/mcp-pg-rust) ·
+> [mcp-filesystem](https://github.com/corporatepiyush/mcp-filesystem-rust) ·
+> [mcp-memory](https://github.com/corporatepiyush/mcp-memory) ·
+> [mcp-web-search](https://github.com/corporatepiyush/mcp-web-search).
+> All implement MCP protocol revision **`2025-11-25`**.
+
 ## Quick Start
 
 ### Install
@@ -85,9 +92,21 @@ Options:
 
 ---
 
-## Protocol & API
+## MCP Compliance
 
-[JSON-RPC 2.0](https://spec.modelcontextprotocol.io) over TCP, HTTP/2, or stdio.
+Implements the [Model Context Protocol](https://modelcontextprotocol.io) revision **`2025-11-25`** over [JSON-RPC 2.0](https://spec.modelcontextprotocol.io), via TCP, HTTP/2, or stdio.
+
+| Area | Support |
+|---|---|
+| Transports | stdio, TCP (3000), HTTP/2 (3001) |
+| Protocol version | `2025-11-25`, negotiates down to `2025-06-18` / `2025-03-26` / `2024-11-05` |
+| `initialize` | ✅ version negotiation + `instructions` |
+| `tools/list`, `tools/call` | ✅ (135 tools) |
+| `CallToolResult` | ✅ `content[]` + `structuredContent` + `isError` |
+| Capabilities advertised | `tools` only — nothing is advertised that isn't implemented |
+| `resources` · `prompts` · `logging` · `completion` | ❌ roadmap — see [MIGRATION.md](./MIGRATION.md) |
+
+**Request:**
 
 ```json
 {
@@ -97,6 +116,21 @@ Options:
   "id": 1
 }
 ```
+
+**Result** — a spec-compliant `CallToolResult`. The payload is available as a
+machine-readable `structuredContent` object and as serialized `text`; tool
+failures come back with `isError: true` (not as JSON-RPC protocol errors) so the
+model can self-correct:
+
+```json
+{
+  "content": [{ "type": "text", "text": "{\"tables\":[\"users\",\"orders\"]}" }],
+  "structuredContent": { "tables": ["users", "orders"] },
+  "isError": false
+}
+```
+
+Upgrading from 4.x? The result shape changed — see **[MIGRATION.md](./MIGRATION.md)**.
 
 ---
 
@@ -318,6 +352,18 @@ Sub-10ms latency is guaranteed by design: zero allocation on the hot path, monom
 - **PG version-aware queries** — Verified against PG 16–18. Graceful fallbacks when views/columns differ across versions.
 
 ---
+
+## Versioning & Compatibility
+
+Follows [Semantic Versioning](https://semver.org). The current line is **5.x**,
+which targets MCP revision `2025-11-25`. The `5.0.0` release changed the
+`tools/call` result shape to be spec-compliant — see **[MIGRATION.md](./MIGRATION.md)**
+and the [CHANGELOG](./CHANGELOG.md).
+
+| mcp-postgres | MCP revision (default) | Negotiates |
+|---|---|---|
+| 5.x | `2025-11-25` | `2025-06-18`, `2025-03-26`, `2024-11-05` |
+| ≤ 4.x | `2024-11-05` | — |
 
 ## License
 
