@@ -931,6 +931,97 @@ mod tests {
         assert_eq!(err["content"][0]["text"], "boom");
     }
 
+    // ── MCP 2025-11-25 compliance ─────────────────────────────────────────
+
+    fn init_with(params: Option<Value>) -> Value {
+        let req = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            method: "initialize".to_string(),
+            params,
+            id: Some(json!(1)),
+        };
+        handle_initialize(&req).unwrap()
+    }
+
+    #[test]
+    fn test_compliance_all_supported_versions_echoed() {
+        // Every advertised supported revision must be echoed back verbatim.
+        for v in SUPPORTED_PROTOCOL_VERSIONS {
+            let result = init_with(Some(json!({ "protocolVersion": v })));
+            assert_eq!(&result["protocolVersion"], v, "version {v} not echoed");
+        }
+        // The latest must be in the supported set and be the default.
+        assert!(SUPPORTED_PROTOCOL_VERSIONS.contains(&LATEST_PROTOCOL_VERSION));
+        assert_eq!(LATEST_PROTOCOL_VERSION, "2025-11-25");
+        assert_eq!(init_with(None)["protocolVersion"], "2025-11-25");
+    }
+
+    #[test]
+    fn test_compliance_unsupported_and_malformed_version_fall_back() {
+        for bad in [json!("1999-01-01"), json!(123), json!(null), json!({})] {
+            let result = init_with(Some(json!({ "protocolVersion": bad })));
+            assert_eq!(result["protocolVersion"], LATEST_PROTOCOL_VERSION);
+        }
+        // Missing params entirely also falls back to latest.
+        assert_eq!(init_with(Some(json!({})))["protocolVersion"], LATEST_PROTOCOL_VERSION);
+    }
+
+    #[test]
+    fn test_compliance_capabilities_are_honest() {
+        let caps = &init_with(None)["capabilities"];
+        // Only `tools` is implemented; nothing else may be advertised.
+        assert!(caps["tools"].is_object());
+        for unimplemented in ["resources", "prompts", "logging", "completions"] {
+            assert!(
+                caps[unimplemented].is_null(),
+                "must not advertise unimplemented capability `{unimplemented}`"
+            );
+        }
+    }
+
+    #[test]
+    fn test_compliance_initialize_has_instructions_and_server_info() {
+        let result = init_with(None);
+        let instructions = result["instructions"].as_str().unwrap();
+        assert!(!instructions.is_empty());
+        assert_eq!(result["serverInfo"]["name"], "mcp-postgres");
+        assert_eq!(result["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn test_compliance_tool_success_shapes() {
+        // Object → text + structuredContent, isError=false.
+        let obj = tool_success(json!({ "a": 1 }));
+        assert_eq!(obj["content"][0]["type"], "text");
+        assert!(obj["content"][0]["text"].as_str().unwrap().contains("\"a\":1"));
+        assert_eq!(obj["structuredContent"]["a"], 1);
+        assert_eq!(obj["isError"], false);
+
+        // Array (non-object) → text only, no structuredContent.
+        let arr = tool_success(json!([1, 2, 3]));
+        assert_eq!(arr["content"][0]["type"], "text");
+        assert_eq!(arr["content"][0]["text"], "[1,2,3]");
+        assert!(arr["structuredContent"].is_null());
+        assert_eq!(arr["isError"], false);
+
+        // Scalar → text only.
+        let scalar = tool_success(json!("hi"));
+        assert_eq!(scalar["content"][0]["text"], "\"hi\"");
+        assert!(scalar["structuredContent"].is_null());
+        assert_eq!(scalar["isError"], false);
+    }
+
+    #[test]
+    fn test_compliance_tool_result_is_valid_calltoolresult() {
+        // content MUST be a non-empty array of typed items.
+        for v in [tool_success(json!({ "x": 1 })), tool_error("e")] {
+            let content = v["content"].as_array().expect("content is an array");
+            assert!(!content.is_empty());
+            assert!(content[0]["type"].is_string());
+            assert!(v["isError"].is_boolean());
+        }
+    }
+
     /// Enforce Phase 1.5: no bare `SET ` outside transaction blocks.
     /// Every session-level SET must use `SET LOCAL` inside a `BEGIN`/`COMMIT` pair.
     /// This grep-based test fails compilation if any violation exists in `src/actions/`.
