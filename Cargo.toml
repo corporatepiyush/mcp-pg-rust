@@ -1,6 +1,6 @@
 [package]
 name = "mcp-postgres"
-version = "5.0.1"
+version = "5.1.0"
 edition = "2024"
 authors = ["Piyush"]
 description = "High-performance MCP server for PostgreSQL with CPU-aware connection pooling and optimized buffers"
@@ -30,6 +30,10 @@ rustls-native-certs = "0.8"
 
 # HTTP/2 and SSE
 axum = "0.8"
+# Server-side TLS (HTTPS) for the axum HTTP transport. `tls-rustls-no-provider`
+# pulls rustls without a bundled crypto provider so we keep using the process
+# default `ring` provider installed in src/tls.rs (no cmake/aws-lc toolchain).
+axum-server = { version = "0.8", default-features = false, features = ["tls-rustls-no-provider"] }
 hyper = { version = "1.0", features = ["full"] }
 futures = "0.3"
 tokio-stream = "0.1"

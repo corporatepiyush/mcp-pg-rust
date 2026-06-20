@@ -75,6 +75,31 @@ pub fn make_connector() -> anyhow::Result<MakeRustlsConnect> {
     Ok(MakeRustlsConnect::new(config))
 }
 
+/// Build an axum-server rustls config for the HTTP transport from a PEM
+/// certificate chain and private key.
+///
+/// Server-side TLS is opt-in: the HTTP server only calls this when both a
+/// `--tls-cert` and `--tls-key` are configured, otherwise it stays plaintext.
+/// Uses the process default `ring` crypto provider (installed here on first
+/// call), matching the Postgres client and reqwest paths — no aws-lc/cmake.
+pub async fn server_config(
+    cert_path: &std::path::Path,
+    key_path: &std::path::Path,
+) -> anyhow::Result<axum_server::tls_rustls::RustlsConfig> {
+    // The rustls ServerConfig builder reads the process default CryptoProvider;
+    // ensure ring is installed before we build it.
+    ensure_crypto_provider();
+    axum_server::tls_rustls::RustlsConfig::from_pem_file(cert_path, key_path)
+        .await
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "failed to load TLS certificate '{}' and key '{}': {e}",
+                cert_path.display(),
+                key_path.display()
+            )
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

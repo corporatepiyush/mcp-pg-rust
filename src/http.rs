@@ -38,13 +38,32 @@ pub async fn create_http_server(
         .with_state(http_state);
 
     let addr = format!("{}:{}", config.server.host, port);
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
 
-    tracing::info!("HTTP/2 server listening on {}", addr);
-
-    axum::serve(listener, app).await?;
+    // Serve over TLS (HTTPS) when a cert+key are configured, otherwise plaintext.
+    // `config.rs` guarantees the two are set together.
+    if let (Some(cert), Some(key)) = (&config.server.tls_cert, &config.server.tls_key) {
+        let tls = crate::tls::server_config(cert, key).await?;
+        let socket_addr = resolve_addr(&addr)?;
+        tracing::info!("HTTPS/2 server listening on {} (TLS)", socket_addr);
+        axum_server::bind_rustls(socket_addr, tls)
+            .serve(app.into_make_service())
+            .await?;
+    } else {
+        let listener = tokio::net::TcpListener::bind(&addr).await?;
+        tracing::info!("HTTP/2 server listening on {}", addr);
+        axum::serve(listener, app).await?;
+    }
 
     Ok(())
+}
+
+/// Resolve a `host:port` string to a single `SocketAddr` for `axum_server`,
+/// which binds an address rather than an already-bound listener.
+fn resolve_addr(addr: &str) -> Result<std::net::SocketAddr, Box<dyn std::error::Error>> {
+    use std::net::ToSocketAddrs;
+    addr.to_socket_addrs()?
+        .next()
+        .ok_or_else(|| format!("could not resolve bind address '{addr}'").into())
 }
 
 /// Check the `Authorization: Bearer <token>` header against the configured

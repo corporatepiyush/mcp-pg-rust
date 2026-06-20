@@ -86,8 +86,24 @@ Options:
       --metrics-port <PORT>      Metrics port                [9090]
       --stdio                    Stdio mode (Claude Desktop)
       --access-mode <MODE>       unrestricted, restricted    [unrestricted]
+      --tls-cert <PATH>          PEM cert chain to serve HTTP over TLS (HTTPS)
+      --tls-key <PATH>           PEM private key matching --tls-cert
   -h, --help                     Print help
   -V, --version                  Print version
+```
+
+### TLS (HTTPS)
+
+The HTTP/2 transport can be served over TLS (rustls, `ring` provider — the same
+provider used for `sslmode`-gated PostgreSQL connections, no OpenSSL/aws-lc).
+Provide a PEM certificate chain and private key via `--tls-cert`/`--tls-key` or
+the `MCP_TLS_CERT`/`MCP_TLS_KEY` environment variables and the HTTP server speaks
+HTTPS instead of plaintext. The two must be supplied together or startup is
+refused; when neither is set the HTTP transport stays plaintext (the default).
+The raw TCP transport is unaffected.
+
+```bash
+mcp-postgres --http-port 3001 --tls-cert ./cert.pem --tls-key ./key.pem
 ```
 
 ---

@@ -60,6 +60,14 @@ pub struct ServerConfig {
     /// Whether the import_from_url tool may make outbound HTTP fetches.
     #[serde(default)]
     pub allow_url_import: bool,
+    /// PEM certificate chain for serving the HTTP transport over TLS (HTTPS).
+    /// `None` (the default) keeps the HTTP transport plaintext. Engaged only
+    /// when both `tls_cert` and `tls_key` are set.
+    #[serde(default)]
+    pub tls_cert: Option<std::path::PathBuf>,
+    /// PEM private key matching `tls_cert`.
+    #[serde(default)]
+    pub tls_key: Option<std::path::PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,6 +100,25 @@ impl Config {
             .or_else(|| std::env::var("MCP_AUTH_TOKEN").ok())
             .filter(|t| !t.is_empty());
 
+        // TLS cert/key for the HTTP transport, from CLI flags or env vars.
+        let tls_cert = args
+            .tls_cert
+            .clone()
+            .or_else(|| std::env::var("MCP_TLS_CERT").ok())
+            .filter(|s| !s.is_empty())
+            .map(std::path::PathBuf::from);
+        let tls_key = args
+            .tls_key
+            .clone()
+            .or_else(|| std::env::var("MCP_TLS_KEY").ok())
+            .filter(|s| !s.is_empty())
+            .map(std::path::PathBuf::from);
+        if tls_cert.is_some() != tls_key.is_some() {
+            anyhow::bail!(
+                "--tls-cert and --tls-key must be provided together (or both omitted for plaintext HTTP)"
+            );
+        }
+
         Ok(Config {
             database: DatabaseConfig { url: database_url },
             server: ServerConfig {
@@ -101,6 +128,8 @@ impl Config {
                 access_mode: args.access_mode,
                 auth_token,
                 allow_url_import: args.allow_url_import,
+                tls_cert,
+                tls_key,
             },
             pool: PoolConfig {
                 min_size,
@@ -128,6 +157,8 @@ impl Default for Config {
                 access_mode: AccessMode::Unrestricted,
                 auth_token: None,
                 allow_url_import: false,
+                tls_cert: None,
+                tls_key: None,
             },
             pool: PoolConfig {
                 min_size: 5,
