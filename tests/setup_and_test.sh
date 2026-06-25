@@ -64,7 +64,7 @@ if ! nc -z "$MCP_HOST" "$MCP_PORT" 2>/dev/null; then
     echo "⚠️  Server not running on $MCP_HOST:$MCP_PORT"
     echo ""
     echo "Start the server with:"
-    echo "  cargo run --release -- --database-url \"$DB_URL\""
+    echo "  cargo run --release -- --database-url \"$DB_URL\" --enable-all"
     echo ""
     echo "Then run tests with:"
     echo "  cargo test --test integration_test_data_tools -- --nocapture"

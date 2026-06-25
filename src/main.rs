@@ -48,6 +48,29 @@ async fn main() -> Result<()> {
         info!("Transport authentication: ENABLED (token required on TCP and HTTP)");
     }
 
+    // Tool exposure: nothing is advertised unless a category was enabled. Make
+    // the resulting surface obvious in the logs and loudly warn on the no-op
+    // configuration where the server would expose zero tools.
+    let enabled = &config.server.enabled_categories;
+    if enabled.is_empty() {
+        tracing::warn!(
+            "No tool categories enabled — the server will expose ZERO tools. \
+             Enable categories with --enable-<category> (e.g. --enable-query --enable-schema) \
+             or expose everything with --enable-all."
+        );
+    } else {
+        let slugs: Vec<&str> = enabled.iter().map(|c| c.slug()).collect();
+        let exposed = mcp_postgres::tools::ALL_TOOLS
+            .iter()
+            .filter(|t| enabled.contains(&t.category))
+            .count();
+        info!(
+            "Tool categories enabled: {} ({} tools exposed)",
+            slugs.join(", "),
+            exposed
+        );
+    }
+
     // Initialize metrics if enabled
     if args.enable_metrics {
         metrics::init_metrics(args.metrics_port)?;

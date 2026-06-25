@@ -12,15 +12,32 @@ use crate::pool::ConnectionPool;
 use crate::protocol::{JsonRpcRequest, JsonRpcResponse};
 use once_cell::sync::Lazy;
 
-/// Pre-serialized response bytes for `tools/list`.  Built once at startup;
-/// each call deserializes from this cached buffer instead of deep-cloning the
-/// entire 135-tool Value tree (~50 KB).
-static TOOLS_LIST_RESPONSE: Lazy<Vec<u8>> = Lazy::new(|| {
+/// Every tool definition from `tools.json`, parsed once at startup. The
+/// `tools/list` payload is derived from this by filtering to the categories a
+/// given server instance has enabled.
+static ALL_TOOL_DEFS: Lazy<Vec<Value>> = Lazy::new(|| {
     let tools_json = include_str!("../tools.json");
-    let tools: Vec<Value> = serde_json::from_str(tools_json).expect("Failed to parse tools.json");
+    serde_json::from_str(tools_json).expect("Failed to parse tools.json")
+});
+
+/// Build the pre-serialized `{"tools":[...]}` payload for `tools/list`,
+/// filtered to the enabled categories. A tool whose category is not enabled is
+/// omitted entirely, so disabled tools are invisible to clients. With an empty
+/// `enabled` set the payload is `{"tools":[]}` — the default "expose nothing"
+/// posture. The result is cached per-`Config` (see `Config::tools_list_bytes`)
+/// so requests never reparse or refilter.
+pub fn build_tools_list_response(enabled: &[crate::tools::ToolCategory]) -> Vec<u8> {
+    let tools: Vec<&Value> = ALL_TOOL_DEFS
+        .iter()
+        .filter(|t| {
+            t.get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|name| crate::tools::is_tool_available(name, enabled))
+        })
+        .collect();
     let resp = json!({ "tools": tools });
     serde_json::to_vec(&resp).expect("Failed to serialize tools/list response")
-});
+}
 
 const BUFFER_CAPACITY: usize = 4096;
 const NEWLINE: &[u8] = b"\n";
@@ -254,7 +271,7 @@ async fn process_one_line<W: AsyncWriteExt + Unpin>(
                 if let Some(id) = req.id.as_ref() {
                     response_buf.clear();
                     response_buf.extend_from_slice(b"{\"jsonrpc\":\"2.0\",\"result\":");
-                    response_buf.extend_from_slice(&TOOLS_LIST_RESPONSE);
+                    response_buf.extend_from_slice(&config.tools_list_bytes);
                     response_buf.extend_from_slice(b",\"id\":");
                     serde_json::to_writer(&mut *response_buf, id)?;
                     response_buf.extend_from_slice(b"}");
@@ -318,7 +335,7 @@ pub async fn process_request(
 ) -> MCPResult<Value> {
     match req.method.as_str() {
         "initialize" => handle_initialize(req),
-        "tools/list" => handle_tools_list(),
+        "tools/list" => handle_tools_list(config),
         "tools/call" => handle_tools_call(req, pool, config).await,
         "ping" => handle_ping(),
         method if method.starts_with("notifications/") => handle_notification(method),
@@ -430,9 +447,10 @@ fn tool_error(message: impl Into<String>) -> Value {
 }
 
 #[inline]
-fn handle_tools_list() -> MCPResult<Value> {
-    // Deserialize from cached bytes instead of deep-cloning a 50 KB Value tree.
-    Ok(serde_json::from_slice(&TOOLS_LIST_RESPONSE)?)
+fn handle_tools_list(config: &Config) -> MCPResult<Value> {
+    // Deserialize from the per-config cached bytes (already filtered to the
+    // enabled categories) instead of deep-cloning a large Value tree.
+    Ok(serde_json::from_slice(&config.tools_list_bytes)?)
 }
 
 async fn handle_tools_call(
@@ -448,9 +466,17 @@ async fn handle_tools_call(
 
     let tool_args = req.params.as_ref().and_then(|p| p.get("arguments"));
 
-    // Restricted mode check + unknown tool check BEFORE pool acquire. Policy
-    // rejections are tool-level failures (the tool exists, the call is well
-    // formed) so they are surfaced as `isError` results, not protocol errors.
+    // Category gate: a tool is only reachable if it exists AND its category was
+    // enabled at startup. Tools in disabled categories are invisible (absent
+    // from tools/list) so a call to one is treated as an unknown method, not a
+    // policy `isError`. This runs first, before any pool acquire.
+    if !crate::tools::is_tool_available(tool_name, &config.server.enabled_categories) {
+        return Err(method_not_found(tool_name));
+    }
+
+    // Restricted mode check BEFORE pool acquire. Policy rejections are
+    // tool-level failures (the tool exists, the call is well formed) so they
+    // are surfaced as `isError` results, not protocol errors.
     if config.server.access_mode == crate::config::AccessMode::Restricted
         && crate::tools::is_write_tool(tool_name)
     {
@@ -464,11 +490,6 @@ async fn handle_tools_call(
         return Ok(tool_error(
             "'import_from_url' is disabled; start the server with --allow-url-import to enable it",
         ));
-    }
-
-    // Verify tool exists before acquiring a connection
-    if !crate::tools::tool_exists(tool_name) {
-        return Err(method_not_found(tool_name));
     }
 
     // Acquire pool connection only for known tools
@@ -733,20 +754,52 @@ mod tests {
     #[test]
     fn test_tools_list_splice_matches_generic() {
         // The hand-spliced fast-path bytes must be byte-identical to the
-        // generic JsonRpcResponse::success serialization.
+        // generic JsonRpcResponse::success serialization, for the same
+        // category-filtered payload the server would serve.
+        let bytes = build_tools_list_response(crate::tools::ToolCategory::ALL);
         let id = Value::Number(7.into());
-        let result: Value = serde_json::from_slice(&TOOLS_LIST_RESPONSE).unwrap();
+        let result: Value = serde_json::from_slice(&bytes).unwrap();
         let generic =
             serde_json::to_vec(&JsonRpcResponse::success(Some(id.clone()), result)).unwrap();
 
         let mut spliced = Vec::new();
         spliced.extend_from_slice(b"{\"jsonrpc\":\"2.0\",\"result\":");
-        spliced.extend_from_slice(&TOOLS_LIST_RESPONSE);
+        spliced.extend_from_slice(&bytes);
         spliced.extend_from_slice(b",\"id\":");
         serde_json::to_writer(&mut spliced, &id).unwrap();
         spliced.extend_from_slice(b"}");
 
         assert_eq!(spliced, generic);
+    }
+
+    #[test]
+    fn test_tools_list_filtered_by_category() {
+        use crate::tools::ToolCategory;
+        let count = |bytes: &[u8]| -> usize {
+            let v: Value = serde_json::from_slice(bytes).unwrap();
+            v["tools"].as_array().unwrap().len()
+        };
+
+        // Default (nothing enabled) exposes zero tools.
+        assert_eq!(count(&build_tools_list_response(&[])), 0);
+
+        // Enabling all categories exposes the full set.
+        let all = count(&build_tools_list_response(ToolCategory::ALL));
+        assert_eq!(all, crate::tools::ALL_TOOLS.len());
+
+        // A single category exposes only its own tools, and the named tool is
+        // present while a tool from another category is not.
+        let query_bytes = build_tools_list_response(&[ToolCategory::Query]);
+        let v: Value = serde_json::from_slice(&query_bytes).unwrap();
+        let names: Vec<&str> = v["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["name"].as_str().unwrap())
+            .collect();
+        assert!(names.contains(&"execute_query"));
+        assert!(!names.contains(&"create_table"));
+        assert!(count(&query_bytes) > 0 && count(&query_bytes) < all);
     }
 
     #[tokio::test]
@@ -848,11 +901,12 @@ mod tests {
 
     #[test]
     fn test_tools_list_static() {
-        let list: Value = serde_json::from_slice(&TOOLS_LIST_RESPONSE).unwrap();
+        let bytes = build_tools_list_response(crate::tools::ToolCategory::ALL);
+        let list: Value = serde_json::from_slice(&bytes).unwrap();
         let tools = list.get("tools").and_then(|v| v.as_array());
         assert!(
             tools.is_some(),
-            "TOOLS_LIST_RESPONSE should contain a tools array"
+            "tools/list payload should contain a tools array"
         );
         assert!(!tools.unwrap().is_empty(), "Tools list should not be empty");
     }

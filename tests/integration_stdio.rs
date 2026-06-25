@@ -84,6 +84,7 @@ fn spawn_stdio() -> (std::process::Child, Box<dyn Write>, Box<dyn BufRead>) {
 
     let mut child = Command::new(binary)
         .arg("--stdio")
+        .arg("--enable-all")
         .arg("--database-url")
         .arg("postgresql://piyush@localhost:5432/mcp_test_31")
         .arg("--log-level")

@@ -6,6 +6,12 @@
 
 **mcp-postgres** is a high-performance MCP server that brings PostgreSQL into Claude Desktop and any MCP-compatible AI tool. 135 PostgreSQL tools, lock-free connection pooling, sub-10ms latency.
 
+> **Tools are opt-in (5.2.0+).** No tools are exposed by default. You enable
+> them one *category* at a time with `--enable-<category>` flags (or
+> `--enable-all`). A server started with no enable flags advertises an **empty**
+> tool list and rejects every `tools/call`. See
+> [Tool Exposure](#tool-exposure-opt-in-by-category).
+
 > **MCP suite.** One of four high-performance MCP servers written in Rust —
 > [mcp-postgres](https://github.com/corporatepiyush/mcp-pg-rust) ·
 > [mcp-filesystem](https://github.com/corporatepiyush/mcp-filesystem-rust) ·
@@ -28,15 +34,20 @@ brew install mcp-postgres
 
 ### Run
 
+Tools are opt-in — pass one or more `--enable-<category>` flags (or
+`--enable-all`). Without them the server exposes no tools.
+
 ```bash
-# Stdio mode (for Claude Desktop)
-mcp-postgres --database-url "postgres://user:pass@localhost:5432/mydb" --stdio
+# Stdio mode (for Claude Desktop) — expose read-only query + schema tools
+mcp-postgres --database-url "postgres://user:pass@localhost:5432/mydb" --stdio \
+  --enable-query --enable-schema
 
-# TCP server (port 3000)
-mcp-postgres --database-url "postgres://user:pass@localhost:5432/mydb"
+# TCP server (port 3000) — expose everything
+mcp-postgres --database-url "postgres://user:pass@localhost:5432/mydb" --enable-all
 
-# HTTP/2 server (port 3001)
-mcp-postgres --database-url "postgres://user:pass@localhost:5432/mydb" --http-port 3001
+# HTTP/2 server (port 3001) — query + monitoring only
+mcp-postgres --database-url "postgres://user:pass@localhost:5432/mydb" --http-port 3001 \
+  --enable-query --enable-monitoring
 ```
 
 ### Claude Desktop
@@ -48,7 +59,7 @@ Add to `claude_desktop_config.json`:
   "mcpServers": {
     "postgres": {
       "command": "mcp-postgres",
-      "args": ["--database-url", "postgres://user:pass@localhost:5432/mydb", "--stdio"]
+      "args": ["--database-url", "postgres://user:pass@localhost:5432/mydb", "--stdio", "--enable-all"]
     }
   }
 }
@@ -88,6 +99,19 @@ Options:
       --access-mode <MODE>       unrestricted, restricted    [unrestricted]
       --tls-cert <PATH>          PEM cert chain to serve HTTP over TLS (HTTPS)
       --tls-key <PATH>           PEM private key matching --tls-cert
+
+  Tool exposure (none enabled by default — see "Tool Exposure"):
+      --enable-all               Expose every category (overrides the flags below)
+      --enable-query             Query: execute/explain/async-execute + sampling
+      --enable-batch             Batch: bulk insert/update/delete + COPY
+      --enable-schema            Schema: read-only inspection + DDL generation
+      --enable-ddl               DDL: create/drop/alter/rename objects
+      --enable-admin             Admin: vacuum/reindex/analyze/truncate + sessions
+      --enable-monitoring        Monitoring: stats, conns, txns, replication, config
+      --enable-security          Security: roles, users, privileges, audits
+      --enable-data-io           Data I/O: CSV export + URL/file import
+      --enable-extensions        Extensions: pgvector, TimescaleDB, BM25, ext mgmt
+
   -h, --help                     Print help
   -V, --version                  Print version
 ```
@@ -150,10 +174,48 @@ Upgrading from 4.x? The result shape changed — see **[MIGRATION.md](./MIGRATIO
 
 ---
 
+## Tool Exposure (opt-in by category)
+
+Every tool belongs to exactly one of **9 categories**. **Nothing is exposed
+until you enable its category** at startup — disabled tools are hidden from
+`tools/list` and rejected from `tools/call` as if they did not exist. This lets
+you hand an agent precisely the surface area it needs (e.g. read-only `query` +
+`monitoring`) and nothing more.
+
+| Flag | Category | What it exposes |
+|------|----------|-----------------|
+| `--enable-query` | **Query** | `execute_query`, `execute_insert/update/delete`, `async_execute_*`, `explain_query`, `sample_data` |
+| `--enable-batch` | **Batch** | `async_batch_insert/update/delete`, `async_batch_insert_copy` |
+| `--enable-schema` | **Schema** (read) | `list_tables`, `describe_table`, `list_indexes/schemas/triggers/partitions`, `show_constraints`, `get_object_details`, `list_databases`, `table_dependencies`, `generate_create_*_ddl` |
+| `--enable-ddl` | **DDL** (write) | `create/drop/alter` table·view·schema·sequence·index·partition, `backup_table`, `add/drop/rename_column`, `alter_column_type`, `rename_table/index/schema`, FK & constraint ops, `clone_table_schema`, `create_database` |
+| `--enable-admin` | **Admin** | `vacuum`, `vacuum_full`, `vacuum_analyze`, `analyze_table`, `reindex_table/database`, `reset_statistics`, `truncate_table`, `cancel_query`, `terminate_connection` |
+| `--enable-monitoring` | **Monitoring** (read) | table/index stats, sizes, cache ratio, `pg_stat_statements`, connections, running/blocked queries, transactions, locks, deadlocks, replication, WAL, settings, health checks, `suggest_indexes`, bloat |
+| `--enable-security` | **Security** | `list/create/alter/drop_user`, role ops, `grant/revoke_privileges`, privilege listings, `security_audit`, `audit_role_usage` |
+| `--enable-data-io` | **Data I/O** | `export_csv`, `import_from_url` (also gated behind `--allow-url-import`) |
+| `--enable-extensions` | **Extensions** | pgvector (`vector_search`, `create_vector_index`, `list_vector_columns`), TimescaleDB (`create_hypertable`, `show_chunks`, retention/compression policies, continuous aggregates), BM25 full-text, and generic `create/drop/list_extension` |
+| `--enable-all` | *(all of the above)* | Every category. Overrides the individual flags. |
+
+```bash
+# Read-only analyst: inspect schema and run SELECTs, nothing else
+mcp-postgres -d "$DATABASE_URL" --stdio --enable-query --enable-schema --enable-monitoring
+
+# Full access
+mcp-postgres -d "$DATABASE_URL" --stdio --enable-all
+```
+
+Category gating composes with the existing `--access-mode restricted` (which
+additionally blocks all write tools) and `--allow-url-import` controls.
+
+---
+
 ## Tools (135 Total)
 
+The headings below are the human-readable groupings. To map each one to the
+`--enable-<category>` flag that exposes it, see the
+[Tool Exposure](#tool-exposure-opt-in-by-category) table above.
+
 <details>
-<summary><b>⚡ Query Execution</b> (8) — execute_query, execute_insert, execute_update, execute_delete, explain_query, async_execute_insert, async_execute_update, async_execute_delete</summary>
+<summary><b>⚡ Query Execution</b> (8) · <code>--enable-query</code> — execute_query, execute_insert, execute_update, execute_delete, explain_query, async_execute_insert, async_execute_update, async_execute_delete</summary>
 <p>Fire off raw SQL, run parameterized inserts/updates/deletes with automatic type coercion, and peek under the hood with <code>EXPLAIN ANALYZE</code> plans. Async variants let you fire-and-forget long-running operations without blocking your AI workflow.</p>
 <p><b>🪄 Key moves:</b> <code>execute_query</code> for ad-hoc SQL, <code>explain_query</code> to spot missing indexes or seq-scans, <code>async_execute_*</code> for bulk writes that outlive the request.</p>
 </details>

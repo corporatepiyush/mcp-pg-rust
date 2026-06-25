@@ -46,7 +46,7 @@ echo ""
 # Step 3: Start server
 echo "Step 3/5: Starting MCP PostgreSQL server..."
 SERVER_LOG=$(mktemp)
-$BINARY --database-url "$DB_URL" > "$SERVER_LOG" 2>&1 &
+$BINARY --database-url "$DB_URL" --enable-all > "$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
 
 # Wait for server to be ready (up to 15 seconds)

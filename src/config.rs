@@ -2,7 +2,10 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
+
+pub use crate::tools::ToolCategory;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum AccessMode {
@@ -40,6 +43,17 @@ pub struct Config {
     pub server: ServerConfig,
     pub pool: PoolConfig,
     pub metrics: MetricsConfig,
+    /// Pre-serialized `{"tools":[...]}` payload for `tools/list`, already
+    /// filtered to the enabled categories (see `server.enabled_categories`).
+    /// Skipped during (de)serialization and rebuilt from the enabled set so
+    /// every transport serves an identical, category-filtered list without
+    /// reparsing `tools.json` per request.
+    #[serde(skip, default = "default_tools_list_bytes")]
+    pub tools_list_bytes: Arc<Vec<u8>>,
+}
+
+fn default_tools_list_bytes() -> Arc<Vec<u8>> {
+    Arc::new(crate::server::build_tools_list_response(&[]))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +82,10 @@ pub struct ServerConfig {
     /// PEM private key matching `tls_cert`.
     #[serde(default)]
     pub tls_key: Option<std::path::PathBuf>,
+    /// Tool categories exposed by this server. Empty (the default) means no
+    /// tools are advertised or callable until enabled with `--enable-*`.
+    #[serde(default)]
+    pub enabled_categories: Vec<ToolCategory>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,6 +137,11 @@ impl Config {
             );
         }
 
+        let enabled_categories = args.enabled_categories();
+        let tools_list_bytes = Arc::new(crate::server::build_tools_list_response(
+            &enabled_categories,
+        ));
+
         Ok(Config {
             database: DatabaseConfig { url: database_url },
             server: ServerConfig {
@@ -130,6 +153,7 @@ impl Config {
                 allow_url_import: args.allow_url_import,
                 tls_cert,
                 tls_key,
+                enabled_categories,
             },
             pool: PoolConfig {
                 min_size,
@@ -140,6 +164,7 @@ impl Config {
                 enabled: args.enable_metrics,
                 port: args.metrics_port,
             },
+            tools_list_bytes,
         })
     }
 }
@@ -159,6 +184,7 @@ impl Default for Config {
                 allow_url_import: false,
                 tls_cert: None,
                 tls_key: None,
+                enabled_categories: Vec::new(),
             },
             pool: PoolConfig {
                 min_size: 5,
@@ -169,6 +195,7 @@ impl Default for Config {
                 enabled: false,
                 port: 9090,
             },
+            tools_list_bytes: default_tools_list_bytes(),
         }
     }
 }

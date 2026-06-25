@@ -84,4 +84,79 @@ pub struct Args {
     /// MCP_TLS_KEY env var.
     #[arg(long)]
     pub tls_key: Option<String>,
+
+    // ── Tool exposure ────────────────────────────────────────────────────
+    // No tools are exposed unless explicitly enabled. Each flag below turns on
+    // one category of tools (hidden from tools/list and rejected from
+    // tools/call when its category is disabled). Use --enable-all for every
+    // category at once.
+    /// Expose ALL tool categories (overrides the individual flags).
+    #[arg(long)]
+    pub enable_all: bool,
+
+    /// Enable Query tools: execute/explain/async-execute SQL and data sampling.
+    #[arg(long)]
+    pub enable_query: bool,
+
+    /// Enable Batch tools: bulk insert/update/delete and COPY ingestion.
+    #[arg(long)]
+    pub enable_batch: bool,
+
+    /// Enable Schema tools: read-only inspection and DDL generation.
+    #[arg(long)]
+    pub enable_schema: bool,
+
+    /// Enable DDL tools: create/drop/alter/rename of database objects.
+    #[arg(long)]
+    pub enable_ddl: bool,
+
+    /// Enable Admin tools: vacuum, reindex, analyze, truncate, cancel/terminate.
+    #[arg(long)]
+    pub enable_admin: bool,
+
+    /// Enable Monitoring tools: stats, connections, transactions, replication,
+    /// configuration, and health checks.
+    #[arg(long)]
+    pub enable_monitoring: bool,
+
+    /// Enable Security tools: roles, users, privileges, and security audits.
+    #[arg(long)]
+    pub enable_security: bool,
+
+    /// Enable Data I/O tools: CSV export and URL/file import.
+    #[arg(long)]
+    pub enable_data_io: bool,
+
+    /// Enable Extension tools: pgvector, TimescaleDB, BM25, extension mgmt.
+    #[arg(long)]
+    pub enable_extensions: bool,
+}
+
+impl Args {
+    /// Resolve the set of enabled tool categories from the `--enable-*` flags.
+    /// `--enable-all` turns on every category; otherwise only the categories
+    /// whose individual flag is set are enabled. With no flags, the result is
+    /// empty and no tools are exposed.
+    pub fn enabled_categories(&self) -> Vec<tools::ToolCategory> {
+        use tools::ToolCategory as C;
+        if self.enable_all {
+            return C::ALL.to_vec();
+        }
+        let mut cats = Vec::new();
+        let mut push = |on: bool, cat: C| {
+            if on {
+                cats.push(cat);
+            }
+        };
+        push(self.enable_query, C::Query);
+        push(self.enable_batch, C::Batch);
+        push(self.enable_schema, C::Schema);
+        push(self.enable_ddl, C::Ddl);
+        push(self.enable_admin, C::Admin);
+        push(self.enable_monitoring, C::Monitoring);
+        push(self.enable_security, C::Security);
+        push(self.enable_data_io, C::DataIo);
+        push(self.enable_extensions, C::Extensions);
+        cats
+    }
 }

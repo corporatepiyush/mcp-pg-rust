@@ -1,314 +1,294 @@
 //! Single source of truth for all MCP tools.
 //!
-//! Each entry declares the tool name, whether it requires a DB connection,
-//! and whether it is a write operation (blocked in restricted mode).
+//! Each entry declares the tool name, its category, whether it requires a DB
+//! connection, and whether it is a write operation (blocked in restricted mode).
 //!
-//! Adding a tool here automatically populates existence checks and
-//! restricted-mode enforcement.  The dispatch `match` in `server.rs`
-//! must also be kept in sync — if they diverge, the test
+//! Adding a tool here automatically populates existence checks, category
+//! gating, and restricted-mode enforcement.  The dispatch `match` in
+//! `server.rs` must also be kept in sync — if they diverge, the test
 //! `test_tool_registry_matches_dispatch` will fail.
+//!
+//! ## Tool categories & exposure
+//!
+//! Tools are grouped into [`ToolCategory`] banners. **No tool is exposed by
+//! default** — each category must be explicitly enabled at startup with the
+//! matching `--enable-<slug>` flag (or `--enable-all`). A tool that belongs to a
+//! disabled category is hidden from `tools/list` and rejected from `tools/call`
+//! as if it did not exist.
+
+use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::str::FromStr;
+
+/// Coarse capability groups used to selectively expose tools at startup.
+///
+/// Keep this list at or below ten variants — it maps one-to-one to a
+/// `--enable-<slug>` command-line flag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ToolCategory {
+    /// Ad-hoc SQL: execute/explain/async-execute and data sampling.
+    Query,
+    /// Bulk insert/update/delete and COPY-based ingestion.
+    Batch,
+    /// Read-only schema inspection and DDL generation.
+    Schema,
+    /// Schema modification: create/drop/alter/rename of database objects.
+    Ddl,
+    /// Maintenance and session control: vacuum, reindex, analyze, truncate,
+    /// cancel/terminate.
+    Admin,
+    /// Read-only diagnostics: stats, connections, transactions, replication,
+    /// configuration, and health checks.
+    Monitoring,
+    /// Roles, users, privileges, and security audits.
+    Security,
+    /// Data import/export (CSV, URL fetch).
+    DataIo,
+    /// PostgreSQL extensions & specialized features: pgvector, TimescaleDB,
+    /// BM25 full-text search, and generic extension management.
+    Extensions,
+}
+
+impl ToolCategory {
+    /// Every category, in declaration order. Used to build the CLI surface and
+    /// the `--enable-all` set.
+    pub const ALL: &'static [ToolCategory] = &[
+        ToolCategory::Query,
+        ToolCategory::Batch,
+        ToolCategory::Schema,
+        ToolCategory::Ddl,
+        ToolCategory::Admin,
+        ToolCategory::Monitoring,
+        ToolCategory::Security,
+        ToolCategory::DataIo,
+        ToolCategory::Extensions,
+    ];
+
+    /// Stable kebab-case slug used in the `--enable-<slug>` flag and config.
+    pub const fn slug(self) -> &'static str {
+        match self {
+            ToolCategory::Query => "query",
+            ToolCategory::Batch => "batch",
+            ToolCategory::Schema => "schema",
+            ToolCategory::Ddl => "ddl",
+            ToolCategory::Admin => "admin",
+            ToolCategory::Monitoring => "monitoring",
+            ToolCategory::Security => "security",
+            ToolCategory::DataIo => "data-io",
+            ToolCategory::Extensions => "extensions",
+        }
+    }
+}
+
+impl fmt::Display for ToolCategory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.slug())
+    }
+}
+
+impl FromStr for ToolCategory {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.trim().to_lowercase().replace('_', "-").as_str() {
+            "query" => Ok(ToolCategory::Query),
+            "batch" => Ok(ToolCategory::Batch),
+            "schema" => Ok(ToolCategory::Schema),
+            "ddl" => Ok(ToolCategory::Ddl),
+            "admin" => Ok(ToolCategory::Admin),
+            "monitoring" => Ok(ToolCategory::Monitoring),
+            "security" => Ok(ToolCategory::Security),
+            "data-io" => Ok(ToolCategory::DataIo),
+            "extensions" => Ok(ToolCategory::Extensions),
+            _ => Err(format!("Unknown tool category: {s}")),
+        }
+    }
+}
 
 pub struct ToolMeta {
     pub name: &'static str,
+    pub category: ToolCategory,
     pub needs_db: bool,
     pub write: bool,
 }
 
+use ToolCategory::{
+    Admin, Batch, DataIo, Ddl, Extensions, Monitoring, Query, Schema, Security,
+};
+
 #[rustfmt::skip]
 pub const ALL_TOOLS: &[ToolMeta] = &[
-    // add_column
-    ToolMeta { name: "add_column",                 needs_db: true,  write: true  },
-    // add_compression_policy
-    ToolMeta { name: "add_compression_policy",     needs_db: true,  write: true  },
-    // add_continuous_aggregate
-    ToolMeta { name: "add_continuous_aggregate",   needs_db: true,  write: true  },
-    // add_foreign_key
-    ToolMeta { name: "add_foreign_key",            needs_db: true,  write: true  },
-    // add_retention_policy
-    ToolMeta { name: "add_retention_policy",       needs_db: true,  write: true  },
-    // add_unique_constraint
-    ToolMeta { name: "add_unique_constraint",      needs_db: true,  write: true  },
-    // alter_column_type
-    ToolMeta { name: "alter_column_type",          needs_db: true,  write: true  },
-    // alter_index
-    ToolMeta { name: "alter_index",                needs_db: true,  write: true  },
-    // alter_role
-    ToolMeta { name: "alter_role",                 needs_db: true,  write: true  },
-    // alter_user
-    ToolMeta { name: "alter_user",                 needs_db: true,  write: true  },
-    // alter_view
-    ToolMeta { name: "alter_view",                 needs_db: true,  write: true  },
-    // analyze_db_health
-    ToolMeta { name: "analyze_db_health",          needs_db: true,  write: false },
-    // analyze_table
-    ToolMeta { name: "analyze_table",              needs_db: true,  write: true  },
-    // analyze_table_bloat
-    ToolMeta { name: "analyze_table_bloat",        needs_db: true,  write: false },
-    // async_batch_delete
-    ToolMeta { name: "async_batch_delete",         needs_db: true,  write: true  },
-    // async_batch_insert
-    ToolMeta { name: "async_batch_insert",         needs_db: true,  write: true  },
-    // async_batch_insert_copy
-    ToolMeta { name: "async_batch_insert_copy",    needs_db: true,  write: true  },
-    // async_batch_update
-    ToolMeta { name: "async_batch_update",         needs_db: true,  write: true  },
-    // async_execute_delete
-    ToolMeta { name: "async_execute_delete",       needs_db: true,  write: true  },
-    // async_execute_insert
-    ToolMeta { name: "async_execute_insert",       needs_db: true,  write: true  },
-    // async_execute_update
-    ToolMeta { name: "async_execute_update",       needs_db: true,  write: true  },
-    // audit_role_usage
-    ToolMeta { name: "audit_role_usage",           needs_db: true,  write: false },
-    // backup_table
-    ToolMeta { name: "backup_table",               needs_db: true,  write: true  },
-    // bm25_force_merge
-    ToolMeta { name: "bm25_force_merge",           needs_db: true,  write: true  },
-    // bm25_index_stats
-    ToolMeta { name: "bm25_index_stats",           needs_db: true,  write: false },
-    // cancel_query
-    ToolMeta { name: "cancel_query",               needs_db: true,  write: true  },
-    // clone_table_schema
-    ToolMeta { name: "clone_table_schema",         needs_db: true,  write: true  },
-    // compress_chunk
-    ToolMeta { name: "compress_chunk",             needs_db: true,  write: true  },
-    // create_bm25_index
-    ToolMeta { name: "create_bm25_index",          needs_db: true,  write: true  },
-    // create_database
-    ToolMeta { name: "create_database",            needs_db: true,  write: true  },
-    // create_extension
-    ToolMeta { name: "create_extension",           needs_db: true,  write: true  },
-    // create_hypertable
-    ToolMeta { name: "create_hypertable",          needs_db: true,  write: true  },
-    // create_index
-    ToolMeta { name: "create_index",               needs_db: true,  write: true  },
-    // create_partition
-    ToolMeta { name: "create_partition",           needs_db: true,  write: true  },
-    // create_role
-    ToolMeta { name: "create_role",                needs_db: true,  write: true  },
-    // create_schema
-    ToolMeta { name: "create_schema",              needs_db: true,  write: true  },
-    // create_sequence
-    ToolMeta { name: "create_sequence",            needs_db: true,  write: true  },
-    // create_table
-    ToolMeta { name: "create_table",               needs_db: true,  write: true  },
-    // create_user
-    ToolMeta { name: "create_user",                needs_db: true,  write: true  },
-    // create_vector_index
-    ToolMeta { name: "create_vector_index",        needs_db: true,  write: true  },
-    // create_view
-    ToolMeta { name: "create_view",                needs_db: true,  write: true  },
-    // describe_table
-    ToolMeta { name: "describe_table",             needs_db: true,  write: false },
-    // drop_bm25_index
-    ToolMeta { name: "drop_bm25_index",            needs_db: true,  write: true  },
-    // drop_column
-    ToolMeta { name: "drop_column",                needs_db: true,  write: true  },
-    // drop_constraint
-    ToolMeta { name: "drop_constraint",            needs_db: true,  write: true  },
-    // drop_extension
-    ToolMeta { name: "drop_extension",             needs_db: true,  write: true  },
-    // drop_foreign_key
-    ToolMeta { name: "drop_foreign_key",           needs_db: true,  write: true  },
-    // drop_index
-    ToolMeta { name: "drop_index",                 needs_db: true,  write: true  },
-    // drop_partition
-    ToolMeta { name: "drop_partition",             needs_db: true,  write: true  },
-    // drop_role
-    ToolMeta { name: "drop_role",                  needs_db: true,  write: true  },
-    // drop_schema
-    ToolMeta { name: "drop_schema",                needs_db: true,  write: true  },
-    // drop_sequence
-    ToolMeta { name: "drop_sequence",              needs_db: true,  write: true  },
-    // drop_table
-    ToolMeta { name: "drop_table",                 needs_db: true,  write: true  },
-    // drop_user
-    ToolMeta { name: "drop_user",                  needs_db: true,  write: true  },
-    // drop_view
-    ToolMeta { name: "drop_view",                  needs_db: true,  write: true  },
-    // execute_delete
-    ToolMeta { name: "execute_delete",             needs_db: true,  write: true  },
-    // execute_insert
-    ToolMeta { name: "execute_insert",             needs_db: true,  write: true  },
-    // execute_query
-    ToolMeta { name: "execute_query",              needs_db: true,  write: false },
-    // execute_update
-    ToolMeta { name: "execute_update",             needs_db: true,  write: true  },
-    // explain_query
-    ToolMeta { name: "explain_query",              needs_db: true,  write: false },
-    // export_csv
-    ToolMeta { name: "export_csv",                 needs_db: true,  write: false },
-    // find_missing_fk_indexes
-    ToolMeta { name: "find_missing_fk_indexes",    needs_db: true,  write: false },
-    // find_tables_without_pk
-    ToolMeta { name: "find_tables_without_pk",     needs_db: true,  write: false },
-    // generate_create_index_ddl
-    ToolMeta { name: "generate_create_index_ddl",  needs_db: true,  write: false },
-    // generate_create_table_ddl
-    ToolMeta { name: "generate_create_table_ddl",  needs_db: true,  write: false },
-    // get_cache_hit_ratio
-    ToolMeta { name: "get_cache_hit_ratio",        needs_db: true,  write: false },
-    // get_index_stats
-    ToolMeta { name: "get_index_stats",            needs_db: true,  write: false },
-    // get_object_details
-    ToolMeta { name: "get_object_details",         needs_db: true,  write: false },
-    // get_pg_stat_statements
-    ToolMeta { name: "get_pg_stat_statements",     needs_db: true,  write: false },
-    // get_setting
-    ToolMeta { name: "get_setting",                needs_db: true,  write: false },
-    // get_table_stats
-    ToolMeta { name: "get_table_stats",            needs_db: true,  write: false },
-    // grant_privileges
-    ToolMeta { name: "grant_privileges",           needs_db: true,  write: true  },
-    // import_from_url
-    ToolMeta { name: "import_from_url",            needs_db: true,  write: true  },
-    // list_bm25_indexes
-    ToolMeta { name: "list_bm25_indexes",          needs_db: true,  write: false },
-    // list_connections
-    ToolMeta { name: "list_connections",           needs_db: true,  write: false },
-    // list_database_privileges
-    ToolMeta { name: "list_database_privileges",   needs_db: true,  write: false },
-    // list_databases
-    ToolMeta { name: "list_databases",             needs_db: true,  write: false },
-    // list_duplicate_indexes
-    ToolMeta { name: "list_duplicate_indexes",     needs_db: true,  write: false },
-    // list_extensions
-    ToolMeta { name: "list_extensions",            needs_db: true,  write: false },
-    // list_indexes
-    ToolMeta { name: "list_indexes",               needs_db: true,  write: false },
-    // list_partitions
-    ToolMeta { name: "list_partitions",            needs_db: true,  write: false },
-    // list_replication_slots
-    ToolMeta { name: "list_replication_slots",     needs_db: true,  write: false },
-    // list_role_memberships
-    ToolMeta { name: "list_role_memberships",      needs_db: true,  write: false },
-    // list_schemas
-    ToolMeta { name: "list_schemas",               needs_db: false, write: false },
-    // list_standby_servers
-    ToolMeta { name: "list_standby_servers",       needs_db: true,  write: false },
-    // list_tables
-    ToolMeta { name: "list_tables",                needs_db: false, write: false },
-    // list_triggers
-    ToolMeta { name: "list_triggers",              needs_db: true,  write: false },
-    // list_unused_indexes
-    ToolMeta { name: "list_unused_indexes",        needs_db: true,  write: false },
-    // list_user_privileges
-    ToolMeta { name: "list_user_privileges",       needs_db: true,  write: false },
-    // list_users
-    ToolMeta { name: "list_users",                 needs_db: true,  write: false },
-    // list_vector_columns
-    ToolMeta { name: "list_vector_columns",        needs_db: true,  write: false },
-    // reindex_database
-    ToolMeta { name: "reindex_database",           needs_db: true,  write: true  },
-    // reindex_table
-    ToolMeta { name: "reindex_table",              needs_db: true,  write: true  },
-    // rename_column
-    ToolMeta { name: "rename_column",              needs_db: true,  write: true  },
-    // rename_index
-    ToolMeta { name: "rename_index",               needs_db: true,  write: true  },
-    // rename_schema
-    ToolMeta { name: "rename_schema",              needs_db: true,  write: true  },
-    // rename_table
-    ToolMeta { name: "rename_table",               needs_db: true,  write: true  },
-    // reset_statistics
-    ToolMeta { name: "reset_statistics",           needs_db: true,  write: true  },
-    // revoke_privileges
-    ToolMeta { name: "revoke_privileges",          needs_db: true,  write: true  },
-    // sample_data
-    ToolMeta { name: "sample_data",                needs_db: true,  write: false },
-    // search_bm25
-    ToolMeta { name: "search_bm25",                needs_db: true,  write: false },
-    // security_audit
-    ToolMeta { name: "security_audit",             needs_db: true,  write: false },
-    // show_active_transactions
-    ToolMeta { name: "show_active_transactions",   needs_db: true,  write: false },
-    // show_all_settings
-    ToolMeta { name: "show_all_settings",          needs_db: true,  write: false },
-    // show_autocommit_status
-    ToolMeta { name: "show_autocommit_status",     needs_db: true,  write: false },
-    // show_base_backup_progress
-    ToolMeta { name: "show_base_backup_progress",  needs_db: true,  write: false },
-    // show_blocked_queries
-    ToolMeta { name: "show_blocked_queries",       needs_db: true,  write: false },
-    // show_chunks
-    ToolMeta { name: "show_chunks",                needs_db: true,  write: false },
-    // show_connection_summary
-    ToolMeta { name: "show_connection_summary",    needs_db: true,  write: false },
-    // show_constraints
-    ToolMeta { name: "show_constraints",           needs_db: false, write: false },
-    // show_current_user
-    ToolMeta { name: "show_current_user",          needs_db: true,  write: false },
-    // show_database_size
-    ToolMeta { name: "show_database_size",         needs_db: true,  write: false },
-    // show_deadlocks
-    ToolMeta { name: "show_deadlocks",             needs_db: true,  write: false },
-    // show_hypertable_details
-    ToolMeta { name: "show_hypertable_details",    needs_db: true,  write: false },
-    // show_locks
-    ToolMeta { name: "show_locks",                 needs_db: true,  write: false },
-    // show_log_settings
-    ToolMeta { name: "show_log_settings",          needs_db: true,  write: false },
-    // show_memory_settings
-    ToolMeta { name: "show_memory_settings",       needs_db: true,  write: false },
-    // show_performance_settings
-    ToolMeta { name: "show_performance_settings",  needs_db: true,  write: false },
-    // show_replication_status
-    ToolMeta { name: "show_replication_status",    needs_db: true,  write: false },
-    // show_running_queries
-    ToolMeta { name: "show_running_queries",       needs_db: true,  write: false },
-    // show_session_info
-    ToolMeta { name: "show_session_info",          needs_db: true,  write: false },
-    // show_table_size
-    ToolMeta { name: "show_table_size",            needs_db: true,  write: false },
-    // show_transaction_isolation
-    ToolMeta { name: "show_transaction_isolation", needs_db: true,  write: false },
-    // show_transaction_timeout
-    ToolMeta { name: "show_transaction_timeout",   needs_db: true,  write: false },
-    // show_vacuum_progress
-    ToolMeta { name: "show_vacuum_progress",       needs_db: true,  write: false },
-    // show_waiting_locks
-    ToolMeta { name: "show_waiting_locks",         needs_db: true,  write: false },
-    // show_wal_info
-    ToolMeta { name: "show_wal_info",              needs_db: true,  write: false },
-    // suggest_indexes
-    ToolMeta { name: "suggest_indexes",            needs_db: true,  write: false },
-    // table_dependencies
-    ToolMeta { name: "table_dependencies",         needs_db: true,  write: false },
-    // terminate_connection
-    ToolMeta { name: "terminate_connection",       needs_db: true,  write: true  },
-    // truncate_table
-    ToolMeta { name: "truncate_table",             needs_db: true,  write: true  },
-    // vacuum
-    ToolMeta { name: "vacuum",                     needs_db: true,  write: true  },
-    // vacuum_analyze
-    ToolMeta { name: "vacuum_analyze",             needs_db: true,  write: true  },
-    // vacuum_full
-    ToolMeta { name: "vacuum_full",                needs_db: true,  write: true  },
-    // vector_search
-    ToolMeta { name: "vector_search",              needs_db: true,  write: false },
+    ToolMeta { name: "add_column",                 category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "add_compression_policy",     category: Extensions, needs_db: true,  write: true  },
+    ToolMeta { name: "add_continuous_aggregate",   category: Extensions, needs_db: true,  write: true  },
+    ToolMeta { name: "add_foreign_key",            category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "add_retention_policy",       category: Extensions, needs_db: true,  write: true  },
+    ToolMeta { name: "add_unique_constraint",      category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "alter_column_type",          category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "alter_index",                category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "alter_role",                 category: Security,   needs_db: true,  write: true  },
+    ToolMeta { name: "alter_user",                 category: Security,   needs_db: true,  write: true  },
+    ToolMeta { name: "alter_view",                 category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "analyze_db_health",          category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "analyze_table",              category: Admin,      needs_db: true,  write: true  },
+    ToolMeta { name: "analyze_table_bloat",        category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "async_batch_delete",         category: Batch,      needs_db: true,  write: true  },
+    ToolMeta { name: "async_batch_insert",         category: Batch,      needs_db: true,  write: true  },
+    ToolMeta { name: "async_batch_insert_copy",    category: Batch,      needs_db: true,  write: true  },
+    ToolMeta { name: "async_batch_update",         category: Batch,      needs_db: true,  write: true  },
+    ToolMeta { name: "async_execute_delete",       category: Query,      needs_db: true,  write: true  },
+    ToolMeta { name: "async_execute_insert",       category: Query,      needs_db: true,  write: true  },
+    ToolMeta { name: "async_execute_update",       category: Query,      needs_db: true,  write: true  },
+    ToolMeta { name: "audit_role_usage",           category: Security,   needs_db: true,  write: false },
+    ToolMeta { name: "backup_table",               category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "bm25_force_merge",           category: Extensions, needs_db: true,  write: true  },
+    ToolMeta { name: "bm25_index_stats",           category: Extensions, needs_db: true,  write: false },
+    ToolMeta { name: "cancel_query",               category: Admin,      needs_db: true,  write: true  },
+    ToolMeta { name: "clone_table_schema",         category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "compress_chunk",             category: Extensions, needs_db: true,  write: true  },
+    ToolMeta { name: "create_bm25_index",          category: Extensions, needs_db: true,  write: true  },
+    ToolMeta { name: "create_database",            category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "create_extension",           category: Extensions, needs_db: true,  write: true  },
+    ToolMeta { name: "create_hypertable",          category: Extensions, needs_db: true,  write: true  },
+    ToolMeta { name: "create_index",               category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "create_partition",           category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "create_role",                category: Security,   needs_db: true,  write: true  },
+    ToolMeta { name: "create_schema",              category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "create_sequence",            category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "create_table",               category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "create_user",                category: Security,   needs_db: true,  write: true  },
+    ToolMeta { name: "create_vector_index",        category: Extensions, needs_db: true,  write: true  },
+    ToolMeta { name: "create_view",                category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "describe_table",             category: Schema,     needs_db: true,  write: false },
+    ToolMeta { name: "drop_bm25_index",            category: Extensions, needs_db: true,  write: true  },
+    ToolMeta { name: "drop_column",                category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "drop_constraint",            category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "drop_extension",             category: Extensions, needs_db: true,  write: true  },
+    ToolMeta { name: "drop_foreign_key",           category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "drop_index",                 category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "drop_partition",             category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "drop_role",                  category: Security,   needs_db: true,  write: true  },
+    ToolMeta { name: "drop_schema",                category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "drop_sequence",              category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "drop_table",                 category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "drop_user",                  category: Security,   needs_db: true,  write: true  },
+    ToolMeta { name: "drop_view",                  category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "execute_delete",             category: Query,      needs_db: true,  write: true  },
+    ToolMeta { name: "execute_insert",             category: Query,      needs_db: true,  write: true  },
+    ToolMeta { name: "execute_query",              category: Query,      needs_db: true,  write: false },
+    ToolMeta { name: "execute_update",             category: Query,      needs_db: true,  write: true  },
+    ToolMeta { name: "explain_query",              category: Query,      needs_db: true,  write: false },
+    ToolMeta { name: "export_csv",                 category: DataIo,     needs_db: true,  write: false },
+    ToolMeta { name: "find_missing_fk_indexes",    category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "find_tables_without_pk",     category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "generate_create_index_ddl",  category: Schema,     needs_db: true,  write: false },
+    ToolMeta { name: "generate_create_table_ddl",  category: Schema,     needs_db: true,  write: false },
+    ToolMeta { name: "get_cache_hit_ratio",        category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "get_index_stats",            category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "get_object_details",         category: Schema,     needs_db: true,  write: false },
+    ToolMeta { name: "get_pg_stat_statements",     category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "get_setting",                category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "get_table_stats",            category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "grant_privileges",           category: Security,   needs_db: true,  write: true  },
+    ToolMeta { name: "import_from_url",            category: DataIo,     needs_db: true,  write: true  },
+    ToolMeta { name: "list_bm25_indexes",          category: Extensions, needs_db: true,  write: false },
+    ToolMeta { name: "list_connections",           category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "list_database_privileges",   category: Security,   needs_db: true,  write: false },
+    ToolMeta { name: "list_databases",             category: Schema,     needs_db: true,  write: false },
+    ToolMeta { name: "list_duplicate_indexes",     category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "list_extensions",            category: Extensions, needs_db: true,  write: false },
+    ToolMeta { name: "list_indexes",               category: Schema,     needs_db: true,  write: false },
+    ToolMeta { name: "list_partitions",            category: Schema,     needs_db: true,  write: false },
+    ToolMeta { name: "list_replication_slots",     category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "list_role_memberships",      category: Security,   needs_db: true,  write: false },
+    ToolMeta { name: "list_schemas",               category: Schema,     needs_db: false, write: false },
+    ToolMeta { name: "list_standby_servers",       category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "list_tables",                category: Schema,     needs_db: false, write: false },
+    ToolMeta { name: "list_triggers",              category: Schema,     needs_db: true,  write: false },
+    ToolMeta { name: "list_unused_indexes",        category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "list_user_privileges",       category: Security,   needs_db: true,  write: false },
+    ToolMeta { name: "list_users",                 category: Security,   needs_db: true,  write: false },
+    ToolMeta { name: "list_vector_columns",        category: Extensions, needs_db: true,  write: false },
+    ToolMeta { name: "reindex_database",           category: Admin,      needs_db: true,  write: true  },
+    ToolMeta { name: "reindex_table",              category: Admin,      needs_db: true,  write: true  },
+    ToolMeta { name: "rename_column",              category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "rename_index",               category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "rename_schema",              category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "rename_table",               category: Ddl,        needs_db: true,  write: true  },
+    ToolMeta { name: "reset_statistics",           category: Admin,      needs_db: true,  write: true  },
+    ToolMeta { name: "revoke_privileges",          category: Security,   needs_db: true,  write: true  },
+    ToolMeta { name: "sample_data",                category: Query,      needs_db: true,  write: false },
+    ToolMeta { name: "search_bm25",                category: Extensions, needs_db: true,  write: false },
+    ToolMeta { name: "security_audit",             category: Security,   needs_db: true,  write: false },
+    ToolMeta { name: "show_active_transactions",   category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_all_settings",          category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_autocommit_status",     category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_base_backup_progress",  category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_blocked_queries",       category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_chunks",                category: Extensions, needs_db: true,  write: false },
+    ToolMeta { name: "show_connection_summary",    category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_constraints",           category: Schema,     needs_db: false, write: false },
+    ToolMeta { name: "show_current_user",          category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_database_size",         category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_deadlocks",             category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_hypertable_details",    category: Extensions, needs_db: true,  write: false },
+    ToolMeta { name: "show_locks",                 category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_log_settings",          category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_memory_settings",       category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_performance_settings",  category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_replication_status",    category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_running_queries",       category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_session_info",          category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_table_size",            category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_transaction_isolation", category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_transaction_timeout",   category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_vacuum_progress",       category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_waiting_locks",         category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "show_wal_info",              category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "suggest_indexes",            category: Monitoring, needs_db: true,  write: false },
+    ToolMeta { name: "table_dependencies",         category: Schema,     needs_db: true,  write: false },
+    ToolMeta { name: "terminate_connection",       category: Admin,      needs_db: true,  write: true  },
+    ToolMeta { name: "truncate_table",             category: Admin,      needs_db: true,  write: true  },
+    ToolMeta { name: "vacuum",                     category: Admin,      needs_db: true,  write: true  },
+    ToolMeta { name: "vacuum_analyze",             category: Admin,      needs_db: true,  write: true  },
+    ToolMeta { name: "vacuum_full",                category: Admin,      needs_db: true,  write: true  },
+    ToolMeta { name: "vector_search",              category: Extensions, needs_db: true,  write: false },
 ];
 
 #[inline]
-pub fn tool_exists(name: &str) -> bool {
+fn lookup(name: &str) -> Option<&'static ToolMeta> {
     ALL_TOOLS
         .binary_search_by(|t| t.name.as_bytes().cmp(name.as_bytes()))
-        .is_ok()
+        .ok()
+        .map(|i| &ALL_TOOLS[i])
+}
+
+#[inline]
+pub fn tool_exists(name: &str) -> bool {
+    lookup(name).is_some()
 }
 
 #[inline]
 pub fn is_write_tool(name: &str) -> bool {
-    ALL_TOOLS
-        .binary_search_by(|t| t.name.as_bytes().cmp(name.as_bytes()))
-        .map(|i| ALL_TOOLS[i].write)
-        .unwrap_or(false)
+    lookup(name).map(|t| t.write).unwrap_or(false)
 }
 
 #[inline]
 pub fn needs_db(name: &str) -> bool {
-    ALL_TOOLS
-        .binary_search_by(|t| t.name.as_bytes().cmp(name.as_bytes()))
-        .map(|i| ALL_TOOLS[i].needs_db)
-        .unwrap_or(false)
+    lookup(name).map(|t| t.needs_db).unwrap_or(false)
+}
+
+/// The category a tool belongs to, or `None` if the tool is unknown.
+#[inline]
+pub fn category_of(name: &str) -> Option<ToolCategory> {
+    lookup(name).map(|t| t.category)
+}
+
+/// Whether a tool is callable given the set of enabled categories. A tool is
+/// available only if it exists *and* its category is enabled. Unknown tools and
+/// tools in disabled categories are both treated as unavailable.
+#[inline]
+pub fn is_tool_available(name: &str, enabled: &[ToolCategory]) -> bool {
+    category_of(name).is_some_and(|c| enabled.contains(&c))
 }
 
 #[cfg(test)]
@@ -325,6 +305,15 @@ mod tests {
             ALL_TOOLS.len(),
             "Duplicate tool names in ALL_TOOLS"
         );
+    }
+
+    #[test]
+    fn test_all_tools_sorted() {
+        // binary_search in `lookup` requires the array to stay name-sorted.
+        let mut sorted = ALL_TOOLS.iter().map(|t| t.name).collect::<Vec<_>>();
+        sorted.sort_unstable();
+        let actual = ALL_TOOLS.iter().map(|t| t.name).collect::<Vec<_>>();
+        assert_eq!(actual, sorted, "ALL_TOOLS must be sorted by name");
     }
 
     #[test]
@@ -353,6 +342,45 @@ mod tests {
         assert!(!needs_db("list_tables"));
         assert!(!needs_db("list_schemas"));
         assert!(!needs_db("show_constraints"));
+    }
+
+    #[test]
+    fn test_every_tool_has_category() {
+        // category_of must resolve for every registered tool.
+        for meta in ALL_TOOLS {
+            assert_eq!(category_of(meta.name), Some(meta.category));
+        }
+        assert_eq!(category_of("nonexistent_tool"), None);
+    }
+
+    #[test]
+    fn test_is_tool_available_gating() {
+        // Disabled by default: empty set exposes nothing.
+        assert!(!is_tool_available("execute_query", &[]));
+        // Enabling the owning category exposes it.
+        assert!(is_tool_available("execute_query", &[ToolCategory::Query]));
+        // A different category does not.
+        assert!(!is_tool_available("execute_query", &[ToolCategory::Ddl]));
+        // Unknown tools are never available, even with everything enabled.
+        assert!(!is_tool_available("nonexistent_tool", ToolCategory::ALL));
+    }
+
+    #[test]
+    fn test_category_slug_roundtrip() {
+        for &cat in ToolCategory::ALL {
+            assert_eq!(cat.slug().parse::<ToolCategory>().unwrap(), cat);
+        }
+        // Accepts underscores as a convenience alias.
+        assert_eq!("data_io".parse::<ToolCategory>().unwrap(), ToolCategory::DataIo);
+        assert!("bogus".parse::<ToolCategory>().is_err());
+    }
+
+    #[test]
+    fn test_categories_within_limit() {
+        assert!(
+            ToolCategory::ALL.len() <= 10,
+            "tool categories must map to at most ten CLI flags"
+        );
     }
 
     #[test]
