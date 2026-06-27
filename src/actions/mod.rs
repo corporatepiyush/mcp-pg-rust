@@ -19,7 +19,6 @@ pub mod schema;
 pub mod schema_alter;
 pub mod schema_health;
 pub mod security;
-pub mod security_audit;
 pub mod session_mgmt;
 pub mod timescaledb;
 pub mod transactions;

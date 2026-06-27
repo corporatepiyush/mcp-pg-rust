@@ -1515,26 +1515,6 @@
     }
   },
   {
-    "name": "security_audit",
-    "description": "Comprehensive security audit of the database. Reports superuser accounts, tables with PUBLIC access (world-readable/writable), and default privileges. Essential for compliance reviews and security hardening.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {},
-      "required": []
-    }
-  },
-  {
-    "name": "audit_role_usage",
-    "description": "List all database roles with their attributes (superuser, login, connection limits, expiry) and membership information. Use 'role' parameter to inspect a specific role.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "role": {"type": "string", "description": "Specific role name to inspect (optional). Default: all roles."}
-      },
-      "required": []
-    }
-  },
-  {
     "name": "sample_data",
     "description": "Extract a random sample of rows from a table. Supports optional WHERE filter, custom ORDER BY, and column anonymization (emails → ****@domain, strings → f...t). Results are randomized by default for unbiased sampling.",
     "inputSchema": {

@@ -719,9 +719,7 @@ async fn handle_tools_call(
         "clone_table_schema" => {
             actions::schema_health::clone_table_schema(&client, &tool_args).await
         }
-        // v4.0: Security Audit
-        "security_audit" => actions::security_audit::security_audit(&client, &tool_args).await,
-        "audit_role_usage" => actions::security_audit::audit_role_usage(&client, &tool_args).await,
+
         // v4.0: Data Tools
         "sample_data" => actions::data_tools::sample_data(&client, &tool_args).await,
         tool => Err(method_not_found(tool)),

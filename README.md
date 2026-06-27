@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-2024-edition-orange)](https://github.com/corporatepiyush/mcp-pg-rust)
 
-**mcp-postgres** is a high-performance MCP server that brings PostgreSQL into Claude Desktop and any MCP-compatible AI tool. 135 PostgreSQL tools, lock-free connection pooling, sub-10ms latency.
+**mcp-postgres** is a high-performance MCP server that brings PostgreSQL into Claude Desktop and any MCP-compatible AI tool. 133 PostgreSQL tools, lock-free connection pooling, sub-10ms latency.
 
 > **Tools are opt-in (5.2.0+).** No tools are exposed by default. You enable
 > them one *category* at a time with `--enable-<category>` flags (or
@@ -73,7 +73,7 @@ Add to `claude_desktop_config.json`:
 
 | Feature | mcp-postgres | DIY / psql |
 |---------|-------------|------------|
-| **135 purpose-built tools** | Schema inspection, DDL, monitoring, replication, batch ops, security audit, text search, extensions, maintenance, and more | You build every query from scratch |
+| **133 purpose-built tools** | Schema inspection, DDL, monitoring, replication, batch ops, security audit, text search, extensions, maintenance, and more | You build every query from scratch |
 | **Lock-free connection pool** | Zero-mutex `crossbeam::ArrayQueue` — pure CAS loops, no kernel overhead | Deadpool or manual `Mutex<VecDeque>` |
 | **Dual-protocol** | TCP (3000) + HTTP/2 (3001) + stdio — one binary, three transports | Multiple servers to wire up |
 | **Sub-10ms latency** | Allocated for AI interactivity — hot path is allocation-free | Unpredictable |
@@ -141,7 +141,7 @@ Implements the [Model Context Protocol](https://modelcontextprotocol.io) revisio
 | Transports | stdio, TCP (3000), HTTP/2 (3001) |
 | Protocol version | `2025-11-25`, negotiates down to `2025-06-18` / `2025-03-26` / `2024-11-05` |
 | `initialize` | ✅ version negotiation + `instructions` |
-| `tools/list`, `tools/call` | ✅ (135 tools) |
+| `tools/list`, `tools/call` | ✅ (133 tools) |
 | `CallToolResult` | ✅ `content[]` + `structuredContent` + `isError` |
 | Capabilities advertised | `tools` only — nothing is advertised that isn't implemented |
 | `resources` · `prompts` · `logging` · `completion` | ❌ roadmap — see [MIGRATION.md](./MIGRATION.md) |
@@ -190,7 +190,7 @@ you hand an agent precisely the surface area it needs (e.g. read-only `query` +
 | `--enable-ddl` | **DDL** (write) | `create/drop/alter` table·view·schema·sequence·index·partition, `backup_table`, `add/drop/rename_column`, `alter_column_type`, `rename_table/index/schema`, FK & constraint ops, `clone_table_schema`, `create_database` |
 | `--enable-admin` | **Admin** | `vacuum`, `vacuum_full`, `vacuum_analyze`, `analyze_table`, `reindex_table/database`, `reset_statistics`, `truncate_table`, `cancel_query`, `terminate_connection` |
 | `--enable-monitoring` | **Monitoring** (read) | table/index stats, sizes, cache ratio, `pg_stat_statements`, connections, running/blocked queries, transactions, locks, deadlocks, replication, WAL, settings, health checks, `suggest_indexes`, bloat |
-| `--enable-security` | **Security** | `list/create/alter/drop_user`, role ops, `grant/revoke_privileges`, privilege listings, `security_audit`, `audit_role_usage` |
+| `--enable-security` | **Security** | `list/create/alter/drop_user`, role ops, `grant/revoke_privileges`, privilege listings |
 | `--enable-data-io` | **Data I/O** | `export_csv`, `import_from_url` (also gated behind `--allow-url-import`) |
 | `--enable-extensions` | **Extensions** | pgvector (`vector_search`, `create_vector_index`, `list_vector_columns`), TimescaleDB (`create_hypertable`, `show_chunks`, retention/compression policies, continuous aggregates), BM25 full-text, and generic `create/drop/list_extension` |
 | `--enable-all` | *(all of the above)* | Every category. Overrides the individual flags. |
@@ -208,7 +208,7 @@ additionally blocks all write tools) and `--allow-url-import` controls.
 
 ---
 
-## Tools (135 Total)
+## Tools (133 Total)
 
 The headings below are the human-readable groupings. To map each one to the
 `--enable-<category>` flag that exposes it, see the
@@ -296,12 +296,6 @@ The headings below are the human-readable groupings. To map each one to the
 <summary><b>🔬 Performance Audit</b> (2) — audit_performance, analyze_query_performance</summary>
 <p>Deep-dive query forensics with buffer-level analysis. Inspect shared hits vs reads, execution time breakdowns by plan node, row estimate accuracy, and temp file spill detection. <code>audit_performance</code> runs a full sweep across your top queries.</p>
 <p><b>🪄 Key moves:</b> <code>analyze_query_performance</code> with <code>EXPLAIN (ANALYZE, BUFFERS)</code> catches seq-scans on large tables, misestimated row counts, and sort spills to disk.</p>
-</details>
-
-<details>
-<summary><b>🛡️ Security Audit</b> (3) — audit_security, audit_user_permissions, audit_role_hierarchy</summary>
-<p>Run a comprehensive security posture review: find users with superuser privileges, detect excessive schema-level GRANTs, map role inheritance chains that could lead to privilege escalation, and audit columns containing sensitive-sounding names.</p>
-<p><b>🪄 Key moves:</b> <code>audit_security</code> produces an executive summary with severity ratings, <code>audit_role_hierarchy</code> visualizes role grant chains that might bypass intended restrictions.</p>
 </details>
 
 <details>
@@ -407,8 +401,8 @@ Sub-10ms latency is guaranteed by design: zero allocation on the hot path, monom
               └────────┬────────┘
                        │
           ┌────────────┴────────────┐
-          │   Tool Dispatcher       │
-          │   (135 tools)           │
+           │   Tool Dispatcher       │
+           │   (133 tools)           │
           └────────────┬────────────┘
                        │
           ┌────────────┴────────────┐
