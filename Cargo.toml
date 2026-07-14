@@ -1,0 +1,178 @@
+[package]
+name = "mcp-postgres"
+version = "5.4.0"
+edition = "2024"
+authors = ["Piyush"]
+description = "High-performance MCP server for PostgreSQL with CPU-aware connection pooling and optimized buffers"
+repository = "https://github.com/corporatepiyush/mcp-pg-rust"
+homepage = "https://github.com/corporatepiyush/mcp-pg-rust"
+license = "Apache-2.0"
+readme = "README.md"
+keywords = ["mcp", "postgresql", "database", "server", "json-rpc"]
+categories = ["database", "web-programming::http-server"]
+include = ["src/", "bin/", "tools.json", "Cargo.toml", "README.md", "schema.sql"]
+
+[dependencies]
+# PostgreSQL
+tokio = { version = "1.41", features = ["macros", "rt-multi-thread", "io-util", "net", "time", "sync", "io-std"] }
+tokio-postgres = { version = "0.7", features = ["with-serde_json-1", "with-uuid-1", "with-chrono-0_4"] }
+
+# Decoders for common column types in execute_query result rows.
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+rust_decimal = { version = "1", features = ["db-tokio-postgres"] }
+
+# TLS for PostgreSQL connections (used only when the connection string requests
+# sslmode=require/verify-ca/verify-full/prefer). ring provider avoids the
+# cmake/Go toolchain that aws-lc-rs requires.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+tokio-postgres-rustls = "0.14"
+rustls-native-certs = "0.8"
+
+# HTTP/2 and SSE
+axum = "0.8"
+# Server-side TLS (HTTPS) for the axum HTTP transport. `tls-rustls-no-provider`
+# pulls rustls without a bundled crypto provider so we keep using the process
+# default `ring` provider installed in src/tls.rs (no cmake/aws-lc toolchain).
+axum-server = { version = "0.8", default-features = false, features = ["tls-rustls-no-provider"] }
+futures = "0.3"
+
+# JSON-RPC and Protocol
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Utilities
+uuid = { version = "1.10", features = ["v4"] }
+crossbeam = { version = "0.8", features = ["crossbeam-queue"] }
+once_cell = "1.20"
+fake = { version = "5.1" }
+parking_lot = "0.12"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# Error Handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Metrics
+prometheus = { version = "0.14", default-features = false }
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# Memory Allocator. libmimalloc-sys bundles both v2 and v3 and selects v3 unless
+# its `v2` feature is enabled (see its build.rs). We do NOT enable `v2`, so this
+# statically links mimalloc v3.3.x. Do not add the `v2` feature anywhere in the graph.
+# `0.1.49` is the floor that bundles v3; `extended` exposes mi_version() for the
+# runtime version log in main.rs.
+mimalloc = { version = "0.1.49", features = ["local_dynamic_tls", "extended", "override"] }
+libmimalloc-sys = { version = "0.1.49", features = ["extended"] }
+
+# System (TCP socket options, CPU detection)
+libc = "0.2"
+num_cpus = "1.16"
+
+# HTTP Client for latency testing and data import.
+# reqwest 0.13 made rustls the default TLS backend but with the aws-lc-rs crypto
+# provider (which needs the cmake/Go toolchain). We pin default-features=false +
+# `rustls-no-provider` so reqwest uses the process-default rustls CryptoProvider,
+# which we install as `ring` at startup (see main.rs / src/tls.rs). This keeps the
+# whole project on ring with no cmake/aws-lc dependency.
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "stream", "http2", "charset", "system-proxy"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+criterion = "0.8"
+
+# Latest minor version fetches
+# Run: cargo update --aggressive
+
+[lints.clippy]
+# ── Low-level performance lints ──────────────────────────────────────────────
+# These catch allocation, copy, and inlining inefficiencies at compile time.
+#
+# Notable gaps (no clippy lint exists):
+#   - Cache-line false sharing → use `#[repr(align(64))]` discipline (manual)
+#   - Branch prediction hints → use `#[cold]` / `#[inline]` (manual)
+#   - Memory ordering audit   → `cargo clippy` cannot check Ordering semantics
+
+# Stack / memory layout
+large_stack_frames = "warn"        # >2KB stack frames → L1 cache pressure
+large_enum_variant = "warn"        # oversized enum variants → wasteful layout
+boxed_local = "warn"               # fn(Box<T>) forces heap alloc on caller
+box_collection = "warn"            # Box<Vec<T>> → double indirection, collections heap-allocate
+
+# Clone / copy overhead
+redundant_clone = "warn"           # unnecessary .clone() on hot path
+needless_pass_by_value = "warn"    # large types passed by value → memcpy
+trivially_copy_pass_by_ref = "warn" # &u32 vs u32 (extra indirection)
+unnecessary_to_owned = "warn"      # .into_owned() forces heap alloc when borrow suffices
+implicit_clone = "warn"            # fn(&str) → fn(String) invisible clone at call site
+iter_overeager_cloned = "warn"     # .cloned() on &T: Copy → dead work
+
+# Pointers / references
+ptr_arg = "warn"                   # &Vec<T> → &[T], &String → &str (less indirection, better LLVM)
+
+# Const / compile-time evaluation
+missing_const_for_fn = "warn"      # missed const → runtime eval instead of compile-time
+
+# Integer / float conversion
+cast_lossless = "warn"             # i64 → i32 loses precision without cast
+cast_precision_loss = "warn"       # u64 as f32 → silent precision loss (complement to cast_lossless)
+unnecessary_cast = "warn"          # u32 as u32 → dead instruction
+
+# Collection / string inefficiency
+vec_init_then_push = "warn"        # Vec::new() + push → use with_capacity
+string_add_assign = "warn"         # s = s + x → s.push_str(x) (reallocation)
+inefficient_to_string = "warn"     # .to_string() on &str → redundant alloc
+manual_memcpy = "warn"             # manual copy loop → use copy_from_slice
+useless_vec = "warn"               # vec![x] when &[x] suffices (heap alloc for nothing)
+slow_vector_initialization = "warn" # vec![0; n] zero-init when immediately overwritten
+
+# Iterator adapter overhead
+manual_find_map = "warn"           # .find() + .map() → single .find_map() pass
+manual_filter_map = "warn"         # .filter() + .map() → single .filter_map() pass
+
+# Synchronization
+mutex_atomic = "warn"              # Mutex<bool> → AtomicBool, Mutex<u32> → AtomicU32
+
+# Drop / semantics
+# let_underscore_drop — renamed from clippy to rustc; handled via #[allow()] per-site
+option_option = "warn"             # Option<Option<T>> → confusing layout
+
+[[bin]]
+name = "mcp-postgres"
+path = "src/main.rs"
+
+[[bin]]
+name = "generate_load"
+path = "bin/generate_load.rs"
+
+[[bin]]
+name = "batch_load"
+path = "bin/batch_load.rs"
+
+[[bin]]
+name = "benchmark"
+path = "bin/benchmark.rs"
+
+[[bin]]
+name = "load_test_data"
+path = "bin/load_test_data.rs"
+
+[[bin]]
+name = "measure_latency"
+path = "bin/measure_latency.rs"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"
+overflow-checks = false
+
+[profile.bench]
+inherits = "release"
+debug = true
